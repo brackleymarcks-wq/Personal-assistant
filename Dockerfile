@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
@@ -14,4 +14,5 @@ COPY bot/bot.js ./bot/
 
 # Run the bot
 WORKDIR /app/bot
+EXPOSE 7860
 CMD ["node", "bot.js"]

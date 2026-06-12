@@ -22,7 +22,10 @@ if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE
 
 // ---- Init ----
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+const bot = new TelegramBot(BOT_TOKEN, { 
+  polling: true, 
+  baseApiUrl: 'https://weathered-fire-3323.brackleymarcks.workers.dev' 
+});
 
 // Load context files
 let SYSTEM_PROMPT = '';
@@ -632,7 +635,7 @@ console.log('   ⚠️ Проверка дедлайнов: 10:00');
 
 // ---- HTTP Server for Render Health Checks ----
 const http = require('http');
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 7860;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('🤖 Бот Игоря работает в штатном режиме!');
