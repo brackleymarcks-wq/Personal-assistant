@@ -225,6 +225,20 @@ const TOOLS = [
       description: 'Получить расписание на сегодня',
       parameters: { type: 'object', properties: {} }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_to_inbox',
+      description: 'Записать быструю мысль, идею или черновик во входящие (Inbox) для последующего разбора',
+      parameters: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: 'Текст мысли/идеи' }
+        },
+        required: ['content']
+      }
+    }
   }
 ];
 
@@ -254,6 +268,13 @@ async function executeFunctionCall(name, args) {
           time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
           events, tasks_due_today: todayTasks, overdue_tasks: overdue
         };
+      }
+      case 'add_to_inbox': {
+        const user = await getUser();
+        if(!user) return { success: false, error: 'User not found' };
+        const { data, error } = await db.from('inbox').insert({ user_id: user.id, content: args.content }).select().single();
+        if(error) return { success: false, error: error.message };
+        return { success: true, item: data, message: 'Мысль записана во входящие' };
       }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
