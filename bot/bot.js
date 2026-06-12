@@ -635,7 +635,7 @@ console.log('   ⚠️ Проверка дедлайнов: 10:00');
 
 // ---- HTTP Server for Render Health Checks ----
 const http = require('http');
-const PORT = process.env.PORT || 7860;
+const PORT = process.env.PORT || 80;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('🤖 Бот Игоря работает в штатном режиме!');

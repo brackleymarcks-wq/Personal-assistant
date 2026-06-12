@@ -14,5 +14,5 @@ COPY bot/bot.js ./bot/
 
 # Run the bot
 WORKDIR /app/bot
-EXPOSE 7860
+EXPOSE 80
 CMD ["node", "bot.js"]
