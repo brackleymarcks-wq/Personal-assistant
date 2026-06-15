@@ -538,7 +538,7 @@ const Gemini = {
 
     if (!res.ok) {
       const err = await res.json();
-      const errMsg = err.error?.message || \`API error \${res.status}\`;
+      const errMsg = err.error?.message || `API error ${res.status}`;
       
       // Handle Rate Limit by waiting and retrying (max 2 retries)
       if (res.status === 429 && retryCount < 2) {
@@ -547,7 +547,7 @@ const Gemini = {
         if (match && match[1]) {
           waitTime = parseFloat(match[1]) + 1; // add 1s padding
         }
-        console.warn(\`Rate limit hit. Waiting \${waitTime}s before retry...\`);
+        console.warn(`Rate limit hit. Waiting ${waitTime}s before retry...`);
         await new Promise(r => setTimeout(r, waitTime * 1000));
         return this._callAPI(apiKey, systemInstruction, messages, retryCount + 1);
       }
