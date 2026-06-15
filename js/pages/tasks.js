@@ -136,6 +136,15 @@ const TasksPage = {
 
   renderContent() {
     const filtered = this.getFilteredTasks();
+
+    // Сортировка по дате дедлайна (сначала ближайшие)
+    filtered.sort((a, b) => {
+      if (!a.deadline && !b.deadline) return 0;
+      if (!a.deadline) return 1;
+      if (!b.deadline) return -1;
+      return new Date(a.deadline) - new Date(b.deadline);
+    });
+
     const active = filtered.filter(t => !['Готово', 'Отменена'].includes(t.status));
     document.getElementById('tasks-count-label').textContent =
       `${filtered.length} задач · ${active.length} активных`;
