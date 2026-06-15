@@ -3,7 +3,7 @@
 // ============================================
 
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile'; // Быстрая и умная модель от Groq
+const MODEL = 'llama-3.1-8b-instant'; // Используем более легкую модель, чтобы не упираться в жесткие лимиты токенов (TPM) на бесплатном тарифе
 
 // Function declarations in OpenAI format
 const TOOLS = [
@@ -462,7 +462,7 @@ const Gemini = {
     const messages = [];
     
     // Add history
-    const recentHistory = historyMessages.slice(-30);
+    const recentHistory = historyMessages.slice(-10); // Уменьшено с 30 до 10 для экономии лимитов токенов
     for (const msg of recentHistory) {
       if (msg.role === 'user' || msg.role === 'assistant') {
         messages.push({

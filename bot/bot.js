@@ -15,7 +15,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const GROQ_KEY = process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY; // Поддержка старого названия переменной
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+const MODEL = 'llama-3.1-8b-instant';
 
 if (!BOT_TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN не задан в .env'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
@@ -159,7 +159,7 @@ async function saveMessage(role, content) {
   });
 }
 
-async function getRecentMessages(limit = 20) {
+async function getRecentMessages(limit = 10) {
   const { data } = await db.from('messages').select('role, content')
     .order('created_at', { ascending: false }).limit(limit);
   return (data || []).reverse();
