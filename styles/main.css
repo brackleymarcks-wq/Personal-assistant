@@ -1740,8 +1740,8 @@ textarea {
 .calendar-event.event-done {
   opacity: 0.5;
   text-decoration: line-through;
-  background: var(--bg-elevated) !important;
-  color: var(--text-muted) !important;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
   box-shadow: none;
   border: 1px solid var(--border-light);
 }
@@ -1759,7 +1759,14 @@ textarea {
   margin-top: 4px;
 }
 .calendar-event.event-deadline svg { color: white; opacity: 0.9; }
-.calendar-event.event-deadline.event-done { background: var(--success); box-shadow: none; opacity: 0.7; }
+.calendar-event.event-deadline.event-done { 
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: white !important;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.8), inset 0 0 8px rgba(255,255,255,0.3) !important;
+  opacity: 1 !important;
+  text-decoration: none !important;
+  border: none !important;
+}
 .calendar-event.event-personal { background: var(--success-dim); color: var(--success); border-left: 3px solid var(--success); }
 
 /* ============================================
