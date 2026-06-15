@@ -3,7 +3,7 @@
 // ============================================
 
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.1-8b-instant'; // Используем более легкую модель, чтобы не упираться в жесткие лимиты токенов (TPM) на бесплатном тарифе
+const MODEL = 'mixtral-8x7b-32768'; // Модель с бОльшим лимитом токенов в минуту на бесплатном тарифе
 
 // Function declarations in OpenAI format
 const TOOLS = [
@@ -532,7 +532,7 @@ const Gemini = {
         ],
         tools: TOOLS,
         temperature: 0.7,
-        max_tokens: 2048
+        max_tokens: 1024
       })
     });
 
