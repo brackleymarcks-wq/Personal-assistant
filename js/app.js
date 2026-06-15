@@ -63,7 +63,8 @@ const PAGES = {
   gantt:     { module: () => GanttPage,     label: 'Гант' },
   notes:     { module: () => NotesPage,     label: 'Заметки' },
   finances:  { module: () => FinancesPage,  label: 'Финансы' },
-  analytics: { module: () => AnalyticsPage, label: 'Аналитика' }
+  analytics: { module: () => AnalyticsPage, label: 'Аналитика' },
+  archive:   { module: () => ArchivePage,   label: 'Архив задач' }
 };
 
 const App = {

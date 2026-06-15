@@ -60,6 +60,7 @@ create table if not exists tasks (
   priority    text default 'Средний' check (priority in ('Высокий','Средний','Низкий')),
   deadline    date,
   next_step   text default '',
+  description text default '',
   created_at  timestamp with time zone default now(),
   updated_at  timestamp with time zone default now()
 );

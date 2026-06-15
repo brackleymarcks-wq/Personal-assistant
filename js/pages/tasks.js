@@ -476,6 +476,10 @@ const TasksPage = {
         <input id="tf-next-step" type="text" class="form-input" placeholder="Конкретное действие" value="${task ? this.escHtml(task.next_step || '') : ''}" />
       </div>
       <div class="form-group">
+        <label class="form-label">Комментарии / Заметки к задаче</label>
+        <textarea id="tf-description" class="form-input" rows="3" placeholder="Что нужно сделать, ссылки, идеи...">${task ? this.escHtml(task.description || '') : ''}</textarea>
+      </div>
+      <div class="form-group">
         <label class="form-label">Проект</label>
         <select id="tf-project" class="form-input">
           <option value="">— без проекта —</option>
@@ -511,6 +515,7 @@ const TasksPage = {
       status: document.getElementById('tf-status').value,
       deadline: document.getElementById('tf-deadline').value || null,
       next_step: document.getElementById('tf-next-step').value,
+      description: document.getElementById('tf-description').value,
       project_id: document.getElementById('tf-project').value || null
     };
 
