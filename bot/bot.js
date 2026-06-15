@@ -15,7 +15,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const GROQ_KEY = process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY; // Поддержка старого названия переменной
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'mixtral-8x7b-32768';
+const MODEL = 'llama-3.3-70b-versatile';
 
 if (!BOT_TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN не задан в .env'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }

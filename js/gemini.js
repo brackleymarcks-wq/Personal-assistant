@@ -3,7 +3,7 @@
 // ============================================
 
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'mixtral-8x7b-32768'; // Модель с бОльшим лимитом токенов в минуту на бесплатном тарифе
+const MODEL = 'llama-3.3-70b-versatile'; // Возвращаем умную модель (лимит 12000 TPM)
 
 // Function declarations in OpenAI format
 const TOOLS = [
