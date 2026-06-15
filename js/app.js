@@ -14,6 +14,38 @@ const UI = {
       toast.style.animation = 'slideInRight 0.25s ease reverse';
       setTimeout(() => toast.remove(), 250);
     }, duration);
+  },
+
+  openModal(titleHtml, bodyHtml, footerHtml) {
+    let modal = document.getElementById('generic-modal');
+    if (!modal) {
+      document.body.insertAdjacentHTML('beforeend', `
+        <div id="generic-modal" class="modal-overlay hidden">
+          <div class="modal">
+            <div class="modal-header">
+              <h2 class="modal-title" id="generic-modal-title" style="display:flex;align-items:center;gap:8px;"></h2>
+              <button class="modal-close" onclick="UI.closeModal()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="modal-body" id="generic-modal-body"></div>
+            <div class="modal-footer" id="generic-modal-footer"></div>
+          </div>
+        </div>
+      `);
+      modal = document.getElementById('generic-modal');
+      modal.onclick = (e) => { if (e.target === modal) UI.closeModal(); };
+    }
+    document.getElementById('generic-modal-title').innerHTML = titleHtml;
+    document.getElementById('generic-modal-body').innerHTML = bodyHtml;
+    document.getElementById('generic-modal-footer').innerHTML = footerHtml;
+    if (window.lucide) window.lucide.createIcons();
+    modal.classList.remove('hidden');
+  },
+
+  closeModal() {
+    const modal = document.getElementById('generic-modal');
+    if (modal) modal.classList.add('hidden');
   }
 };
 
@@ -140,6 +172,7 @@ const App = {
     this.initSettings();
     this.initThemeToggle();
     this.applyTheme();
+    this.updateIcons();
     
     // Start first page
     await this.navigateTo(this.currentPage);
@@ -224,6 +257,7 @@ const App = {
     const content = document.getElementById('content-area');
     content.innerHTML = pageModule.render();
     await pageModule.init();
+    this.updateIcons();
   },
 
   async refreshTasksBadge() {
@@ -255,6 +289,12 @@ const App = {
         await DB.markReminderSent(r.id);
       }
     } catch {}
+  },
+
+  updateIcons() {
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
   }
 };
 

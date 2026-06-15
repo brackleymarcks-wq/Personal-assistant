@@ -12,10 +12,10 @@ const GanttPage = {
   render() {
     return `
       <div class="gantt-page">
-        <div class="page-header">
+        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
           <div>
-            <div class="page-title">Диаграмма Ганта</div>
-            <div class="page-subtitle" id="gantt-subtitle">Таймлайн задач по проектам</div>
+            <div class="page-title" style="font-size:20px;font-weight:700;">Диаграмма Ганта</div>
+            <div class="page-subtitle" id="gantt-subtitle" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Таймлайн задач по проектам</div>
           </div>
           <div class="page-actions">
             <div class="view-toggle">
@@ -26,7 +26,10 @@ const GanttPage = {
           </div>
         </div>
         <div class="gantt-container" id="gantt-container">
-          <div style="text-align:center;padding:var(--space-2xl);color:var(--text-muted)">Загрузка…</div>
+          <div style="text-align:center;padding:var(--space-2xl);color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:var(--space-md);">
+            <i data-lucide="loader-2" class="spin" style="width:32px;height:32px;"></i>
+            Загрузка…
+          </div>
         </div>
       </div>
     `;
@@ -68,12 +71,14 @@ const GanttPage = {
 
     if (activeTasks.length === 0) {
       container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📈</div>
-          <div class="empty-text">Нет задач с дедлайнами</div>
-          <div class="empty-subtext">Добавь дедлайны к задачам, чтобы увидеть таймлайн</div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:var(--space-md);">
+          <i data-lucide="gantt-chart" style="width:48px;height:48px;color:var(--border-light);"></i>
+          <div style="font-size:16px;font-weight:600;color:var(--text-primary)">Нет задач с дедлайнами</div>
+          <div style="font-size:13px;color:var(--text-secondary);">Добавьте дедлайны к задачам, чтобы увидеть их на таймлайне</div>
         </div>
       `;
+      if (window.lucide) window.lucide.createIcons();
+      document.getElementById('gantt-subtitle').textContent = 'Таймлайн пуст';
       return;
     }
 
@@ -89,7 +94,7 @@ const GanttPage = {
     }
 
     this.startDate = new Date(today);
-    this.startDate.setDate(this.startDate.getDate() - 3);
+    this.startDate.setDate(this.startDate.getDate() - 3); // Padding before today
     this.endDate = new Date(this.startDate);
     this.endDate.setDate(this.endDate.getDate() + daysToShow);
 
@@ -102,7 +107,7 @@ const GanttPage = {
     }
 
     const cellWidth = this.zoom === 'week' ? 60 : this.zoom === 'quarter' ? 20 : 36;
-    const labelWidth = 220;
+    const labelWidth = 260; // Slightly wider for task labels
     const totalWidth = labelWidth + dates.length * cellWidth;
 
     // Group tasks by project
@@ -117,7 +122,7 @@ const GanttPage = {
     });
 
     // Build HTML
-    let html = `<div style="min-width:${totalWidth}px">`;
+    let html = `<div style="min-width:${totalWidth}px;position:relative;">`;
 
     // Header row
     html += `<div class="gantt-header" style="padding-left:${labelWidth}px">`;
@@ -129,9 +134,9 @@ const GanttPage = {
       const monthName = showMonth ? date.toLocaleDateString('ru-RU', { month: 'short' }) : '';
 
       html += `
-        <div class="gantt-header-cell ${isToday ? 'today' : ''}" style="min-width:${cellWidth}px;width:${cellWidth}px;${isWeekend ? 'opacity:0.5' : ''}">
-          ${monthName ? `<div style="font-size:9px;color:var(--accent-soft)">${monthName}</div>` : ''}
-          <div>${dayNum}</div>
+        <div class="gantt-header-cell ${isToday ? 'today' : ''}" style="min-width:${cellWidth}px;width:${cellWidth}px;${isWeekend ? 'opacity:0.6' : ''}">
+          ${monthName ? `<div style="font-size:9px;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;">${monthName}</div>` : ''}
+          <div style="${isToday ? 'width:20px;height:20px;background:var(--accent);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-top:2px;' : ''}">${dayNum}</div>
         </div>
       `;
     });
@@ -141,10 +146,12 @@ const GanttPage = {
     groups.forEach((group, key) => {
       if (group.tasks.length === 0) return;
 
-      // Project header
+      // Project header row
       html += `
-        <div style="padding:var(--space-sm) var(--space-md);font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-top:var(--space-sm)">
-          ${this.esc(group.name)} (${group.tasks.length})
+        <div style="display:flex;align-items:center;gap:8px;padding:var(--space-md);background:var(--bg-elevated);border-bottom:1px solid var(--glass-border);position:sticky;left:0;z-index:6;">
+          <i data-lucide="folder" style="width:16px;height:16px;color:var(--accent-soft);"></i>
+          <span style="font-size:12px;font-weight:700;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.5px;">${this.esc(group.name)}</span>
+          <span style="font-size:11px;color:var(--text-muted);background:var(--bg-surface);padding:2px 8px;border-radius:var(--radius-full);">${group.tasks.length}</span>
         </div>
       `;
 
@@ -156,25 +163,29 @@ const GanttPage = {
         const startOffset = Math.max(0, Math.floor((taskStart - this.startDate) / 86400000));
         const endOffset = Math.floor((deadline - this.startDate) / 86400000);
         const barStart = labelWidth + startOffset * cellWidth;
-        const barWidth = Math.max(cellWidth, (endOffset - startOffset + 1) * cellWidth);
+        const barWidth = Math.max(cellWidth, (endOffset - startOffset + 1) * cellWidth); // At least 1 cell wide
 
         const isPastDeadline = deadline < today;
-        const priorityColor = task.priority === 'Высокий' ? 'var(--danger)' :
-                             task.priority === 'Средний' ? 'var(--warning)' : 'var(--success)';
+        
+        // Priority indicator dot
+        let priorityColor = 'var(--success)';
+        if (task.priority === 'Высокий') priorityColor = 'var(--danger)';
+        if (task.priority === 'Средний') priorityColor = 'var(--warning)';
 
-        const barColor = isPastDeadline
-          ? 'linear-gradient(135deg, var(--danger), #f87171)'
-          : `linear-gradient(135deg, var(--accent), var(--accent-vibrant))`;
+        // Bar gradient
+        const barGrad = isPastDeadline
+          ? 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)' // Red gradient for past deadline
+          : 'linear-gradient(90deg, var(--accent) 0%, var(--accent-light) 100%)'; // Unified firm accent
 
         html += `
-          <div class="gantt-row" style="min-height:38px;border-bottom:1px solid var(--glass-border)">
-            <div class="gantt-row-label" style="width:${labelWidth}px;min-width:${labelWidth}px">
-              <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${priorityColor};margin-right:6px"></span>
-              ${this.esc(task.title)}
+          <div class="gantt-row" style="min-height:44px;border-bottom:1px solid var(--glass-border);">
+            <div class="gantt-row-label" style="width:${labelWidth}px;min-width:${labelWidth}px" title="${this.esc(task.title)}">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${priorityColor};margin-right:8px;flex-shrink:0;box-shadow:0 0 6px ${priorityColor}60;"></span>
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this.esc(task.title)}</span>
             </div>
             <div style="position:relative;flex:1;height:100%">
-              <div class="gantt-bar" style="left:${barStart - labelWidth}px;width:${barWidth}px;top:7px;background:${barColor};${isPastDeadline ? 'opacity:0.8' : ''}" title="${this.esc(task.title)} — до ${task.deadline}">
-                ${barWidth > 80 ? this.esc(task.title).substring(0, 20) : ''}
+              <div class="gantt-bar" style="left:${barStart - labelWidth}px;width:${barWidth}px;top:10px;background:${barGrad};" title="Дедлайн: ${new Date(task.deadline).toLocaleDateString('ru-RU')}">
+                ${barWidth > 60 ? this.esc(task.title).substring(0, Math.floor(barWidth / 8)) : ''}
               </div>
             </div>
           </div>
@@ -182,17 +193,19 @@ const GanttPage = {
       });
     });
 
-    // Today line
+    // Today line spanning full height
     const todayOffset = Math.floor((today - this.startDate) / 86400000);
     if (todayOffset >= 0 && todayOffset <= dates.length) {
       html += `<div class="gantt-today-line" style="left:${labelWidth + todayOffset * cellWidth + cellWidth / 2}px;top:0;height:100%;position:absolute"></div>`;
     }
 
     html += `</div>`;
-    container.innerHTML = `<div style="position:relative">${html}</div>`;
+    container.innerHTML = html;
+
+    if (window.lucide) window.lucide.createIcons();
 
     document.getElementById('gantt-subtitle').textContent =
-      `${activeTasks.length} задач · ${this.startDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} — ${this.endDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`;
+      `${activeTasks.length} задач · с ${this.startDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} по ${this.endDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`;
   },
 
   esc(str) {

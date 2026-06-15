@@ -243,7 +243,6 @@ const ChatPage = {
   },
 
   async loadHistory() {
-    if (this.historyLoaded) return;
     this.historyLoaded = true;
 
     try {

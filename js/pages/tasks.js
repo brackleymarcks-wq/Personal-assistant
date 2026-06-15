@@ -58,12 +58,12 @@ const TasksPage = {
             ${this.PRIORITIES.map(p => `<option value="${p}">${p}</option>`).join('')}
           </select>
           <div class="view-toggle">
-            <button class="view-btn ${this.view === 'list' ? 'active' : ''}" data-view="list">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            <button class="view-toggle-btn ${this.view === 'list' ? 'active' : ''}" data-view="list">
+              <i data-lucide="list" style="width:14px;height:14px;margin-right:4px;vertical-align:middle;"></i>
               Список
             </button>
-            <button class="view-btn ${this.view === 'kanban' ? 'active' : ''}" data-view="kanban">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18"/><rect x="10" y="3" width="5" height="11"/><rect x="17" y="3" width="5" height="15"/></svg>
+            <button class="view-toggle-btn ${this.view === 'kanban' ? 'active' : ''}" data-view="kanban">
+              <i data-lucide="layout-grid" style="width:14px;height:14px;margin-right:4px;vertical-align:middle;"></i>
               Канбан
             </button>
           </div>
@@ -105,10 +105,10 @@ const TasksPage = {
       this.renderContent();
     });
 
-    document.querySelectorAll('.view-btn').forEach(btn => {
+    document.querySelectorAll('.view-toggle-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         this.view = btn.dataset.view;
-        document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.renderContent();
       });
@@ -145,6 +145,8 @@ const TasksPage = {
     } else {
       this.renderList(filtered);
     }
+    
+    if (window.lucide) window.lucide.createIcons();
   },
 
   renderList(tasks) {
@@ -152,7 +154,12 @@ const TasksPage = {
     container.className = 'tasks-list-view';
 
     if (tasks.length === 0) {
-      container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Задач не найдено</div><div class="empty-subtext">Создай первую задачу или измени фильтры</div></div>`;
+      container.innerHTML = `
+        <div class="empty-state" style="padding:var(--space-2xl) 0;">
+          <div class="empty-icon" style="opacity:0.6;"><i data-lucide="check-square" style="width:48px;height:48px;"></i></div>
+          <div class="empty-text">Задач не найдено</div>
+          <div class="empty-subtext">Создай первую задачу или измени фильтры</div>
+        </div>`;
       return;
     }
 
@@ -166,14 +173,19 @@ const TasksPage = {
       'Завершённые': tasks.filter(t => ['Готово', 'Отменена'].includes(t.status))
     };
 
-    const PRIORITY_ICONS = { 'Высокий': '🔴', 'Средний': '🟡', 'Низкий': '🟢', 'Завершённые': '✅' };
+    const PRIORITY_ICONS = { 
+      'Высокий': '<i data-lucide="arrow-up-circle" style="color:var(--danger);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>', 
+      'Средний': '<i data-lucide="minus-circle" style="color:var(--warning);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>', 
+      'Низкий': '<i data-lucide="arrow-down-circle" style="color:var(--success);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>', 
+      'Завершённые': '<i data-lucide="check-circle-2" style="color:var(--text-muted);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>' 
+    };
 
     let html = '';
     for (const [group, items] of Object.entries(groups)) {
       if (items.length === 0) continue;
       html += `
         <div class="tasks-group">
-          <div class="tasks-group-header">${PRIORITY_ICONS[group]} ${group} <span style="color:var(--text-muted)">(${items.length})</span></div>
+          <div class="tasks-group-header" style="display:flex;align-items:center;">${PRIORITY_ICONS[group]} ${group} <span style="color:var(--text-muted);margin-left:8px;">(${items.length})</span></div>
           ${items.map(t => this.renderTaskCard(t, now)).join('')}
         </div>
       `;
@@ -181,12 +193,34 @@ const TasksPage = {
 
     container.innerHTML = html;
     container.querySelectorAll('.task-card').forEach(card => {
-      card.addEventListener('click', () => this.openTaskModal(card.dataset.id));
+      card.addEventListener('click', (e) => {
+        // Prevent opening task if clicked on project badge or pomodoro btn
+        if(e.target.closest('.task-project-badge') || e.target.closest('.start-pomodoro-btn')) return;
+        this.openTaskModal(card.dataset.id);
+      });
     });
     container.querySelectorAll('.task-checkbox').forEach(cb => {
       cb.addEventListener('click', (e) => {
         e.stopPropagation();
         this.toggleTaskDone(cb.dataset.id, cb.dataset.done === 'true');
+      });
+    });
+    container.querySelectorAll('.start-pomodoro-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const title = btn.dataset.title;
+        // Go to pomodoro with selected task
+        if (typeof PomodoroPage !== 'undefined') PomodoroPage.selectedTaskId = id;
+        App.navigateTo('pomodoro');
+      });
+    });
+    container.querySelectorAll('.task-project-badge').forEach(badge => {
+      badge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        App.navigateTo('projects').then(() => {
+          if (typeof ProjectsPage !== 'undefined') ProjectsPage.openProjectModal(badge.dataset.pid);
+        });
       });
     });
   },
@@ -200,22 +234,39 @@ const TasksPage = {
     const deadlineText = deadline
       ? deadline.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
       : '';
+      
+    // Check if task belongs to a project
+    let projectBadge = '';
+    if (task.project_id) {
+      const project = this.projects.find(p => p.id === task.project_id);
+      if (project) {
+        projectBadge = `<div class="task-project-badge" data-pid="${project.id}"><i data-lucide="folder" style="width:12px;height:12px;"></i> ${this.escHtml(project.name)}</div>`;
+      }
+    }
 
     return `
       <div class="task-card ${isOverdue ? 'overdue' : ''} ${isToday && !isOverdue ? 'today' : ''} ${isDone ? 'done' : ''}" data-id="${task.id}">
         <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${task.id}" data-done="${isDone}"></div>
         <div class="task-info">
-          <div class="task-title">${this.escHtml(task.title)}</div>
+          <div class="task-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            ${this.escHtml(task.title)}
+            ${projectBadge}
+          </div>
           <div class="task-meta">
             ${task.direction ? `<span class="task-badge badge-direction">${task.direction}</span>` : ''}
             <span class="task-badge badge-${(task.priority || 'medium').toLowerCase().replace('высокий','high').replace('средний','medium').replace('низкий','low')}">${task.priority || ''}</span>
             ${task.status ? `<span class="task-badge" style="background:var(--bg-elevated);color:var(--text-secondary)">${task.status}</span>` : ''}
             ${deadline ? `<span class="task-deadline ${isOverdue ? 'overdue' : ''} ${isToday ? 'today' : ''}">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              <i data-lucide="calendar" style="width:12px;height:12px;"></i>
               ${isOverdue ? 'Просрочено: ' : ''}${deadlineText}
             </span>` : ''}
           </div>
-          ${task.next_step ? `<div class="task-next-step">→ ${this.escHtml(task.next_step)}</div>` : ''}
+          ${task.next_step ? `<div class="task-next-step"><i data-lucide="corner-down-right" style="width:14px;height:14px;vertical-align:middle;"></i> ${this.escHtml(task.next_step)}</div>` : ''}
+        </div>
+        <div class="task-actions-overlay">
+          <button class="task-action-btn start-pomodoro-btn" data-id="${task.id}" data-title="${this.escHtml(task.title)}" title="Начать Помодоро для этой задачи">
+            <i data-lucide="timer" style="width:16px;height:16px;"></i>
+          </button>
         </div>
       </div>
     `;
@@ -228,7 +279,7 @@ const TasksPage = {
     const cols = this.KANBAN_STATUSES.map(status => {
       const items = tasks.filter(t => t.status === status);
       return `
-        <div class="kanban-column">
+        <div class="kanban-column" data-status="${status}">
           <div class="kanban-column-header">
             <div class="kanban-column-title">
               <span style="width:8px;height:8px;border-radius:50%;background:${this.STATUS_COLORS[status]};display:inline-block;flex-shrink:0"></span>
@@ -245,8 +296,78 @@ const TasksPage = {
     });
 
     container.innerHTML = cols.join('');
+    
+    // Setup click handlers
     container.querySelectorAll('.kanban-card').forEach(card => {
-      card.addEventListener('click', () => this.openTaskModal(card.dataset.id));
+      card.addEventListener('click', (e) => {
+        if(e.target.closest('.task-project-badge') || e.target.closest('.start-pomodoro-btn')) return;
+        this.openTaskModal(card.dataset.id);
+      });
+      
+      // Drag start
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', card.dataset.id);
+        card.classList.add('dragging');
+      });
+      
+      // Drag end
+      card.addEventListener('dragend', (e) => {
+        card.classList.remove('dragging');
+        container.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('drag-over'));
+      });
+    });
+
+    container.querySelectorAll('.start-pomodoro-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        if (typeof PomodoroPage !== 'undefined') PomodoroPage.selectedTaskId = id;
+        App.navigateTo('pomodoro');
+      });
+    });
+
+    // Setup drop zones on columns
+    container.querySelectorAll('.kanban-column').forEach(col => {
+      col.addEventListener('dragover', (e) => {
+        e.preventDefault(); // Allow drop
+      });
+      
+      col.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        col.classList.add('drag-over');
+      });
+      
+      col.addEventListener('dragleave', (e) => {
+        if (!col.contains(e.relatedTarget)) {
+          col.classList.remove('drag-over');
+        }
+      });
+      
+      col.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        col.classList.remove('drag-over');
+        
+        const taskId = e.dataTransfer.getData('text/plain');
+        const newStatus = col.dataset.status;
+        
+        if (taskId && newStatus) {
+          const task = this.tasks.find(t => t.id === taskId);
+          if (task && task.status !== newStatus) {
+            // Optimistic update
+            task.status = newStatus;
+            this.renderContent();
+            App.refreshTasksBadge();
+            
+            try {
+              await DB.updateTask(taskId, { status: newStatus });
+            } catch (err) {
+              console.error('Error updating task status:', err);
+              UI.toast('Ошибка при переносе задачи', 'error');
+              await this.load(); // Revert on error
+            }
+          }
+        }
+      });
     });
   },
 
@@ -254,17 +375,37 @@ const TasksPage = {
     const deadline = task.deadline ? new Date(task.deadline) : null;
     const now = new Date();
     const isOverdue = deadline && deadline < now;
-    const priorityColors = { 'Высокий': 'var(--danger)', 'Средний': 'var(--warning)', 'Низкий': 'var(--success)' };
+    
+    const prioIcons = {
+      'Высокий': '<i data-lucide="arrow-up-circle" style="color:var(--danger);width:12px;height:12px;vertical-align:middle;margin-right:2px;"></i>',
+      'Средний': '<i data-lucide="minus-circle" style="color:var(--warning);width:12px;height:12px;vertical-align:middle;margin-right:2px;"></i>',
+      'Низкий': '<i data-lucide="arrow-down-circle" style="color:var(--success);width:12px;height:12px;vertical-align:middle;margin-right:2px;"></i>'
+    };
+
+    let projectBadge = '';
+    if (task.project_id) {
+      const project = this.projects.find(p => p.id === task.project_id);
+      if (project) {
+        projectBadge = `<span style="display:inline-block;background:var(--glass-highlight);border:1px solid var(--glass-border);padding:2px 6px;border-radius:var(--radius-full);font-size:10px;margin-bottom:6px;color:var(--text-secondary);"><i data-lucide="folder" style="width:10px;height:10px;vertical-align:middle;"></i> ${this.escHtml(project.name)}</span>`;
+      }
+    }
 
     return `
-      <div class="kanban-card" data-id="${task.id}">
+      <div class="kanban-card task-card" data-id="${task.id}" style="position:relative;" draggable="true">
+        ${projectBadge}
         <div class="kanban-card-title">${this.escHtml(task.title)}</div>
-        ${task.next_step ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">→ ${this.escHtml(task.next_step)}</div>` : ''}
-        <div class="kanban-card-meta">
-          <span style="font-size:11px;color:${priorityColors[task.priority]||'var(--text-muted)'}">● ${task.priority || ''}</span>
-          ${deadline ? `<span style="font-size:11px;color:${isOverdue ? 'var(--danger)' : 'var(--text-muted)'}">
+        ${task.next_step ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><i data-lucide="corner-down-right" style="width:12px;height:12px;vertical-align:middle;"></i> ${this.escHtml(task.next_step)}</div>` : ''}
+        <div class="kanban-card-meta" style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:11px;">${prioIcons[task.priority] || ''} ${task.priority || ''}</span>
+          ${deadline ? `<span style="font-size:11px;color:${isOverdue ? 'var(--danger)' : 'var(--text-muted)'};display:flex;align-items:center;gap:2px;">
+            <i data-lucide="calendar" style="width:10px;height:10px;"></i>
             ${deadline.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
           </span>` : ''}
+        </div>
+        <div class="task-actions-overlay" style="right:var(--space-sm);">
+          <button class="task-action-btn start-pomodoro-btn" data-id="${task.id}" data-title="${this.escHtml(task.title)}" title="Начать Помодоро для этой задачи">
+            <i data-lucide="timer" style="width:14px;height:14px;"></i>
+          </button>
         </div>
       </div>
     `;

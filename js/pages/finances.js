@@ -5,36 +5,46 @@
 const FinancesPage = {
   transactions: [],
   categories: {
-    income: ['Зарплата', 'Фриланс', 'Инвестиции', 'Подарки', 'Другое'],
-    expense: ['Продукты', 'Кафе', 'Транспорт', 'Жилье', 'Развлечения', 'Здоровье', 'Одежда', 'Обучение', 'Подписки', 'Другое']
+    income: ['Зарплата', 'Фриланс', 'Бизнес', 'Инвестиции', 'Подарки', 'Крипта', 'Кэшбэк', 'Другое'],
+    expense: ['Продукты', 'Кафе и Рестораны', 'Транспорт', 'Авто', 'Жилье', 'Ипотека/Аренда', 'Развлечения', 'Здоровье', 'Одежда', 'Обучение', 'Подписки', 'Семья', 'Хобби', 'Техника', 'Путешествия', 'Другое']
+  },
+
+  // Map category names to lucide icons
+  ICONS: {
+    'Зарплата': 'briefcase', 'Фриланс': 'laptop', 'Бизнес': 'building', 'Инвестиции': 'trending-up',
+    'Подарки': 'gift', 'Крипта': 'bitcoin', 'Кэшбэк': 'percent', 'Продукты': 'shopping-cart',
+    'Кафе и Рестораны': 'coffee', 'Транспорт': 'bus', 'Авто': 'car', 'Жилье': 'home',
+    'Ипотека/Аренда': 'key', 'Развлечения': 'film', 'Здоровье': 'heart', 'Одежда': 'shirt',
+    'Обучение': 'book-open', 'Подписки': 'credit-card', 'Семья': 'users', 'Хобби': 'gamepad-2',
+    'Техника': 'smartphone', 'Путешествия': 'plane', 'Другое': 'more-horizontal'
   },
 
   render() {
     return `
-      <div class="finances-page">
-        <div class="page-header">
+      <div class="finances-page" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);overflow-y:auto;">
+        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
           <div>
-            <div class="page-title">Финансы</div>
-            <div class="page-subtitle" id="finance-subtitle">Учет доходов и расходов</div>
+            <div class="page-title" style="font-size:20px;font-weight:700;">Финансы</div>
+            <div class="page-subtitle" id="finance-subtitle" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Учет доходов и расходов</div>
           </div>
-          <div class="page-actions">
-            <button class="btn btn-secondary" onclick="FinancesPage.openModal('income')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-              Доход
+          <div class="page-actions" style="display:flex;gap:var(--space-sm);">
+            <button class="btn btn-secondary" onclick="FinancesPage.openModal('income')" style="display:flex;align-items:center;gap:6px;color:var(--success);border-color:rgba(16, 185, 129, 0.3);background:rgba(16, 185, 129, 0.05);">
+              <i data-lucide="arrow-down-left" style="width:16px;height:16px;"></i> Доход
             </button>
-            <button class="btn btn-primary" onclick="FinancesPage.openModal('expense')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>
-              Расход
+            <button class="btn btn-primary" onclick="FinancesPage.openModal('expense')" style="display:flex;align-items:center;gap:6px;background:var(--danger);border-color:var(--danger);">
+              <i data-lucide="arrow-up-right" style="width:16px;height:16px;"></i> Расход
             </button>
           </div>
         </div>
 
-        <div class="finance-summary" id="finance-summary">
+        <div class="finance-dashboard" id="finance-summary">
           <!-- Populated by JS -->
         </div>
 
-        <div class="transaction-list" id="transaction-list">
-          <div style="text-align:center;padding:var(--space-2xl);color:var(--text-muted)">Загрузка…</div>
+        <div class="finance-list-container" id="transaction-list">
+          <div style="text-align:center;padding:var(--space-3xl);color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:var(--space-md);">
+            <i data-lucide="loader-2" class="spin" style="width:32px;height:32px;"></i>
+          </div>
         </div>
       </div>
     `;
@@ -47,6 +57,8 @@ const FinancesPage = {
   async load() {
     try {
       this.transactions = await DB.getTransactions();
+      // Sort by date descending
+      this.transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
       this.renderData();
     } catch (e) {
       console.error('Finances load error:', e);
@@ -54,7 +66,6 @@ const FinancesPage = {
   },
 
   renderData() {
-    // Current month filter
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
@@ -77,60 +88,95 @@ const FinancesPage = {
     // Render Summary
     document.getElementById('finance-summary').innerHTML = `
       <div class="finance-summary-card">
+        <div class="finance-label">
+          <i data-lucide="trending-up" style="width:14px;height:14px;color:var(--success);"></i>
+          Доходы (Этот месяц)
+        </div>
         <div class="finance-amount income">+${income.toLocaleString('ru-RU')} ₴</div>
-        <div class="finance-label">Доходы (этот месяц)</div>
       </div>
       <div class="finance-summary-card">
+        <div class="finance-label">
+          <i data-lucide="trending-down" style="width:14px;height:14px;color:var(--danger);"></i>
+          Расходы (Этот месяц)
+        </div>
         <div class="finance-amount expense">-${expense.toLocaleString('ru-RU')} ₴</div>
-        <div class="finance-label">Расходы (этот месяц)</div>
       </div>
-      <div class="finance-summary-card">
-        <div class="finance-amount balance">${balance > 0 ? '+' : ''}${balance.toLocaleString('ru-RU')} ₴</div>
-        <div class="finance-label">Остаток</div>
+      <div class="finance-summary-card card-balance">
+        <div class="finance-label" style="color:var(--accent);">
+          <i data-lucide="wallet" style="width:14px;height:14px;"></i>
+          Остаток
+        </div>
+        <div class="finance-amount" style="color:${balance < 0 ? 'var(--danger)' : 'var(--text-primary)'}">
+          ${balance > 0 ? '+' : ''}${balance.toLocaleString('ru-RU')} ₴
+        </div>
       </div>
     `;
 
     const subtitle = document.getElementById('finance-subtitle');
-    if (subtitle) subtitle.textContent = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+    if (subtitle) {
+      const monthName = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+      subtitle.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+    }
 
     // Render List
     const list = document.getElementById('transaction-list');
     if (this.transactions.length === 0) {
       list.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">💸</div>
-          <div class="empty-text">Нет транзакций</div>
-          <div class="empty-subtext">Добавь свои первые доходы или расходы</div>
+        <div class="empty-state" style="text-align:center;padding:var(--space-3xl) 0;display:flex;flex-direction:column;align-items:center;gap:var(--space-md);">
+          <div style="width:64px;height:64px;border-radius:50%;background:var(--bg-surface);display:flex;align-items:center;justify-content:center;border:1px solid var(--border-light);">
+            <i data-lucide="credit-card" style="width:32px;height:32px;color:var(--text-muted);"></i>
+          </div>
+          <div style="font-size:18px;font-weight:600;color:var(--text-primary)">Нет транзакций</div>
+          <div style="font-size:14px;color:var(--text-secondary);">Добавьте свои первые доходы или расходы сверху</div>
         </div>
       `;
+      if (window.lucide) window.lucide.createIcons();
       return;
     }
 
     // Group by date
     const grouped = {};
     this.transactions.forEach(t => {
-      const d = new Date(t.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-      if (!grouped[d]) grouped[d] = [];
-      grouped[d].push(t);
+      // Calculate friendly date label
+      const d = new Date(t.date);
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      let dateLabel = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+      if (d.toDateString() === today.toDateString()) dateLabel = 'Сегодня';
+      else if (d.toDateString() === yesterday.toDateString()) dateLabel = 'Вчера';
+
+      if (!grouped[dateLabel]) grouped[dateLabel] = [];
+      grouped[dateLabel].push(t);
     });
 
     let html = '';
-    for (const [date, txs] of Object.entries(grouped)) {
-      html += `<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin:var(--space-md) 0 var(--space-xs);padding-left:4px">${date}</div>`;
+    for (const [dateLabel, txs] of Object.entries(grouped)) {
+      html += `<div class="transaction-date-group">${dateLabel}</div>`;
       html += txs.map(t => {
         const isIncome = t.type === 'income';
-        const icon = isIncome ? '📈' : '📉';
+        const iconName = this.ICONS[t.category] || 'circle-dollar-sign';
+        const wrapperClass = isIncome ? 'icon-income' : 'icon-expense';
+        
         return `
           <div class="transaction-item" onclick="FinancesPage.editModal('${t.id}')">
-            <div style="display:flex;align-items:center;gap:var(--space-sm)">
-              <div class="transaction-category-icon">${icon}</div>
-              <div>
-                <div style="font-size:14px;font-weight:500;color:var(--text-primary)">${this.esc(t.category)}</div>
-                ${t.description ? `<div style="font-size:12px;color:var(--text-secondary)">${this.esc(t.description)}</div>` : ''}
+            <div class="transaction-left">
+              <div class="transaction-icon-wrapper ${wrapperClass}">
+                <i data-lucide="${iconName}" style="width:20px;height:20px;"></i>
+              </div>
+              <div class="transaction-details">
+                <div class="transaction-title">${this.esc(t.category)}</div>
+                ${t.description ? `<div class="transaction-desc">${this.esc(t.description)}</div>` : ''}
               </div>
             </div>
-            <div style="font-size:15px;font-weight:600;color:${isIncome ? 'var(--success)' : 'var(--text-primary)'}">
-              ${isIncome ? '+' : '-'}${Number(t.amount).toLocaleString('ru-RU')} ₴
+            <div class="transaction-right">
+              <div class="transaction-sum ${isIncome ? 'income' : 'expense'}">
+                ${isIncome ? '+' : '-'}${Number(t.amount).toLocaleString('ru-RU')} ₴
+              </div>
+              <div class="transaction-time">
+                ${new Date(t.date).toLocaleDateString('ru-RU', {day:'numeric', month:'short'})}
+              </div>
             </div>
           </div>
         `;
@@ -138,6 +184,7 @@ const FinancesPage = {
     }
 
     list.innerHTML = html;
+    if (window.lucide) window.lucide.createIcons();
   },
 
   openModal(type, id = null) {
@@ -149,40 +196,63 @@ const FinancesPage = {
     const catOptions = cats.map(c => `<option value="${c}" ${tx?.category === c ? 'selected' : ''}>${c}</option>`).join('');
 
     const todayStr = new Date().toISOString().split('T')[0];
+    const modalTitle = isNew 
+      ? (txType === 'income' ? '<i data-lucide="arrow-down-left" style="color:var(--success);"></i> Новый доход' : '<i data-lucide="arrow-up-right" style="color:var(--danger);"></i> Новый расход') 
+      : '<i data-lucide="edit-2"></i> Редактировать';
 
     const content = `
+      <div class="form-group" style="text-align:center;margin-bottom:var(--space-xl);">
+        <label class="form-label" style="text-align:center;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Сумма (₴)</label>
+        <input type="number" id="tx-amount" style="font-size:48px;font-weight:800;text-align:center;border:none;background:transparent;outline:none;width:100%;color:${txType === 'income' ? 'var(--success)' : 'var(--text-primary)'};padding:0;" placeholder="0" min="0" step="1" value="${tx ? tx.amount : ''}" autofocus required>
+      </div>
+      
       <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Сумма (₴)</label>
-          <input type="number" id="tx-amount" class="form-input" placeholder="0" min="0" step="0.01" value="${tx ? tx.amount : ''}" required>
-        </div>
         <div class="form-group">
           <label class="form-label">Дата</label>
           <input type="date" id="tx-date" class="form-input" value="${tx ? tx.date : todayStr}" required>
         </div>
+        <div class="form-group">
+          <label class="form-label">Категория</label>
+          <select id="tx-category" class="form-input">
+            ${catOptions}
+          </select>
+        </div>
       </div>
+      
       <div class="form-group" style="margin-top:var(--space-md)">
-        <label class="form-label">Категория</label>
-        <select id="tx-category" class="form-input">
-          ${catOptions}
-        </select>
-      </div>
-      <div class="form-group" style="margin-top:var(--space-md)">
-        <label class="form-label">Описание (необязательно)</label>
-        <input type="text" id="tx-desc" class="form-input" placeholder="Например: Супермаркет" value="${tx ? this.esc(tx.description) : ''}">
+        <label class="form-label">Описание / Комментарий</label>
+        <input type="text" id="tx-desc" class="form-input" placeholder="Например: Супермаркет Сильпо" value="${tx ? this.esc(tx.description) : ''}">
       </div>
       <input type="hidden" id="tx-type" value="${txType}">
     `;
 
     const footer = `
-      ${!isNew ? `<button class="btn btn-danger" onclick="FinancesPage.deleteTransaction('${id}')">Удалить</button>` : '<div></div>'}
+      ${!isNew ? `<button class="btn btn-danger" onclick="FinancesPage.deleteTransaction('${id}')" style="display:flex;align-items:center;gap:6px;"><i data-lucide="trash-2"></i> Удалить</button>` : '<div></div>'}
       <div style="display:flex;gap:var(--space-sm);margin-left:auto">
         <button class="btn btn-secondary" onclick="UI.closeModal()">Отмена</button>
-        <button class="btn btn-primary" onclick="FinancesPage.saveTransaction('${id || ''}')">Сохранить</button>
+        <button class="btn btn-primary" onclick="FinancesPage.saveTransaction('${id || ''}')" style="display:flex;align-items:center;gap:6px;"><i data-lucide="save"></i> Сохранить</button>
       </div>
     `;
 
-    UI.openModal(isNew ? (txType === 'income' ? 'Новый доход' : 'Новый расход') : 'Редактировать', content, footer);
+    // Removed problematic line without semicolon
+    UI.openModal(modalTitle, content, footer);
+    
+    // Quick hack to parse HTML in title since openModal creates textContent by default
+    const titleEl = document.querySelector('.modal-title');
+    if (titleEl) {
+      titleEl.innerHTML = modalTitle;
+      titleEl.style.display = 'flex';
+      titleEl.style.alignItems = 'center';
+      titleEl.style.gap = '8px';
+    }
+    
+    if (window.lucide) window.lucide.createIcons();
+    
+    // Focus amount input and put cursor at end
+    setTimeout(() => {
+      const amtInput = document.getElementById('tx-amount');
+      if (amtInput) amtInput.focus();
+    }, 100);
   },
 
   editModal(id) {
@@ -197,7 +267,7 @@ const FinancesPage = {
     const type = document.getElementById('tx-type').value;
 
     if (!amount || amount <= 0 || !date) {
-      UI.toast('Заполните обязательные поля', 'error');
+      UI.toast('Укажите корректную сумму', 'error');
       return;
     }
 
@@ -218,11 +288,11 @@ const FinancesPage = {
   },
 
   async deleteTransaction(id) {
-    if (!confirm('Точно удалить запись?')) return;
+    if (!confirm('Точно удалить эту операцию?')) return;
     try {
       await DB.deleteTransaction(id);
       UI.closeModal();
-      UI.toast('Запись удалена', 'success');
+      UI.toast('Операция удалена', 'info');
       this.load();
     } catch (e) {
       console.error(e);

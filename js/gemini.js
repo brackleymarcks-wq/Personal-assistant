@@ -423,10 +423,10 @@ async function executeFunctionCall(name, args) {
 const Gemini = {
   async buildSystemContext() {
     const settings = await DB.getSettings() || {};
-    let systemPrompt = settings.system_prompt || '';
-    let userContext = '';
+    let systemPrompt = window.SYSTEM_PROMPT || settings.system_prompt || '';
+    let userContext = window.USER_CONTEXT || '';
 
-    // Пытаемся загрузить базовые файлы из корня
+    // Пытаемся загрузить базовые файлы из корня, если запущен сервер
     try {
       const promptRes = await fetch('/SYSTEM_PROMPT.md');
       if (promptRes.ok) systemPrompt = await promptRes.text();
@@ -434,7 +434,7 @@ const Gemini = {
       const ctxRes = await fetch('/CONTEXT.md');
       if (ctxRes.ok) userContext = await ctxRes.text();
     } catch(e) {
-      console.warn('Не удалось загрузить SYSTEM_PROMPT.md или CONTEXT.md', e);
+      console.warn('Работаем без локального сервера, используем вшитые промты (file:// fallback)');
     }
 
     const rhythm = settings.rhythm || DEFAULT_SETTINGS.rhythm;
@@ -544,5 +544,61 @@ const Gemini = {
     }
 
     return res.json();
+  },
+
+  async parseInboxItem(text) {
+    const apiKey = Config.geminiKey;
+    if (!apiKey) throw new Error('API ключ не настроен (нужен для ИИ)');
+
+    const prompt = `Ты — умный парсер входящих мыслей по системе GTD. 
+Твоя задача — проанализировать текст и вернуть массив объектов в формате JSON.
+Текст: "${text}"
+
+Возможные типы объектов:
+- "task": { "type": "task", "title": "Название", "deadline": "YYYY-MM-DD", "priority": "Средний" (Низкий/Средний/Высокий) }
+- "event": { "type": "event", "title": "Название", "start_at": "ISO 8601", "end_at": "ISO 8601", "notes": "" }
+- "note": { "type": "note", "title": "Заголовок", "content": "Текст заметки", "tags": [] }
+- "project": { "type": "project", "name": "Название проекта", "deadline": "YYYY-MM-DD" или null }
+
+Сегодняшняя дата (локальная): ${new Date().toLocaleString('ru-RU')}
+Текущая дата ISO: ${new Date().toISOString()}
+ВАЖНО: Если для ЗАДАЧИ в тексте не указан срок, обязательно ставь deadline как сегодняшнюю дату (в формате YYYY-MM-DD). Не используй null для дедлайнов задач.
+
+Верни ТОЛЬКО валидный JSON массив без Markdown разметки. Если мысль одна, верни массив из одного объекта. Пример:
+[
+  { "type": "task", "title": "Купить молоко", "deadline": "${new Date().toISOString().split('T')[0]}", "priority": "Низкий" }
+]`;
+
+    const res = await fetch(OPENROUTER_API, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': window.location.origin || 'http://localhost',
+        'X-Title': 'Personal Assistant'
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: 'Ты возвращаешь только валидный JSON. Никакого Markdown.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.1
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || `API error ${res.status}`);
+    }
+
+    const data = await res.json();
+    let jsonStr = data.choices?.[0]?.message?.content?.trim() || '[]';
+    
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    }
+    
+    return JSON.parse(jsonStr);
   }
 };

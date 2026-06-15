@@ -6,6 +6,7 @@ const CalendarPage = {
   currentDate: new Date(),
   events: [],
   tasks: [],
+  projects: [],
 
   EVENT_TYPES: ['Встреча', 'Урок', 'Дедлайн', 'Личное'],
   TYPE_CLASS: {
@@ -13,6 +14,12 @@ const CalendarPage = {
     'Урок': 'event-lesson',
     'Дедлайн': 'event-deadline',
     'Личное': 'event-personal'
+  },
+  TYPE_ICON: {
+    'Встреча': 'users',
+    'Урок': 'book-open',
+    'Дедлайн': 'zap',
+    'Личное': 'user'
   },
 
   render() {
@@ -33,15 +40,17 @@ const CalendarPage = {
 
         <div class="calendar-controls">
           <div class="calendar-nav">
-            <button class="btn btn-secondary btn-icon" id="cal-prev">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+            <button class="btn btn-secondary btn-icon" id="cal-prev" style="border:none;background:transparent;">
+              <i data-lucide="chevron-left" style="width:18px;height:18px;"></i>
             </button>
             <div class="calendar-month" id="cal-month-label"></div>
-            <button class="btn btn-secondary btn-icon" id="cal-next">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            <button class="btn btn-secondary btn-icon" id="cal-next" style="border:none;background:transparent;">
+              <i data-lucide="chevron-right" style="width:18px;height:18px;"></i>
             </button>
           </div>
-          <button class="btn btn-secondary btn-sm" id="cal-today">Сегодня</button>
+          <button class="btn btn-secondary btn-sm" id="cal-today">
+            <i data-lucide="calendar" style="width:14px;height:14px;margin-right:6px;vertical-align:middle;"></i> Сегодня
+          </button>
         </div>
 
         <div class="calendar-body">
@@ -67,9 +76,10 @@ const CalendarPage = {
     const month = this.currentDate.getMonth();
     const start = new Date(year, month - 1, 1).toISOString();
     const end = new Date(year, month + 2, 0).toISOString();
-    [this.events, this.tasks] = await Promise.all([
+    [this.events, this.tasks, this.projects] = await Promise.all([
       DB.getEvents(start, end),
-      DB.getTasks({ })
+      DB.getTasks({ }),
+      DB.getProjects()
     ]);
     this.renderCalendar();
   },
@@ -136,34 +146,92 @@ const CalendarPage = {
       evEl.addEventListener('click', (e) => {
         e.stopPropagation();
         const id = evEl.dataset.id;
-        if (id) this.openEventModal(id);
+        const type = evEl.dataset.type;
+        if (type === 'task') {
+          const t = this.tasks.find(x => x.id === id);
+          if (t) {
+            const isDone = t.status === 'Готово';
+            const bodyHtml = `
+              <div style="display: flex; flex-direction: column; gap: 16px; font-size: 15px; color: var(--text-primary); margin-top: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-weight: 600; min-width: 100px; color: var(--text-secondary);">Статус:</span>
+                  <span class="badge ${isDone ? 'badge-success' : 'badge-primary'}">${t.status}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-weight: 600; min-width: 100px; color: var(--text-secondary);">Приоритет:</span>
+                  <span>${t.priority}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-weight: 600; min-width: 100px; color: var(--text-secondary);">Направление:</span>
+                  <span>${t.direction}</span>
+                </div>
+                ${t.next_step ? `
+                <div style="margin-top: 8px; padding: 12px; background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-light);">
+                  <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;">Следующий шаг:</div>
+                  <div>${this.esc(t.next_step)}</div>
+                </div>` : ''}
+              </div>
+            `;
+            const footerHtml = `
+              <button class="btn btn-secondary" onclick="UI.closeModal()">Закрыть</button>
+              <button class="btn btn-primary" onclick="App.navigateTo('tasks').then(() => TasksPage.openTaskModal('${id}')); UI.closeModal();">Перейти к задаче</button>
+            `;
+            const titleHtml = `
+              <i data-lucide="target" style="color: var(--danger); width: 24px; height: 24px;"></i>
+              <span style="font-size: 18px; font-weight: 700;">${this.esc(t.title)}</span>
+            `;
+            UI.openModal(titleHtml, bodyHtml, footerHtml);
+          }
+        } else if (id) {
+          this.openEventModal(id);
+        }
       });
     });
+    
+    if (window.lucide) window.lucide.createIcons();
   },
 
   renderDay(date, otherMonth, now) {
-    const dateStr = date.toISOString().split('T')[0];
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
     const isToday = date.toDateString() === now.toDateString();
 
     const dayEvents = this.events.filter(ev => {
-      return ev.start_at && ev.start_at.startsWith(dateStr);
+      if (!ev.start_at) return false;
+      const evDate = new Date(ev.start_at);
+      const evY = evDate.getFullYear();
+      const evM = String(evDate.getMonth() + 1).padStart(2, '0');
+      const evD = String(evDate.getDate()).padStart(2, '0');
+      return `${evY}-${evM}-${evD}` === dateStr;
     });
 
-    const dayTaskDeadlines = this.tasks.filter(t => {
-      return t.deadline === dateStr && !['Готово', 'Отменена'].includes(t.status);
-    });
+    const dayTaskDeadlines = this.tasks.filter(t => t.deadline === dateStr && t.status !== 'Отменена');
 
     const eventsHtml = [
       ...dayEvents.map(ev => `
-        <div class="calendar-event ${this.TYPE_CLASS[ev.type] || 'event-meeting'}" data-id="${ev.id}" title="${this.esc(ev.title)}">
+        <div class="calendar-event ${this.TYPE_CLASS[ev.type] || 'event-meeting'}" data-id="${ev.id}" data-type="event" title="${this.esc(ev.title)}">
+          <i data-lucide="${this.TYPE_ICON[ev.type] || 'calendar'}" style="width:12px;height:12px;min-width:12px;"></i>
           ${this.esc(ev.title)}
         </div>
       `),
-      ...dayTaskDeadlines.map(t => `
-        <div class="calendar-event event-deadline" title="Дедлайн: ${this.esc(t.title)}">
-          ⚡ ${this.esc(t.title)}
-        </div>
-      `)
+      ...dayTaskDeadlines.map(t => {
+        const isDone = t.status === 'Готово';
+        let projectIcon = '';
+        if (t.project_id) {
+          const project = this.projects.find(p => p.id === t.project_id);
+          if (project) {
+            projectIcon = `[${this.esc(project.name)}] `;
+          }
+        }
+        return `
+          <div class="calendar-event event-deadline ${isDone ? 'event-done' : ''}" data-id="${t.id}" data-type="task" title="Дедлайн: ${this.esc(t.title)}">
+            <i data-lucide="${isDone ? 'check-square' : 'target'}" style="width:12px;height:12px;min-width:12px;"></i>
+            ${projectIcon}${this.esc(t.title)}
+          </div>
+        `;
+      })
     ].join('');
 
     return `

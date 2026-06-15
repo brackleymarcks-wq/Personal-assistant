@@ -16,7 +16,7 @@
     <!-- Setup Screen -->
     <div id="setup-screen" class="setup-screen hidden">
       <div class="setup-card">
-        <div class="setup-logo">🤖</div>
+        <div class="setup-logo"><i data-lucide="bot" style="width: 56px; height: 56px; color: var(--accent-vibrant);"></i></div>
         <h1 class="setup-title">Персональный ассистент</h1>
         <p class="setup-subtitle">Настройте подключение к сервисам</p>
         <div class="setup-form">
@@ -51,7 +51,7 @@
       <aside id="sidebar" class="sidebar">
         <div class="sidebar-header">
           <div class="sidebar-logo">
-            <span class="logo-icon">🤖</span>
+            <i data-lucide="bot" class="logo-icon" style="color: var(--accent-vibrant);"></i>
             <span class="logo-text">Ассистент</span>
           </div>
           <button id="sidebar-toggle" class="sidebar-toggle" title="Свернуть меню">
@@ -61,23 +61,23 @@
 
         <nav class="sidebar-nav">
           <div class="nav-section-title">Ежедневно</div>
-          <a href="#dashboard" class="nav-item" data-page="dashboard"><div class="nav-icon">🏠</div><span class="nav-label">Главная</span></a>
-          <a href="#inbox" class="nav-item" data-page="inbox"><div class="nav-icon">📥</div><span class="nav-label">Входящие</span><span class="nav-badge" id="inbox-badge" style="opacity:0">0</span></a>
-          <a href="#tasks" class="nav-item" data-page="tasks"><div class="nav-icon">✅</div><span class="nav-label">Задачи</span></a>
-          <a href="#calendar" class="nav-item" data-page="calendar"><div class="nav-icon">📅</div><span class="nav-label">Календарь</span></a>
+          <a href="#dashboard" class="nav-item" data-page="dashboard"><i data-lucide="layout-dashboard" class="nav-icon"></i><span class="nav-label">Главная</span></a>
+          <a href="#inbox" class="nav-item" data-page="inbox"><i data-lucide="inbox" class="nav-icon"></i><span class="nav-label">Входящие</span><span class="nav-badge" id="inbox-badge" style="opacity:0">0</span></a>
+          <a href="#tasks" class="nav-item" data-page="tasks"><i data-lucide="check-square" class="nav-icon"></i><span class="nav-label">Задачи</span></a>
+          <a href="#calendar" class="nav-item" data-page="calendar"><i data-lucide="calendar" class="nav-icon"></i><span class="nav-label">Календарь</span></a>
           
           <div class="nav-section-title">Фокус и планирование</div>
-          <a href="#pomodoro" class="nav-item" data-page="pomodoro"><div class="nav-icon">🍅</div><span class="nav-label">Помодоро</span></a>
-          <a href="#habits" class="nav-item" data-page="habits"><div class="nav-icon">⭐</div><span class="nav-label">Привычки</span></a>
-          <a href="#goals" class="nav-item" data-page="goals"><div class="nav-icon">🎯</div><span class="nav-label">Цели</span></a>
+          <a href="#pomodoro" class="nav-item" data-page="pomodoro"><i data-lucide="timer" class="nav-icon"></i><span class="nav-label">Помодоро</span></a>
+          <a href="#habits" class="nav-item" data-page="habits"><i data-lucide="star" class="nav-icon"></i><span class="nav-label">Привычки</span></a>
+          <a href="#goals" class="nav-item" data-page="goals"><i data-lucide="target" class="nav-icon"></i><span class="nav-label">Цели</span></a>
           
           <div class="nav-section-title">Обзор и знания</div>
-          <a href="#projects" class="nav-item" data-page="projects"><div class="nav-icon">📁</div><span class="nav-label">Проекты</span></a>
-          <a href="#gantt" class="nav-item" data-page="gantt"><div class="nav-icon">📊</div><span class="nav-label">Диаграмма Ганта</span></a>
-          <a href="#notes" class="nav-item" data-page="notes"><div class="nav-icon">📝</div><span class="nav-label">Дневник</span></a>
-          <a href="#knowledge" class="nav-item" data-page="knowledge"><div class="nav-icon">🧠</div><span class="nav-label">База знаний</span></a>
-          <a href="#finances" class="nav-item" data-page="finances"><div class="nav-icon">💸</div><span class="nav-label">Финансы</span></a>
-          <a href="#analytics" class="nav-item" data-page="analytics"><div class="nav-icon">📈</div><span class="nav-label">Аналитика</span></a>
+          <a href="#projects" class="nav-item" data-page="projects"><i data-lucide="folder" class="nav-icon"></i><span class="nav-label">Проекты</span></a>
+          <a href="#gantt" class="nav-item" data-page="gantt"><i data-lucide="bar-chart-horizontal" class="nav-icon"></i><span class="nav-label">Диаграмма Ганта</span></a>
+          <a href="#notes" class="nav-item" data-page="notes"><i data-lucide="book-open" class="nav-icon"></i><span class="nav-label">Дневник</span></a>
+          <a href="#knowledge" class="nav-item" data-page="knowledge"><i data-lucide="brain" class="nav-icon"></i><span class="nav-label">База знаний</span></a>
+          <a href="#finances" class="nav-item" data-page="finances"><i data-lucide="wallet" class="nav-icon"></i><span class="nav-label">Финансы</span></a>
+          <a href="#analytics" class="nav-item" data-page="analytics"><i data-lucide="trending-up" class="nav-icon"></i><span class="nav-label">Аналитика</span></a>
         </nav>
 
         <div class="sidebar-footer">
@@ -193,9 +193,12 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <!-- Marked.js for markdown -->
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
 
   <!-- App modules -->
   <script src="js/config.js"></script>
+  <script src="js/prompts.js"></script>
   <script src="js/db.js"></script>
   <script src="js/gemini.js"></script>
   <script src="js/settings.js"></script>

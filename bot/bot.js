@@ -586,17 +586,32 @@ function sendProactiveMessage(text) {
 
 // ---- CRON JOBS ----
 
-// Утренний брифинг: 9:00 по Минску (UTC+3) = 6:00 UTC
-cron.schedule('0 6 * * *', async () => {
+// [NEW] Подъем и пробежка: 7:00 по Минску = 4:00 UTC
+cron.schedule('0 4 * * *', () => {
+  sendProactiveMessage('☀️ *Доброе утро!* Время просыпаться. Надевай кроссовки, 15 минут бега и зарядка на пресс ждут тебя!');
+}, { timezone: 'UTC' });
+
+// Утренний брифинг: 8:45 по Минску (UTC+3) = 5:45 UTC
+cron.schedule('45 5 * * *', async () => {
   console.log('⏰ Cron: утренний брифинг');
   try {
     const text = await generateMorningBriefing();
     await saveMessage('assistant', text);
-    sendProactiveMessage('☀️ *Доброе утро!*\n\n' + text);
+    sendProactiveMessage('📝 *План на день*\n\n' + text);
   } catch(e) {
     console.error('Cron morning error:', e);
-    sendProactiveMessage('☀️ Доброе утро! Не смог собрать брифинг — проверь логи.');
+    sendProactiveMessage('📝 Доброе утро! Не смог собрать брифинг — проверь логи.');
   }
+}, { timezone: 'UTC' });
+
+// Напоминание перед Deep Work: 9:55 по Минску = 6:55 UTC
+cron.schedule('55 6 * * 1-5', () => {
+  sendProactiveMessage('🧠 Через 5 минут — Deep Work. Закрой мессенджеры, убери уведомления, выбери главную задачу. Погнали! 🚀');
+}, { timezone: 'UTC' });
+
+// [NEW] Обед: 13:00 по Минску = 10:00 UTC
+cron.schedule('0 10 * * 1-5', () => {
+  sendProactiveMessage('🍔 *Время обеда!* Твое время с 13:00 до 14:00 защищено. Отрывайся от монитора и отдыхай.');
 }, { timezone: 'UTC' });
 
 // Вечерний обзор: 19:30 по Минску = 16:30 UTC
@@ -624,14 +639,14 @@ cron.schedule('0 16 * * 0', async () => {
   }
 }, { timezone: 'UTC' });
 
-// Напоминание перед Deep Work: 9:55 по Минску = 6:55 UTC
-cron.schedule('55 6 * * 1-5', () => {
-  sendProactiveMessage('🧠 Через 5 минут — Deep Work. Закрой мессенджеры, убери уведомления, выбери главную задачу. Погнали! 🚀');
-}, { timezone: 'UTC' });
-
 // Стоп работы: 20:00 по Минску = 17:00 UTC
 cron.schedule('0 17 * * *', () => {
   sendProactiveMessage('🛑 20:00 — время закрывать ноут. Ты сегодня молодец. Отдыхай, проведи вечер с Кристиной! 💜');
+}, { timezone: 'UTC' });
+
+// [NEW] Подготовка ко сну: 22:00 по Минску = 19:00 UTC
+cron.schedule('0 19 * * *', () => {
+  sendProactiveMessage('🛌 Уже 22:00. Пора замедляться. Отбой в 22:30–23:00, чтобы завтра легко встать в 7:00 и быть бодрым!');
 }, { timezone: 'UTC' });
 
 // Проверка дедлайнов (каждый день в 10:00 = 7:00 UTC)
@@ -647,10 +662,13 @@ cron.schedule('0 7 * * *', async () => {
 }, { timezone: 'UTC' });
 
 console.log('✅ Cron-задачи настроены:');
-console.log('   ☀️ Утренний брифинг: 9:00');
+console.log('   🏃 Подъем и бег: 7:00');
+console.log('   📝 Утренний брифинг: 8:45');
 console.log('   🧠 Deep Work reminder: 9:55');
+console.log('   🍔 Обед: 13:00');
 console.log('   🌙 Вечерний обзор: 19:30');
 console.log('   🛑 Стоп работы: 20:00');
+console.log('   🛌 Отход ко сну: 22:00');
 console.log('   📊 Еженедельный обзор: Вс 19:00');
 console.log('   ⚠️ Проверка дедлайнов: 10:00');
 

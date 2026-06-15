@@ -16,48 +16,59 @@ const PomodoroPage = {
   ICONS: { idle: '🍅', working: '🧠', break: '☕', longbreak: '🌿' },
 
   render() {
+    // 283 is approx 2 * pi * 45 for stroke-dasharray
     return `
       <div class="pomodoro-page">
         <div style="text-align:center;margin-bottom:var(--space-md)">
-          <div style="font-size:14px;color:var(--text-secondary);font-weight:500" id="pomo-state-label">Готов к работе</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px" id="pomo-session-count">Сессия 0 из 4</div>
+          <div style="font-size:16px;color:var(--text-secondary);font-weight:600" id="pomo-state-label">Готов к работе</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:4px" id="pomo-session-count">Сессия 0 из 4</div>
         </div>
 
-        <div class="pomodoro-timer" id="pomo-timer-ring">
-          <div class="pomodoro-time" id="pomo-time">25:00</div>
-          <div class="pomodoro-label" id="pomo-label">🍅 Помодоро</div>
+        <div class="pomodoro-timer-container" id="pomo-timer-container">
+          <svg class="pomodoro-svg" viewBox="0 0 100 100">
+            <circle class="pomodoro-circle-bg" cx="50" cy="50" r="45"></circle>
+            <circle class="pomodoro-circle-progress" id="pomo-progress-ring" cx="50" cy="50" r="45" stroke-dasharray="283" stroke-dashoffset="0"></circle>
+          </svg>
+          <div class="pomodoro-content">
+            <div class="pomodoro-time" id="pomo-time">25:00</div>
+            <div class="pomodoro-label" id="pomo-label"><i data-lucide="check-circle" style="width:16px;height:16px;"></i> Помодоро</div>
+          </div>
         </div>
 
         <div class="pomodoro-controls">
           <button class="btn btn-secondary btn-icon" id="pomo-reset-btn" title="Сбросить">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            <i data-lucide="rotate-ccw" style="width:20px;height:20px;"></i>
           </button>
-          <button class="btn btn-primary" id="pomo-start-btn" style="padding:12px 32px;font-size:15px;border-radius:var(--radius-full)">
-            ▶ Старт
+          <button class="btn btn-primary" id="pomo-start-btn" style="padding:14px 40px;font-size:16px;border-radius:var(--radius-full);box-shadow:0 4px 16px var(--accent-glow);">
+            <i data-lucide="play" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;"></i> <span id="pomo-start-text">Старт</span>
           </button>
           <button class="btn btn-secondary btn-icon" id="pomo-skip-btn" title="Пропустить">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+            <i data-lucide="skip-forward" style="width:20px;height:20px;"></i>
           </button>
         </div>
 
         <!-- Task selector -->
-        <div style="margin-top:var(--space-xl);width:100%;max-width:400px">
-          <div style="background:var(--glass-bg);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:var(--radius-lg);padding:var(--space-md)">
-            <div style="font-size:12.5px;font-weight:600;color:var(--text-secondary);margin-bottom:var(--space-sm)">Привязать к задаче</div>
-            <select id="pomo-task-select" class="form-input" style="font-size:13px">
-              <option value="">— Без задачи —</option>
-            </select>
+        <div class="pomodoro-task-wrapper">
+          <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:var(--space-sm);display:flex;align-items:center;gap:6px;">
+            <i data-lucide="target" style="width:14px;height:14px;"></i> Привязать к задаче
           </div>
+          <select id="pomo-task-select" class="form-input" style="font-size:14px;padding:10px 14px;">
+            <option value="">— Без задачи —</option>
+          </select>
         </div>
 
         <!-- Today's stats -->
-        <div style="margin-top:var(--space-lg);display:flex;gap:var(--space-xl)">
-          <div class="dashboard-stat">
-            <div class="stat-value" id="pomo-today-count">0</div>
+        <div class="pomodoro-stats">
+          <div class="dashboard-stat" style="flex:1;">
+            <div class="stat-value" id="pomo-today-count" style="display:flex;align-items:center;gap:8px;">
+              <i data-lucide="check-square" style="color:var(--success);"></i> 0
+            </div>
             <div class="stat-label">Помодоро сегодня</div>
           </div>
-          <div class="dashboard-stat">
-            <div class="stat-value" id="pomo-today-minutes">0</div>
+          <div class="dashboard-stat" style="flex:1;">
+            <div class="stat-value" id="pomo-today-minutes" style="display:flex;align-items:center;gap:8px;">
+              <i data-lucide="flame" style="color:var(--danger);"></i> 0
+            </div>
             <div class="stat-label">Минут фокуса</div>
           </div>
         </div>
@@ -89,8 +100,14 @@ const PomodoroPage = {
         const opt = document.createElement('option');
         opt.value = t.id;
         opt.textContent = t.title.substring(0, 60);
+        if (this.selectedTaskId && this.selectedTaskId === t.id) {
+          opt.selected = true;
+          this.currentTaskId = t.id;
+        }
         select.appendChild(opt);
       });
+      // Clear auto-select memory
+      this.selectedTaskId = null;
     } catch (e) { console.error(e); }
   },
 
@@ -139,7 +156,8 @@ const PomodoroPage = {
   pause() {
     clearInterval(this.interval);
     this.interval = null;
-    document.getElementById('pomo-start-btn').innerHTML = '▶ Продолжить';
+    document.getElementById('pomo-start-btn').innerHTML = '<i data-lucide="play" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;"></i> <span id="pomo-start-text">Продолжить</span>';
+    if(window.lucide) window.lucide.createIcons();
   },
 
   resume() {
@@ -153,7 +171,8 @@ const PomodoroPage = {
     this.timeLeft = this.DURATIONS.working;
     this.totalTime = this.DURATIONS.working;
     this.updateDisplay();
-    document.getElementById('pomo-start-btn').innerHTML = '▶ Старт';
+    document.getElementById('pomo-start-btn').innerHTML = '<i data-lucide="play" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;"></i> <span id="pomo-start-text">Старт</span>';
+    if(window.lucide) window.lucide.createIcons();
   },
 
   skip() {
@@ -167,7 +186,8 @@ const PomodoroPage = {
       this.timeLeft = this.DURATIONS.working;
       this.totalTime = this.DURATIONS.working;
       this.updateDisplay();
-      document.getElementById('pomo-start-btn').innerHTML = '▶ Старт';
+      document.getElementById('pomo-start-btn').innerHTML = '<i data-lucide="play" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;"></i> <span id="pomo-start-text">Старт</span>';
+      if(window.lucide) window.lucide.createIcons();
     }
   },
 
@@ -189,6 +209,27 @@ const PomodoroPage = {
       } catch (e) { console.error(e); }
 
       this.updateTodayStats();
+
+      // Ask about task completion if a task was linked
+      if (this.currentTaskId) {
+        if (confirm("Вы завершили привязанную задачу? Нажмите ОК, чтобы отметить её выполненной.")) {
+          try {
+            await DB.updateTask(this.currentTaskId, { status: 'Готово' });
+            UI.toast('Задача отмечена как Готово!', 'success');
+            // Remove from dropdown
+            const select = document.getElementById('pomo-task-select');
+            for(let i=0; i<select.options.length; i++) {
+              if (select.options[i].value === this.currentTaskId) {
+                select.remove(i);
+                break;
+              }
+            }
+            this.currentTaskId = null;
+            select.value = "";
+          } catch(e) { console.error(e); }
+        }
+      }
+
       this.startBreak();
     } else {
       UI.toast('☕ Перерыв окончен! Время работать.', 'info');
@@ -196,7 +237,8 @@ const PomodoroPage = {
       this.timeLeft = this.DURATIONS.working;
       this.totalTime = this.DURATIONS.working;
       this.updateDisplay();
-      document.getElementById('pomo-start-btn').innerHTML = '▶ Старт';
+      document.getElementById('pomo-start-btn').innerHTML = '<i data-lucide="play" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;"></i> <span id="pomo-start-text">Старт</span>';
+      if(window.lucide) window.lucide.createIcons();
     }
   },
 
@@ -209,23 +251,45 @@ const PomodoroPage = {
     const labelEl = document.getElementById('pomo-label');
     const stateEl = document.getElementById('pomo-state-label');
     const sessionEl = document.getElementById('pomo-session-count');
-    const ring = document.getElementById('pomo-timer-ring');
+    const ring = document.getElementById('pomo-progress-ring');
+    const container = document.getElementById('pomo-timer-container');
 
     if (timeEl) timeEl.textContent = timeStr;
-    if (labelEl) labelEl.textContent = `${this.ICONS[this.state]} ${this.LABELS[this.state]}`;
     if (stateEl) stateEl.textContent = this.LABELS[this.state];
     if (sessionEl) sessionEl.textContent = `Сессия ${this.sessionsCompleted} из 4`;
 
-    // Update progress ring
-    const progress = this.totalTime > 0 ? ((this.totalTime - this.timeLeft) / this.totalTime) * 100 : 0;
-    if (ring) ring.style.setProperty('--progress', progress + '%');
+    // Update SVG progress ring (circumference is 283)
+    const progress = this.totalTime > 0 ? (this.timeLeft / this.totalTime) : 1;
+    const offset = 283 - (progress * 283);
+    if (ring) {
+      ring.style.strokeDashoffset = offset;
+    }
+
+    // Update container classes for glowing colors
+    if (container) {
+      container.className = 'pomodoro-timer-container ' + this.state;
+    }
+
+    if (window.lucide) window.lucide.createIcons();
+    
+    // Also update start button text based on interval running
+    const btn = document.getElementById('pomo-start-btn');
+    if (btn) {
+      if (this.interval) {
+        btn.innerHTML = '<i data-lucide="pause" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;"></i> Пауза';
+      } else if (this.state === 'idle') {
+        btn.innerHTML = '<i data-lucide="play" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;"></i> Старт';
+      }
+      if(window.lucide) window.lucide.createIcons();
+    }
   },
 
   async updateTodayStats() {
     const countEl = document.getElementById('pomo-today-count');
     const minEl = document.getElementById('pomo-today-minutes');
-    if (countEl) countEl.textContent = this.sessionsCompleted;
-    if (minEl) minEl.textContent = this.sessionsCompleted * 25;
+    if (countEl) countEl.innerHTML = `<i data-lucide="check-square" style="color:var(--success);"></i> ${this.sessionsCompleted}`;
+    if (minEl) minEl.innerHTML = `<i data-lucide="flame" style="color:var(--danger);"></i> ${this.sessionsCompleted * 25}`;
+    if(window.lucide) window.lucide.createIcons();
   },
 
   playSound() {

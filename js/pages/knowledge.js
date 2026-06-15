@@ -6,31 +6,33 @@ const KnowledgePage = {
   items: [],
   filters: { type: '', search: '', tag: '' },
 
-  TYPES: ['Промт', 'Инструмент', 'Статья', 'Кейс', 'Урок', 'Заметка'],
+  TYPES: ['Промт', 'Инструмент', 'Статья', 'Кейс', 'Урок', 'Заметка', 'Документ'],
   TYPE_CLASS: {
     'Промт': 'type-prompt',
     'Инструмент': 'type-tool',
     'Статья': 'type-article',
     'Кейс': 'type-case',
     'Урок': 'type-lesson',
-    'Заметка': 'type-note'
+    'Заметка': 'type-note',
+    'Документ': 'type-document'
   },
   TYPE_ICONS: {
-    'Промт': '🤖', 'Инструмент': '🔧', 'Статья': '📰',
-    'Кейс': '💼', 'Урок': '🎓', 'Заметка': '📝'
+    'Промт': 'bot', 'Инструмент': 'wrench', 'Статья': 'newspaper',
+    'Кейс': 'briefcase', 'Урок': 'graduation-cap', 'Заметка': 'edit-3',
+    'Документ': 'file-text'
   },
 
   render() {
     return `
-      <div class="knowledge-page">
-        <div class="page-header">
+      <div class="knowledge-page" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
+        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
           <div>
-            <div class="page-title">База знаний</div>
-            <div class="page-subtitle" id="knowledge-count-label">Загрузка…</div>
+            <div class="page-title" style="font-size:20px;font-weight:700;">База знаний</div>
+            <div class="page-subtitle" id="knowledge-count-label" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Загрузка…</div>
           </div>
           <div class="page-actions">
-            <button class="btn btn-primary" id="add-knowledge-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            <button class="btn btn-primary" id="add-knowledge-btn" style="display:flex;align-items:center;gap:6px;">
+              <i data-lucide="plus"></i>
               Новая запись
             </button>
           </div>
@@ -38,16 +40,18 @@ const KnowledgePage = {
 
         <div class="knowledge-toolbar">
           <div class="search-input-wrapper" style="flex:1;min-width:200px">
-            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <i data-lucide="search" class="search-icon" style="width:16px;height:16px;"></i>
             <input id="knowledge-search" type="text" class="form-input search-input" placeholder="Поиск по названию и содержимому…" />
           </div>
           <select id="knowledge-type-filter" class="form-input filter-select">
             <option value="">Все типы</option>
-            ${this.TYPES.map(t => `<option value="${t}">${this.TYPE_ICONS[t]} ${t}</option>`).join('')}
+            ${this.TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}
           </select>
         </div>
 
-        <div class="knowledge-grid" id="knowledge-grid"></div>
+        <div style="flex:1;overflow-y:auto;">
+          <div class="knowledge-grid" id="knowledge-grid"></div>
+        </div>
       </div>
     `;
   },
@@ -71,8 +75,12 @@ const KnowledgePage = {
   },
 
   async load() {
-    this.items = await DB.getKnowledge();
-    this.renderGrid();
+    try {
+      this.items = await DB.getKnowledge();
+      this.renderGrid();
+    } catch (e) {
+      console.error('Knowledge load error:', e);
+    }
   },
 
   getFiltered() {
@@ -88,17 +96,22 @@ const KnowledgePage = {
 
   renderGrid() {
     const filtered = this.getFiltered();
-    document.getElementById('knowledge-count-label').textContent =
-      `${this.items.length} записей · показано ${filtered.length}`;
+    const countLabel = document.getElementById('knowledge-count-label');
+    if (countLabel) {
+      countLabel.textContent = `${this.items.length} записей · показано ${filtered.length}`;
+    }
 
     const grid = document.getElementById('knowledge-grid');
 
     if (filtered.length === 0) {
-      grid.innerHTML = `<div class="empty-state">
-        <div class="empty-icon">📚</div>
-        <div class="empty-text">Записей не найдено</div>
-        <div class="empty-subtext">Создай первую запись или измени фильтры</div>
-      </div>`;
+      grid.innerHTML = `
+        <div class="empty-state" style="grid-column:1/-1;text-align:center;padding:var(--space-3xl) 0;color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:var(--space-md);">
+          <i data-lucide="library" style="width:48px;height:48px;color:var(--border-light);"></i>
+          <div class="empty-text" style="font-size:16px;font-weight:600;color:var(--text-primary)">Записей не найдено</div>
+          <div class="empty-subtext" style="font-size:13px;color:var(--text-secondary);">Создай первую запись или загрузи текстовый документ</div>
+        </div>
+      `;
+      if (window.lucide) window.lucide.createIcons();
       return;
     }
 
@@ -106,21 +119,24 @@ const KnowledgePage = {
     grid.querySelectorAll('.knowledge-card').forEach(card => {
       card.addEventListener('click', () => this.openModal(card.dataset.id));
     });
+
+    if (window.lucide) window.lucide.createIcons();
   },
 
   renderCard(item) {
     const preview = (item.content || '').replace(/[#*`_\[\]]/g, '').trim();
     const tags = (item.tags || []).slice(0, 4);
     const date = new Date(item.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    const icon = this.TYPE_ICONS[item.type] || 'file';
 
     return `
       <div class="knowledge-card" data-id="${item.id}">
         <div class="knowledge-card-type ${this.TYPE_CLASS[item.type] || 'type-note'}">
-          ${this.TYPE_ICONS[item.type] || '📝'} ${item.type || 'Заметка'}
+          <i data-lucide="${icon}" style="width:12px;height:12px;"></i> ${item.type || 'Заметка'}
         </div>
         <div class="knowledge-card-title">${this.esc(item.title)}</div>
         ${preview ? `<div class="knowledge-card-preview">${this.esc(preview)}</div>` : ''}
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:var(--space-sm)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:var(--space-sm);">
           <div class="knowledge-tags">
             ${tags.map(tag => `<span class="knowledge-tag">${this.esc(tag)}</span>`).join('')}
           </div>
@@ -133,12 +149,28 @@ const KnowledgePage = {
   openModal(itemId = null) {
     const item = itemId ? this.items.find(i => i.id === itemId) : null;
     const modal = document.getElementById('knowledge-modal');
-    document.getElementById('knowledge-modal-title').textContent = item ? 'Редактировать запись' : 'Новая запись';
+    
+    document.getElementById('knowledge-modal-title').innerHTML = item 
+      ? '<i data-lucide="edit"></i> Редактировать запись' 
+      : '<i data-lucide="plus-circle"></i> Новая запись';
+      
     document.getElementById('knowledge-modal-delete').style.display = item ? '' : 'none';
 
     const tagsValue = (item?.tags || []).join(', ');
 
+    // Hidden file input for uploading documents
+    const fileInputHtml = !item ? `
+      <div style="margin-bottom:var(--space-md);">
+        <input type="file" id="kf-file-upload" accept=".txt,.md,.csv,.js,.py,.html,.json" style="display:none;" />
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('kf-file-upload').click()" style="display:flex;align-items:center;gap:6px;width:100%;justify-content:center;">
+          <i data-lucide="upload-cloud"></i>
+          Загрузить текст из файла (TXT, MD, CSV, Код)
+        </button>
+      </div>
+    ` : '';
+
     document.getElementById('knowledge-modal-body').innerHTML = `
+      ${fileInputHtml}
       <div class="form-group">
         <label class="form-label">Заголовок *</label>
         <input id="kf-title" type="text" class="form-input" value="${item ? this.esc(item.title) : ''}" placeholder="Название записи" />
@@ -147,7 +179,7 @@ const KnowledgePage = {
         <div class="form-group">
           <label class="form-label">Тип</label>
           <select id="kf-type" class="form-input">
-            ${this.TYPES.map(t => `<option value="${t}" ${(item?.type||'Заметка')===t?'selected':''}>${this.TYPE_ICONS[t]} ${t}</option>`).join('')}
+            ${this.TYPES.map(t => `<option value="${t}" ${(item?.type||'Заметка')===t?'selected':''}>${t}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
@@ -157,13 +189,29 @@ const KnowledgePage = {
       </div>
       <div class="form-group">
         <label class="form-label">Содержимое (Markdown)</label>
-        <textarea id="kf-content" class="form-input" style="min-height:280px;font-family:var(--font-mono);font-size:13px">${item ? this.esc(item.content || '') : ''}</textarea>
+        <textarea id="kf-content" class="form-input" style="min-height:280px;font-family:var(--font-mono);font-size:13px;line-height:1.5;">${item ? this.esc(item.content || '') : ''}</textarea>
       </div>
       <div class="form-group">
         <label class="form-label">Источник (URL)</label>
         <input id="kf-source" type="url" class="form-input" value="${item ? this.esc(item.source_url || '') : ''}" placeholder="https://…" />
       </div>
     `;
+
+    // Bind file upload logic
+    if (!item) {
+      document.getElementById('kf-file-upload').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          document.getElementById('kf-title').value = file.name;
+          document.getElementById('kf-type').value = 'Документ';
+          document.getElementById('kf-content').value = ev.target.result;
+          UI.toast('Файл загружен', 'success');
+        };
+        reader.readAsText(file);
+      });
+    }
 
     const close = () => modal.classList.add('hidden');
     document.getElementById('knowledge-modal-save').onclick = () => this.saveItem(item?.id);
@@ -172,8 +220,10 @@ const KnowledgePage = {
     document.getElementById('knowledge-modal-delete').onclick = () => this.deleteItem(item?.id);
     modal.onclick = (e) => { if (e.target === modal) close(); };
 
-    document.getElementById('kf-title').focus();
+    if (window.lucide) window.lucide.createIcons();
+
     modal.classList.remove('hidden');
+    document.getElementById('kf-title').focus();
   },
 
   async saveItem(id = null) {

@@ -9,31 +9,30 @@ const GoalsPage = {
   render() {
     return `
       <div class="goals-page" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
-        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:between;flex-shrink:0;">
+        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
           <div>
             <div class="page-title" style="font-size:20px;font-weight:700;">Цели (OKR / SMART)</div>
             <div class="page-subtitle" id="goals-count-label" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Загрузка целей…</div>
           </div>
-          <div class="page-actions" style="margin-left:auto;">
-            <button class="btn btn-primary" id="add-goal-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          <div class="page-actions">
+            <button class="btn btn-primary" id="add-goal-btn" style="display:flex;align-items:center;gap:6px;">
+              <i data-lucide="plus"></i>
               Новая цель
             </button>
           </div>
         </div>
 
-        <div style="padding:var(--space-xl);display:flex;flex-direction:column;gap:var(--space-xl);flex:1;overflow-y:auto;">
-          <!-- Goals List container -->
-          <div id="goals-list-container" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:var(--space-md);"></div>
+        <div style="padding:var(--space-xl);display:flex;flex-direction:column;gap:var(--space-xl);flex:1;overflow-y:auto;align-content:start;">
+          <div id="goals-list-container" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(340px, 1fr));gap:var(--space-lg);"></div>
         </div>
 
         <!-- Goal Modal -->
         <div id="goal-modal" class="modal-overlay hidden">
           <div class="modal">
             <div class="modal-header">
-              <h2 class="modal-title" id="goal-modal-title">Новая цель</h2>
+              <h2 class="modal-title" id="goal-modal-title" style="display:flex;align-items:center;gap:8px;"><i data-lucide="target"></i> Новая цель</h2>
               <button class="modal-close" id="goal-modal-close">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                <i data-lucide="x"></i>
               </button>
             </div>
             <div class="modal-body">
@@ -43,7 +42,7 @@ const GoalsPage = {
               </div>
               <div class="form-group">
                 <label class="form-label">Описание / Критерии успеха (Key Results)</label>
-                <textarea id="gf-description" class="form-input" placeholder="Как поймем, что цель достигнута? Какие ключевые результаты?"></textarea>
+                <textarea id="gf-description" class="form-input" rows="3" placeholder="Как поймем, что цель достигнута? Какие ключевые результаты?"></textarea>
               </div>
               <div class="form-row">
                 <div class="form-group">
@@ -73,7 +72,7 @@ const GoalsPage = {
               </div>
             </div>
             <div class="modal-footer">
-              <button class="btn btn-ghost" id="goal-modal-delete" style="display:none;color:var(--danger)">Удалить</button>
+              <button class="btn btn-ghost danger" id="goal-modal-delete" style="display:none;">Удалить</button>
               <div style="flex:1"></div>
               <button class="btn btn-secondary" id="goal-modal-cancel">Отмена</button>
               <button class="btn btn-primary" id="goal-modal-save">Сохранить</button>
@@ -114,12 +113,13 @@ const GoalsPage = {
 
     if (this.goals.length === 0) {
       container.innerHTML = `
-        <div class="empty-state" style="grid-column:1/-1;text-align:center;padding:var(--space-2xl) 0;color:var(--text-muted);">
-          <div class="empty-icon" style="font-size:48px;margin-bottom:var(--space-md)">🎯</div>
-          <div class="empty-text" style="font-size:16px;font-weight:600;color:var(--text-primary)">Целей пока нет</div>
-          <div class="empty-subtext" style="font-size:13px;color:var(--text-secondary);margin-top:4px">Сформулируй свою первую стратегическую цель!</div>
+        <div class="empty-state" style="grid-column:1/-1;text-align:center;padding:var(--space-3xl) 0;color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:var(--space-md);">
+          <i data-lucide="target" style="width:48px;height:48px;color:var(--border-light);"></i>
+          <div style="font-size:16px;font-weight:600;color:var(--text-primary)">Целей пока нет</div>
+          <div style="font-size:13px;color:var(--text-secondary);">Сформулируйте свою первую амбициозную цель!</div>
         </div>
       `;
+      if (window.lucide) window.lucide.createIcons();
       return;
     }
 
@@ -132,41 +132,98 @@ const GoalsPage = {
       const isCancelled = goal.status === 'Отменена';
 
       let statusColor = 'var(--accent)';
-      if (isDone) statusColor = 'var(--success)';
-      if (isCancelled) statusColor = 'var(--text-muted)';
+      let bgGrad = 'linear-gradient(90deg, var(--accent) 0%, var(--accent-light) 100%)';
+      let statusIcon = 'loader';
+      if (isDone) {
+        statusColor = 'var(--success)';
+        bgGrad = 'linear-gradient(90deg, var(--success) 0%, #34d399 100%)';
+        statusIcon = 'check-circle';
+      }
+      if (isCancelled) {
+        statusColor = 'var(--text-muted)';
+        bgGrad = 'var(--text-muted)';
+        statusIcon = 'x-circle';
+      }
+
+      // Link project
+      const linkedProject = goal.project_id ? this.projects.find(p => p.id === goal.project_id) : null;
 
       return `
-        <div class="goal-card" data-id="${goal.id}" style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:var(--space-lg);box-shadow:var(--shadow-sm);cursor:pointer;display:flex;flex-direction:column;gap:var(--space-md);transition:all var(--transition);position:relative;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:var(--space-sm);">
-            <div style="font-size:15px;font-weight:700;color:var(--text-primary);line-height:1.4;${isDone ? 'text-decoration:line-through;color:var(--text-secondary);' : ''}">
+        <div class="goal-card" data-id="${goal.id}">
+          <div class="goal-header">
+            <div class="goal-title" style="${isDone ? 'text-decoration:line-through;opacity:0.6;' : ''}">
               ${this.escapeHtml(goal.title)}
             </div>
-            <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:var(--radius-full);background:${statusColor}20;color:${statusColor};flex-shrink:0;">
-              ${goal.status}
-            </span>
+            
+            <div class="goal-actions">
+              <button class="habit-btn edit-goal-btn" data-id="${goal.id}" title="Редактировать">
+                <i data-lucide="pencil" style="width:14px;height:14px;"></i>
+              </button>
+              <button class="habit-btn danger delete-goal-btn" data-id="${goal.id}" title="Удалить">
+                <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+              </button>
+            </div>
           </div>
 
-          ${goal.description ? `<div style="font-size:13px;color:var(--text-secondary);line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">${this.escapeHtml(goal.description)}</div>` : ''}
+          <div class="goal-status-badge" style="background:${statusColor}15;color:${statusColor};width:fit-content;margin-top:-4px;">
+            <i data-lucide="${statusIcon}" style="width:12px;height:12px;"></i> ${goal.status}
+          </div>
 
-          <div style="margin-top:auto;">
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:6px;">
+          ${goal.description ? `<div class="goal-description">${this.escapeHtml(goal.description)}</div>` : ''}
+
+          <div class="goal-progress-container">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);">
               <span>Прогресс</span>
-              <span style="font-weight:600;color:var(--text-primary);">${goal.progress}%</span>
+              <span style="font-weight:700;color:var(--text-primary);">${goal.progress}%</span>
             </div>
-            <div style="width:100%;height:8px;background:var(--bg-elevated);border-radius:var(--radius-full);overflow:hidden;">
-              <div style="width:${goal.progress}%;height:100%;background:${statusColor};border-radius:var(--radius-full);transition:width 0.3s ease;"></div>
+            <div class="goal-progress-bar">
+              <div class="goal-progress-fill" style="width:${goal.progress}%;background:${bgGrad};box-shadow:0 0 10px ${statusColor}40;"></div>
             </div>
           </div>
 
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:var(--space-sm);margin-top:2px;">
-            <span>📅 ${targetDateText}</span>
-            ${goal.projects && goal.projects.name ? `<span style="font-weight:500;color:var(--accent-soft)">🗂 ${this.escapeHtml(goal.projects.name)}</span>` : ''}
+          <div class="goal-footer">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <i data-lucide="calendar" style="width:14px;height:14px;color:var(--text-muted);"></i>
+              ${targetDateText}
+            </div>
+            ${linkedProject ? `
+              <div style="display:flex;align-items:center;gap:6px;color:var(--accent-soft);font-weight:500;">
+                <i data-lucide="folder" style="width:14px;height:14px;"></i>
+                ${this.escapeHtml(linkedProject.name)}
+              </div>
+            ` : ''}
           </div>
         </div>
       `;
     }).join('');
 
-    // Bind card clicks
+    if (window.lucide) window.lucide.createIcons();
+
+    // Bind edit actions
+    container.querySelectorAll('.edit-goal-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openModal(btn.dataset.id);
+      });
+    });
+
+    // Bind delete actions
+    container.querySelectorAll('.delete-goal-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        if (!confirm('Удалить эту цель?')) return;
+        try {
+          await DB.deleteGoal(id);
+          UI.toast('Цель удалена', 'info');
+          await this.load();
+        } catch (err) {
+          UI.toast('Ошибка: ' + err.message, 'error');
+        }
+      });
+    });
+    
+    // Bind card clicks to edit (optional, but good for UX)
     container.querySelectorAll('.goal-card').forEach(card => {
       card.addEventListener('click', () => this.openModal(card.dataset.id));
     });
@@ -178,7 +235,10 @@ const GoalsPage = {
     const titleEl = document.getElementById('goal-modal-title');
     const deleteBtn = document.getElementById('goal-modal-delete');
 
-    titleEl.textContent = goal ? 'Редактировать цель' : 'Новая цель';
+    titleEl.innerHTML = goal 
+      ? '<i data-lucide="edit-3"></i> Редактировать цель' 
+      : '<i data-lucide="target"></i> Новая цель';
+      
     deleteBtn.style.display = goal ? '' : 'none';
 
     // Populate projects dropdown
@@ -203,8 +263,10 @@ const GoalsPage = {
     cancelBtn.onclick = close;
     closeBtn.onclick = close;
     modal.onclick = (e) => { if (e.target === modal) close(); };
-    deleteBtn.onclick = () => this.deleteGoal(goal?.id);
+    deleteBtn.onclick = () => { close(); this.deleteGoal(goal?.id); };
 
+    if (window.lucide) window.lucide.createIcons();
+    
     modal.classList.remove('hidden');
     document.getElementById('gf-title').focus();
   },
@@ -238,11 +300,12 @@ const GoalsPage = {
   },
 
   async deleteGoal(id) {
-    if (!confirm('Удалить эту цель?')) return;
+    if (!confirm('Вы уверены, что хотите удалить эту цель?')) return;
     try {
       await DB.deleteGoal(id);
       UI.toast('Цель удалена', 'info');
-      document.getElementById('goal-modal').classList.add('hidden');
+      const modal = document.getElementById('goal-modal');
+      if (modal) modal.classList.add('hidden');
       await this.load();
     } catch (e) {
       UI.toast('Ошибка: ' + e.message, 'error');

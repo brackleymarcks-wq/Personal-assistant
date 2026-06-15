@@ -463,6 +463,51 @@ const DB = {
     await _supabase.from('finances').delete().eq('id', id);
   },
 
+  // ---- HABITS ----
+  async getHabits() {
+    const userId = Config.userId;
+    const { data } = await _supabase.from('habits').select('*').eq('user_id', userId).order('created_at', { ascending: true });
+    return data || [];
+  },
+
+  async createHabit(name, frequency = 'daily') {
+    const userId = Config.userId;
+    const { data, error } = await _supabase.from('habits').insert({ user_id: userId, name, frequency }).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async updateHabit(id, updates) {
+    const { data, error } = await _supabase.from('habits').update(updates).eq('id', id).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteHabit(id) {
+    await _supabase.from('habits').delete().eq('id', id);
+  },
+
+  // ---- HABIT LOGS ----
+  async getHabitLogs(startDateStr, endDateStr) {
+    let q = _supabase.from('habit_logs').select('*');
+    if (startDateStr) q = q.gte('date', startDateStr);
+    if (endDateStr) q = q.lte('date', endDateStr);
+    const { data } = await q;
+    return data || [];
+  },
+
+  async logHabit(habitId, dateStr, status = 'done') {
+    const { data, error } = await _supabase.from('habit_logs')
+      .upsert({ habit_id: habitId, date: dateStr, status }, { onConflict: 'habit_id, date' })
+      .select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteHabitLog(habitId, dateStr) {
+    await _supabase.from('habit_logs').delete().match({ habit_id: habitId, date: dateStr });
+  },
+
   // ---- HELPERS ----
   async getTasksForContext() {
     const tasks = await this.getTasks({});

@@ -82,7 +82,7 @@ const DashboardPage = {
         <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
           <div>
             <div style="font-size:13px;color:var(--text-secondary);font-weight:500;margin-bottom:4px">Сейчас</div>
-            <div style="font-size:22px;font-weight:700;color:var(--text-primary)">${rhythm.icon} ${rhythm.label}</div>
+            <div style="font-size:22px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px"><i data-lucide="${rhythm.icon}"></i> ${rhythm.label}</div>
             <div style="font-size:13px;color:var(--text-secondary);margin-top:4px">${rhythm.hint}</div>
           </div>
           <div style="display:flex;gap:var(--space-lg)">
@@ -104,7 +104,7 @@ const DashboardPage = {
 
       <!-- Today's Tasks -->
       <div class="dashboard-widget">
-        <div class="widget-title"><span class="widget-icon">✅</span> Задачи на сегодня</div>
+        <div class="widget-title"><i data-lucide="check-square" class="widget-icon"></i> Задачи на сегодня</div>
         ${overdueTasks.length > 0 ? `
           <div style="background:var(--danger-dim);border:1px solid rgba(248,113,113,0.2);border-radius:var(--radius-md);padding:var(--space-sm) var(--space-md);margin-bottom:var(--space-sm);font-size:12.5px;color:var(--danger);font-weight:500">
             ⚠️ ${overdueTasks.length} просроченных задач
@@ -128,7 +128,7 @@ const DashboardPage = {
 
       <!-- Today's Events -->
       <div class="dashboard-widget">
-        <div class="widget-title"><span class="widget-icon">📅</span> Сегодня в календаре</div>
+        <div class="widget-title"><i data-lucide="calendar" class="widget-icon"></i> Сегодня в календаре</div>
         ${events.length === 0 ? `
           <div style="text-align:center;padding:var(--space-lg) 0;color:var(--text-muted);font-size:13px">
             Нет событий на сегодня
@@ -151,7 +151,7 @@ const DashboardPage = {
 
       <!-- Habits Today -->
       <div class="dashboard-widget">
-        <div class="widget-title"><span class="widget-icon">⭐</span> Привычки сегодня</div>
+        <div class="widget-title"><i data-lucide="star" class="widget-icon"></i> Привычки сегодня</div>
         ${habits.length === 0 ? `
           <div style="text-align:center;padding:var(--space-lg) 0;color:var(--text-muted);font-size:13px">
             Добавь привычки в трекере
@@ -162,7 +162,7 @@ const DashboardPage = {
               const done = habitLogs.some(l => l.habit_id === h.id && l.date === today && l.status === 'done');
               return `
                 <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-sm);border-radius:var(--radius-md);background:var(--glass-bg);border:1px solid var(--glass-border);cursor:pointer" onclick="App.navigateTo('habits')">
-                  <div style="width:24px;height:24px;border-radius:50%;border:2px solid ${done ? 'var(--success)' : 'var(--glass-border-light)'};background:${done ? 'var(--success-dim)' : 'transparent'};display:flex;align-items:center;justify-content:center;color:${done ? 'var(--success)' : 'transparent'};font-size:12px;flex-shrink:0">✓</div>
+                  <div style="width:24px;height:24px;border-radius:50%;border:2px solid ${done ? 'var(--success)' : 'var(--glass-border-light)'};background:${done ? 'var(--success-dim)' : 'transparent'};display:flex;align-items:center;justify-content:center;color:${done ? 'var(--success)' : 'transparent'};font-size:12px;flex-shrink:0"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
                   <span style="font-size:13px;color:${done ? 'var(--text-muted)' : 'var(--text-primary)'}; ${done ? 'text-decoration:line-through' : ''}">${this.esc(h.name)}</span>
                 </div>
               `;
@@ -173,7 +173,7 @@ const DashboardPage = {
 
       <!-- Goals Progress -->
       <div class="dashboard-widget">
-        <div class="widget-title"><span class="widget-icon">🎯</span> Цели</div>
+        <div class="widget-title"><i data-lucide="target" class="widget-icon"></i> Цели</div>
         ${activeGoals.length === 0 ? `
           <div style="text-align:center;padding:var(--space-lg) 0;color:var(--text-muted);font-size:13px">
             Нет активных целей
@@ -197,7 +197,7 @@ const DashboardPage = {
 
       <!-- Inbox -->
       <div class="dashboard-widget">
-        <div class="widget-title"><span class="widget-icon">📥</span> Входящие <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:auto">${inbox.length} необработанных</span></div>
+        <div class="widget-title"><i data-lucide="inbox" class="widget-icon"></i> Входящие <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:auto">${inbox.length} необработанных</span></div>
         ${inbox.length === 0 ? `
           <div style="text-align:center;padding:var(--space-lg) 0;color:var(--text-muted);font-size:13px">
             Все мысли разобраны! 🎉
@@ -227,15 +227,15 @@ const DashboardPage = {
       const rhythm = settings.rhythm || defaults;
       const r = { ...defaults, ...rhythm };
 
-      if (timeStr < r.wake) return { icon: '😴', label: 'Сон', hint: `Подъём в ${r.wake}` };
-      if (timeStr < r.deep_work_start) return { icon: '☀️', label: 'Утреннее время', hint: 'Разминка, планирование, подготовка' };
-      if (timeStr < r.deep_work_end) return { icon: '🧠', label: 'Deep Work', hint: 'Никаких отвлечений! Максимальная концентрация.' };
-      if (timeStr < r.lunch_end) return { icon: '🍽', label: 'Обед', hint: 'Время отдохнуть и перезарядиться' };
-      if (timeStr < r.work_stop) return { icon: '💼', label: 'Рабочее время', hint: 'Встречи, задачи, коммуникация' };
-      if (timeStr < r.sleep) return { icon: '🌆', label: 'Вечер', hint: 'Время для себя и близких' };
-      return { icon: '🌙', label: 'Время сна', hint: 'Пора отдыхать!' };
+      if (timeStr < r.wake) return { icon: 'moon', label: 'Сон', hint: `Подъём в ${r.wake}` };
+      if (timeStr < r.deep_work_start) return { icon: 'sun', label: 'Утреннее время', hint: 'Разминка, планирование, подготовка' };
+      if (timeStr < r.deep_work_end) return { icon: 'brain', label: 'Deep Work', hint: 'Никаких отвлечений! Максимальная концентрация.' };
+      if (timeStr < r.lunch_end) return { icon: 'coffee', label: 'Обед', hint: 'Время отдохнуть и перезарядиться' };
+      if (timeStr < r.work_stop) return { icon: 'briefcase', label: 'Рабочее время', hint: 'Встречи, задачи, коммуникация' };
+      if (timeStr < r.sleep) return { icon: 'sunset', label: 'Вечер', hint: 'Время для себя и близких' };
+      return { icon: 'moon', label: 'Время сна', hint: 'Пора отдыхать!' };
     } catch {
-      return { icon: '💡', label: 'Рабочее время', hint: 'Настрой ритм дня в настройках' };
+      return { icon: 'zap', label: 'Рабочее время', hint: 'Настрой ритм дня в настройках' };
     }
   },
 
