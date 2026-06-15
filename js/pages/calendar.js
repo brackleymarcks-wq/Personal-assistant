@@ -136,6 +136,59 @@ const CalendarPage = {
     grid.innerHTML = html;
 
     grid.querySelectorAll('.calendar-day').forEach(dayEl => {
+      // Setup drag and drop for days
+      dayEl.addEventListener('dragover', (e) => e.preventDefault());
+      dayEl.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dayEl.classList.add('drag-over');
+      });
+      dayEl.addEventListener('dragleave', (e) => {
+        if (!dayEl.contains(e.relatedTarget)) {
+          dayEl.classList.remove('drag-over');
+        }
+      });
+      dayEl.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dayEl.classList.remove('drag-over');
+        
+        try {
+          const dataStr = e.dataTransfer.getData('text/plain');
+          if (!dataStr) return;
+          const data = JSON.parse(dataStr);
+          const newDateStr = dayEl.dataset.date;
+          
+          if (data.type === 'task') {
+             // Optimistic update optional, but we can just reload
+             await DB.updateTask(data.id, { deadline: newDateStr });
+             UI.toast('Дедлайн задачи перенесен', 'success');
+          } else if (data.type === 'event') {
+             const ev = this.events.find(x => x.id === data.id);
+             if (ev && ev.start_at) {
+                const oldStart = new Date(ev.start_at);
+                const newStart = new Date(newDateStr);
+                // Preserve time
+                newStart.setHours(oldStart.getHours(), oldStart.getMinutes(), oldStart.getSeconds());
+                
+                let updates = { start_at: newStart.toISOString() };
+                
+                if (ev.end_at) {
+                  const oldEnd = new Date(ev.end_at);
+                  const durationMs = oldEnd.getTime() - oldStart.getTime();
+                  const newEnd = new Date(newStart.getTime() + durationMs);
+                  updates.end_at = newEnd.toISOString();
+                }
+                
+                await DB.updateEvent(data.id, updates);
+                UI.toast('Событие перенесено', 'success');
+             }
+          }
+          await this.load(); // Refresh data and re-render
+        } catch (err) {
+          console.error('Drop error:', err);
+          UI.toast('Ошибка при переносе', 'error');
+        }
+      });
+
       dayEl.addEventListener('click', () => {
         const dateStr = dayEl.dataset.date;
         this.openEventModal(null, dateStr);
@@ -143,6 +196,15 @@ const CalendarPage = {
     });
 
     grid.querySelectorAll('.calendar-event').forEach(evEl => {
+      // Drag start & end
+      evEl.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', JSON.stringify({ id: evEl.dataset.id, type: evEl.dataset.type }));
+        setTimeout(() => evEl.classList.add('dragging'), 0);
+      });
+      evEl.addEventListener('dragend', () => {
+        evEl.classList.remove('dragging');
+        grid.querySelectorAll('.calendar-day').forEach(d => d.classList.remove('drag-over'));
+      });
       evEl.addEventListener('click', (e) => {
         e.stopPropagation();
         const id = evEl.dataset.id;
@@ -211,7 +273,7 @@ const CalendarPage = {
 
     const eventsHtml = [
       ...dayEvents.map(ev => `
-        <div class="calendar-event ${this.TYPE_CLASS[ev.type] || 'event-meeting'}" data-id="${ev.id}" data-type="event" title="${this.esc(ev.title)}">
+        <div class="calendar-event ${this.TYPE_CLASS[ev.type] || 'event-meeting'}" data-id="${ev.id}" data-type="event" title="${this.esc(ev.title)}" draggable="true">
           <i data-lucide="${this.TYPE_ICON[ev.type] || 'calendar'}" style="width:12px;height:12px;min-width:12px;"></i>
           ${this.esc(ev.title)}
         </div>
@@ -226,7 +288,7 @@ const CalendarPage = {
           }
         }
         return `
-          <div class="calendar-event event-deadline ${isDone ? 'event-done' : ''}" data-id="${t.id}" data-type="task" title="Дедлайн: ${this.esc(t.title)}">
+          <div class="calendar-event event-deadline ${isDone ? 'event-done' : ''}" data-id="${t.id}" data-type="task" title="Дедлайн: ${this.esc(t.title)}" draggable="true">
             <i data-lucide="${isDone ? 'check-square' : 'target'}" style="width:12px;height:12px;min-width:12px;"></i>
             ${projectIcon}${this.esc(t.title)}
           </div>
