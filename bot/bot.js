@@ -338,7 +338,7 @@ async function askAI(userMessage, context = '') {
   return response.choices?.[0]?.message?.content || 'Не удалось получить ответ';
 }
 
-async function callAPI(systemInstruction, messages) {
+async function callAPI(systemInstruction, messages, retryCount = 0) {
   const res = await fetch(GROQ_API, {
     method: 'POST',
     headers: {
@@ -358,9 +358,23 @@ async function callAPI(systemInstruction, messages) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `API error ${res.status}`);
+    const err = await res.json();
+    const errMsg = err.error?.message || `API error ${res.status}`;
+    
+    if (res.status === 429 && retryCount < 2) {
+      let waitTime = 20;
+      const match = errMsg.match(/try again in ([\d\.]+)s/);
+      if (match && match[1]) {
+        waitTime = parseFloat(match[1]) + 1;
+      }
+      console.warn(`Rate limit hit. Waiting ${waitTime}s...`);
+      await new Promise(r => setTimeout(r, waitTime * 1000));
+      return callAPI(systemInstruction, messages, retryCount + 1);
+    }
+    
+    throw new Error(errMsg);
   }
+
   return res.json();
 }
 

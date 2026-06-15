@@ -517,7 +517,7 @@ const Gemini = {
     return response.choices?.[0]?.message?.content || 'Не удалось получить ответ';
   },
 
-  async _callAPI(apiKey, systemInstruction, messages) {
+  async _callAPI(apiKey, systemInstruction, messages, retryCount = 0) {
     const res = await fetch(GROQ_API, {
       method: 'POST',
       headers: { 
@@ -538,7 +538,21 @@ const Gemini = {
 
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.error?.message || `API error ${res.status}`);
+      const errMsg = err.error?.message || \`API error \${res.status}\`;
+      
+      // Handle Rate Limit by waiting and retrying (max 2 retries)
+      if (res.status === 429 && retryCount < 2) {
+        let waitTime = 20; // default 20s
+        const match = errMsg.match(/try again in ([\d\.]+)s/);
+        if (match && match[1]) {
+          waitTime = parseFloat(match[1]) + 1; // add 1s padding
+        }
+        console.warn(\`Rate limit hit. Waiting \${waitTime}s before retry...\`);
+        await new Promise(r => setTimeout(r, waitTime * 1000));
+        return this._callAPI(apiKey, systemInstruction, messages, retryCount + 1);
+      }
+      
+      throw new Error(errMsg);
     }
 
     return res.json();
