@@ -13,9 +13,9 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 let CHAT_ID = process.env.TELEGRAM_CHAT_ID || null;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
-const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'google/gemma-4-31b-it:free';
+const GROQ_KEY = process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY; // Поддержка старого названия переменной
+const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
+const MODEL = 'llama-3.3-70b-versatile';
 
 if (!BOT_TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN не задан в .env'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
@@ -339,13 +339,11 @@ async function askAI(userMessage, context = '') {
 }
 
 async function callAPI(systemInstruction, messages) {
-  const res = await fetch(OPENROUTER_API, {
+  const res = await fetch(GROQ_API, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENROUTER_KEY}`,
-      'HTTP-Referer': 'https://personal-assistant-bot.local',
-      'X-Title': 'Personal Assistant Bot'
+      'Authorization': `Bearer ${GROQ_KEY}`
     },
     body: JSON.stringify({
       model: MODEL,

@@ -2,8 +2,8 @@
 // AI agent with function calling (Groq / Llama 3)
 // ============================================
 
-const OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = 'openrouter/free'; // Автоматический роутер по свободным и активным моделям OpenRouter
+const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
+const MODEL = 'llama-3.3-70b-versatile'; // Быстрая и умная модель от Groq
 
 // Function declarations in OpenAI format
 const TOOLS = [
@@ -518,13 +518,11 @@ const Gemini = {
   },
 
   async _callAPI(apiKey, systemInstruction, messages) {
-    const res = await fetch(OPENROUTER_API, {
+    const res = await fetch(GROQ_API, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': window.location.origin || 'http://localhost',
-        'X-Title': 'Personal Assistant'
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: MODEL,
@@ -569,13 +567,11 @@ const Gemini = {
   { "type": "task", "title": "Купить молоко", "deadline": "${new Date().toISOString().split('T')[0]}", "priority": "Низкий" }
 ]`;
 
-    const res = await fetch(OPENROUTER_API, {
+    const res = await fetch(GROQ_API, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': window.location.origin || 'http://localhost',
-        'X-Title': 'Personal Assistant'
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: MODEL,
