@@ -538,8 +538,9 @@ const DB = {
     const overdue = active.filter(t => t.deadline && t.deadline < todayStr);
     const today = active.filter(t => t.deadline === todayStr);
     const upcoming = active.filter(t => t.deadline && t.deadline > todayStr && t.deadline <= futureStr);
+    const inProgress = active.filter(t => t.status === 'В работе');
     
-    return { active, overdue, today, upcoming, all: tasks };
+    return { active, overdue, today, upcoming, in_progress: inProgress, all: tasks };
   },
 
   async getTodayEvents() {

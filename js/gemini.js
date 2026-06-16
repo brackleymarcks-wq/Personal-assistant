@@ -335,7 +335,7 @@ async function executeFunctionCall(name, args) {
       }
       case 'get_todays_schedule': {
         const events = await DB.getTodayEvents();
-        const { today, overdue, upcoming } = await DB.getTasksForContext();
+        const { today, overdue, upcoming, in_progress } = await DB.getTasksForContext();
         const now = new Date();
         return {
           success: true,
@@ -344,7 +344,8 @@ async function executeFunctionCall(name, args) {
           events,
           tasks_due_today: today,
           overdue_tasks: overdue,
-          upcoming_tasks_this_week: upcoming
+          upcoming_tasks_this_week: upcoming,
+          in_progress_tasks: in_progress
         };
       }
       case 'create_event': {

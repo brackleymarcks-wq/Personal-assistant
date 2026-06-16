@@ -264,12 +264,13 @@ async function executeFunctionCall(name, args) {
         const todayTasks = await getTasksDueToday();
         const overdue = await getOverdueTasks();
         const upcoming = await getUpcomingDeadlines(7);
+        const inProgress = await getTasks({ status: 'В работе' });
         const now = new Date();
         return {
           success: true,
           date: now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'long', day: 'numeric', month: 'long' }),
           time: now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' }),
-          events, tasks_due_today: todayTasks, overdue_tasks: overdue, upcoming_tasks_this_week: upcoming
+          events, tasks_due_today: todayTasks, overdue_tasks: overdue, upcoming_tasks_this_week: upcoming, in_progress_tasks: inProgress
         };
       }
       case 'add_to_inbox': {
