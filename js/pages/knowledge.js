@@ -301,16 +301,7 @@ const KnowledgePage = {
           
           <div class="form-group" style="margin-top: 16px;">
             <label class="form-label" style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Прикрепленные задачи</label>
-            <div style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 8px;">
-              ${(!this.tasks || this.tasks.length === 0) ? '<div style="font-size:12px; color:var(--text-muted);">Задач нет</div>' : ''}
-              ${(this.tasks || []).map(t => `
-                <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; cursor:pointer;">
-                  <input type="checkbox" class="kb-linked-task" value="${t.id}" ${(item?.linked_tasks || []).includes(t.id) ? 'checked' : ''}>
-                  <i data-lucide="check-square" style="width:14px;height:14px;color:var(--accent);"></i>
-                  ${this.esc(t.title)}
-                </label>
-              `).join('')}
-            </div>
+            <div id="kb-linked-tasks-container" data-selected='${JSON.stringify(item?.linked_tasks || [])}'></div>
           </div>
         </div>
 
@@ -321,6 +312,18 @@ const KnowledgePage = {
     `;
     
     if (window.lucide) window.lucide.createIcons();
+
+    // Init EntitySelect
+    if (window.EntitySelect) {
+      EntitySelect.init(
+        'kb-linked-tasks-container',
+        (this.tasks || []).map(t => ({ id: t.id, title: t.title, icon: 'check-square' })),
+        item?.linked_tasks || [],
+        (selected) => {
+          document.getElementById('kb-linked-tasks-container').dataset.selected = JSON.stringify(selected);
+        }
+      );
+    }
     
     setTimeout(() => {
       if (KnowledgePage.editorInstance) {
@@ -392,7 +395,7 @@ const KnowledgePage = {
     const source_url = document.getElementById('kb-editor-source').value.trim() || null;
     const tagsStr = document.getElementById('kb-editor-tags').value;
     const tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
-    const linked_tasks = Array.from(document.querySelectorAll('.kb-linked-task:checked')).map(cb => cb.value);
+    const linked_tasks = JSON.parse(document.getElementById('kb-linked-tasks-container').dataset.selected || '[]');
 
     const itemIdx = this.items.findIndex(i => i.id === this.activeItemId);
     if (itemIdx < 0) return;

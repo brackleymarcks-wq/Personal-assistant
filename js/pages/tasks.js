@@ -522,16 +522,7 @@ const TasksPage = {
       </div>
       <div class="form-group">
         <label class="form-label">Прикрепленные документы (База Знаний)</label>
-        <div style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 8px;">
-          ${this.knowledge.length === 0 ? '<div style="font-size:12px; color:var(--text-muted);">База знаний пуста</div>' : ''}
-          ${this.knowledge.map(k => `
-            <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; cursor:pointer;">
-              <input type="checkbox" class="task-linked-note" value="${k.id}" ${(task?.linked_notes || []).includes(k.id) ? 'checked' : ''}>
-              <i data-lucide="file-text" style="width:14px;height:14px;color:var(--accent);"></i>
-              ${this.escHtml(k.title)}
-            </label>
-          `).join('')}
-        </div>
+        <div id="task-linked-notes-container" data-selected='${JSON.stringify(task?.linked_notes || [])}'></div>
       </div>
     `;
 
@@ -546,6 +537,18 @@ const TasksPage = {
     closeBtn.onclick = close;
     modal.onclick = (e) => { if (e.target === modal) close(); };
     deleteBtn.onclick = () => this.deleteTask(task?.id);
+
+    // Init EntitySelect
+    if (window.EntitySelect) {
+      EntitySelect.init(
+        'task-linked-notes-container',
+        this.knowledge.map(k => ({ id: k.id, title: k.title, icon: 'file-text' })),
+        task?.linked_notes || [],
+        (selected) => {
+          document.getElementById('task-linked-notes-container').dataset.selected = JSON.stringify(selected);
+        }
+      );
+    }
 
     // Direction pills toggle logic
     document.querySelectorAll('#tf-directions-container .direction-pill').forEach(pill => {
@@ -571,7 +574,7 @@ const TasksPage = {
       next_step: document.getElementById('tf-next-step').value,
       description: document.getElementById('tf-description').value,
       project_id: document.getElementById('tf-project').value || null,
-      linked_notes: Array.from(document.querySelectorAll('.task-linked-note:checked')).map(cb => cb.value)
+      linked_notes: JSON.parse(document.getElementById('task-linked-notes-container').dataset.selected || '[]')
     };
 
     try {
