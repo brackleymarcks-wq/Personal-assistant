@@ -5,6 +5,7 @@
 const NotesPage = {
   notes: [],
   activeNoteId: null,
+  currentChatHistory: [],
 
   render() {
     return `
@@ -115,7 +116,8 @@ const NotesPage = {
 
     list.innerHTML = this.notes.map(note => {
       const isSelected = note.id === this.activeNoteId;
-      const preview = note.content ? note.content.substring(0, 100) : 'Нет текста...';
+      const textContent = (note.content || '').split('\\n\\n===AI_CHAT_START===\\n')[0];
+      const preview = textContent ? textContent.substring(0, 100) : 'Нет текста...';
       const dateStr = new Date(note.updated_at || note.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
       
       return `
@@ -169,6 +171,7 @@ const NotesPage = {
       await this.saveActiveNote(true); // silent save
     }
     this.activeNoteId = null;
+    this.currentChatHistory = [];
     document.getElementById('notes-editor-pane').innerHTML = this.renderEmptyEditor();
     if (window.lucide) window.lucide.createIcons();
     this.renderSidebar();
@@ -177,6 +180,26 @@ const NotesPage = {
   renderEditor(note) {
     const pane = document.getElementById('notes-editor-pane');
     const tagsStr = note.tags ? note.tags.join(', ') : '';
+    
+    let textContent = note.content || '';
+    let chatHistory = [];
+    
+    // Clean up old plain text AI answers if user hasn't modified them
+    // (This is a best-effort cleanup for the immediate transition)
+    if (textContent.includes('--- 💡 Ответ ИИ на:')) {
+       // We won't try to automatically migrate old text chat to JSON to avoid data loss,
+       // user can just delete it. We only parse the new format.
+    }
+    
+    if (textContent.includes('\\n\\n===AI_CHAT_START===\\n')) {
+      const parts = textContent.split('\\n\\n===AI_CHAT_START===\\n');
+      textContent = parts[0];
+      try {
+        chatHistory = JSON.parse(parts[1]);
+      } catch(e) {}
+    }
+    
+    this.currentChatHistory = chatHistory;
     
     pane.innerHTML = `
       <div class="notes-editor-header" style="padding: var(--space-xl) var(--space-2xl); border-bottom: 1px solid var(--border-light); display: flex; align-items: center; justify-content: space-between; background: rgba(var(--bg-surface-rgb), 0.5);">
@@ -224,7 +247,11 @@ const NotesPage = {
           </div>
         </div>
         
-        <textarea id="editor-content" class="note-content-textarea" placeholder="Начните писать здесь... Нажмите Сохранить для записи." style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.6; color:var(--text-primary); outline:none;">${this.esc(note.content || '')}</textarea>
+        <textarea id="editor-content" class="note-content-textarea" placeholder="Начните писать здесь... Нажмите Сохранить для записи." style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.6; color:var(--text-primary); outline:none; min-height: 200px;">${this.esc(textContent)}</textarea>
+        
+        <div id="ai-chat-container" style="display:flex; flex-direction:column; gap:12px; margin-top:16px;">
+          ${this.renderChatMessages(this.currentChatHistory)}
+        </div>
         
         <!-- AI Assistant Bar -->
         <div class="note-ai-bar" style="margin-top: auto; display:flex; flex-direction:column; gap:8px; padding:16px; background: rgba(var(--accent-rgb), 0.05); border: 1px solid var(--accent-soft); border-radius: 12px; position:relative; flex-shrink: 0;">
@@ -270,7 +297,9 @@ const NotesPage = {
     if (!titleEl || !contentEl) return;
 
     const title = titleEl.value.trim() || 'Без заголовка';
-    const content = contentEl.value.trim();
+    const textContent = contentEl.value.trim();
+    const content = textContent + (this.currentChatHistory && this.currentChatHistory.length > 0 ? '\\n\\n===AI_CHAT_START===\\n' + JSON.stringify(this.currentChatHistory) : '');
+    
     const mood = document.getElementById('editor-mood').value;
     const tagsStr = document.getElementById('editor-tags').value;
     const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t);
@@ -340,19 +369,42 @@ const NotesPage = {
 
     try {
       const advice = await Gemini.assistWithNote(content, prompt, 'advice');
-      const newText = content + (content ? '\\n\\n' : '') + `--- 💡 Ответ ИИ на: "${prompt}" ---\\n${advice}\\n`;
-      contentEl.value = newText;
+      
+      if (!this.currentChatHistory) this.currentChatHistory = [];
+      this.currentChatHistory.push({ role: 'user', content: prompt });
+      this.currentChatHistory.push({ role: 'assistant', content: advice });
+      
+      const chatContainer = document.getElementById('ai-chat-container');
+      if (chatContainer) {
+        chatContainer.innerHTML = this.renderChatMessages(this.currentChatHistory);
+        if (window.lucide) window.lucide.createIcons();
+      }
+      
       promptEl.value = '';
       await this.saveActiveNote(true);
       
-      contentEl.scrollTop = contentEl.scrollHeight;
-      UI.toast('Ответ ИИ добавлен в заметку', 'success');
+      const bodyEl = document.querySelector('.notes-editor-body');
+      if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
+      
+      UI.toast('Ответ ИИ добавлен', 'success');
     } catch (e) {
       console.error(e);
       UI.toast('Ошибка ИИ: ' + e.message, 'error');
     } finally {
       if (loader) loader.style.display = 'none';
     }
+  },
+
+  renderChatMessages(chatHistory) {
+    if (!chatHistory || chatHistory.length === 0) return '';
+    return chatHistory.map(msg => `
+      <div style="display:flex; gap:12px; align-items:flex-start; background: ${msg.role === 'assistant' ? 'rgba(var(--accent-rgb),0.05)' : 'var(--bg-surface)'}; padding:16px; border-radius:12px; border:1px solid ${msg.role === 'assistant' ? 'var(--accent-soft)' : 'var(--border-light)'};">
+        <div style="width:28px;height:28px;border-radius:50%;background:${msg.role === 'assistant' ? 'var(--accent)' : 'var(--border)'};display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
+          <i data-lucide="${msg.role === 'assistant' ? 'bot' : 'user'}" style="width:16px;height:16px;"></i>
+        </div>
+        <div style="flex:1; font-size:14px; line-height:1.6; color:var(--text-primary); white-space:pre-wrap;">${this.esc(msg.content)}</div>
+      </div>
+    `).join('');
   },
 
   async deleteNote(id) {
