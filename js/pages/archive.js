@@ -91,15 +91,22 @@ const ArchivePage = {
     const isDone = task.status === 'Готово';
     const date = new Date(task.updated_at || task.created_at).toLocaleDateString('ru-RU');
     
-    let detailsHtml = '';
-    if (task.description || task.next_step) {
-      detailsHtml = `
-        <div class="archive-card-details" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color); font-size: 13px;">
-          ${task.next_step ? `<div style="margin-bottom: 8px;"><strong>Следующий шаг:</strong> ${this.escHtml(task.next_step)}</div>` : ''}
-          ${task.description ? `<div><strong>Комментарии / Заметки:</strong><br><span style="white-space: pre-wrap; color: var(--text-secondary);">${this.escHtml(task.description)}</span></div>` : ''}
+    const createdDate = new Date(task.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    const updatedDate = new Date(task.updated_at || task.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    const deadlineStr = task.deadline ? new Date(task.deadline).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+    
+    let detailsHtml = `
+      <div class="archive-card-details" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color); font-size: 13px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+          <div><span style="color:var(--text-muted)">Статус:</span> <strong>${task.status}</strong></div>
+          <div><span style="color:var(--text-muted)">Приоритет:</span> <strong>${task.priority}</strong></div>
+          <div><span style="color:var(--text-muted)">Дедлайн:</span> <strong>${deadlineStr}</strong></div>
+          <div><span style="color:var(--text-muted)">Создана:</span> <strong>${createdDate}</strong></div>
         </div>
-      `;
-    }
+        ${task.next_step ? `<div style="margin-bottom: 12px;"><strong style="color:var(--text-muted)">Следующий шаг:</strong><br>${this.escHtml(task.next_step)}</div>` : ''}
+        ${task.description ? `<div><strong style="color:var(--text-muted)">Комментарии / Заметки:</strong><br><div style="margin-top:4px; padding: 12px; background: var(--bg-primary); border-radius: 8px; white-space: pre-wrap; color: var(--text-secondary); border: 1px solid var(--border-color);">${this.escHtml(task.description)}</div></div>` : ''}
+      </div>
+    `;
 
     return `
       <div class="archive-card card" style="padding: 16px; cursor: pointer; transition: background 0.2s; border-left: 4px solid ${isDone ? 'var(--success)' : 'var(--text-muted)'};" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='var(--bg-card)'">
@@ -114,7 +121,7 @@ const ArchivePage = {
           <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; text-align: right;">
             <div>${date}</div>
             <div style="margin-top: 4px;">
-              ${task.description || task.next_step ? '<span style="background: var(--bg-secondary); padding: 2px 6px; border-radius: 4px; font-size: 10px;">Есть заметки ↓</span>' : ''}
+              <span style="background: var(--bg-secondary); padding: 2px 6px; border-radius: 4px; font-size: 10px;">Развернуть ↓</span>
             </div>
           </div>
         </div>
