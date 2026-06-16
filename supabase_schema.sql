@@ -61,6 +61,7 @@ create table if not exists tasks (
   deadline    date,
   next_step   text default '',
   description text default '',
+  linked_notes jsonb default '[]'::jsonb,
   created_at  timestamp with time zone default now(),
   updated_at  timestamp with time zone default now()
 );
@@ -111,8 +112,10 @@ create table if not exists knowledge_base (
   user_id    uuid references users(id) on delete cascade,
   title      text not null,
   type       text default 'Заметка' check (type in ('Промт','Инструмент','Статья','Кейс','Урок','Заметка')),
+  folder     text default 'Общее',
   tags       text[] default '{}',
   content    text default '',
+  linked_tasks jsonb default '[]'::jsonb,
   source_url text,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now()
