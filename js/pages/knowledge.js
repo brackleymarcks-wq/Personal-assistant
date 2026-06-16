@@ -31,9 +31,12 @@ const KnowledgePage = {
               <i data-lucide="search" class="search-icon" style="width:14px;height:14px;"></i>
               <input type="text" id="kb-search" class="form-input search-input" placeholder="Поиск по базе..." oninput="KnowledgePage.handleSearch(event)" style="font-size:13px; padding-left:32px; border-radius:8px;" />
             </div>
-            <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;" class="hide-scrollbar">
-              <button class="btn btn-ghost kb-type-filter active" data-type="" onclick="KnowledgePage.setFilterType('')" style="font-size:12px; padding:4px 10px; border-radius:20px; background:var(--bg-surface);">Все</button>
-              ${this.TYPES.map(t => `<button class="btn btn-ghost kb-type-filter" data-type="${t}" onclick="KnowledgePage.setFilterType('${t}')" style="font-size:12px; padding:4px 10px; border-radius:20px;">${t}</button>`).join('')}
+            <div style="display:flex; align-items:center; gap:8px;">
+              <i data-lucide="filter" style="width:14px;height:14px;color:var(--text-muted);"></i>
+              <select class="form-input" onchange="KnowledgePage.setFilterType(this.value)" style="flex:1; border:none; background:transparent; font-size:13px; color:var(--text-primary); outline:none; padding:4px 0; cursor:pointer;">
+                <option value="">Все типы</option>
+                ${this.TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}
+              </select>
             </div>
           </div>
           <div id="kb-sidebar-list" style="flex:1; overflow-y:auto; padding:0 var(--space-md) var(--space-xl); display:flex; flex-direction:column; gap:4px;">
@@ -77,17 +80,6 @@ const KnowledgePage = {
 
   setFilterType(type) {
     this.filters.type = type;
-    document.querySelectorAll('.kb-type-filter').forEach(btn => {
-      if (btn.dataset.type === type) {
-        btn.classList.add('active');
-        btn.style.background = 'var(--bg-surface)';
-        btn.style.boxShadow = 'var(--shadow-sm)';
-      } else {
-        btn.classList.remove('active');
-        btn.style.background = 'transparent';
-        btn.style.boxShadow = 'none';
-      }
-    });
     this.renderSidebar();
   },
 
@@ -115,7 +107,11 @@ const KnowledgePage = {
     listEl.innerHTML = filtered.map(item => {
       const isSelected = item.id === this.activeItemId;
       const icon = this.TYPE_ICONS[item.type] || 'file-text';
-      const date = new Date(item.updated_at || item.created_at).toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
+      
+      let dateObj = item.updated_at ? new Date(item.updated_at) : (item.created_at ? new Date(item.created_at) : new Date());
+      if (isNaN(dateObj.getTime())) dateObj = new Date();
+      const date = dateObj.toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
+      
       return `
         <div class="kb-list-item ${isSelected ? 'active' : ''}" onclick="KnowledgePage.openItem('${item.id}')" style="padding:12px; border-radius:12px; cursor:pointer; display:flex; flex-direction:column; gap:6px; background:${isSelected ? 'var(--bg-surface)' : 'transparent'}; border:1px solid ${isSelected ? 'var(--border-light)' : 'transparent'}; transition:all 0.2s;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
@@ -206,6 +202,12 @@ const KnowledgePage = {
           ${!item.isNew ? `<button class="btn btn-icon" onclick="KnowledgePage.deleteActiveItem()" title="Удалить" style="background:var(--bg-surface);border:1px solid var(--border-light);">
             <i data-lucide="trash-2" style="color:var(--danger);width:16px;height:16px;"></i>
           </button>` : ''}
+          <button class="btn btn-secondary" onclick="document.getElementById('kb-file-upload').click()" title="Загрузить текст из файла (TXT, MD, CSV, JS и др.)" style="display:flex;align-items:center;gap:6px;">
+            <i data-lucide="upload-cloud" style="width:16px;height:16px;"></i>
+            Загрузить файл
+          </button>
+          <input type="file" id="kb-file-upload" accept=".txt,.md,.csv,.js,.json,.py,.html" style="display:none;" onchange="KnowledgePage.handleFileUpload(event)" />
+          
           <button class="btn btn-ghost" onclick="KnowledgePage.handleAutoFill()" title="ИИ сам прочтет текст и заполнит заголовок, тип и теги" style="display:flex;align-items:center;gap:6px; color:var(--accent); background:rgba(var(--accent-rgb),0.1);">
             <i data-lucide="sparkles" style="width:16px;height:16px;"></i>
             Авто-заполнение
@@ -217,34 +219,38 @@ const KnowledgePage = {
         </div>
       </div>
       
-      <div class="kb-editor-body" style="flex:1; padding: 40px 10%; display:flex; flex-direction:column; gap:24px; overflow-y:auto; position:relative;">
+      <div id="kb-drop-zone" class="kb-editor-body" style="flex:1; padding: 40px 10%; display:flex; flex-direction:column; gap:24px; overflow-y:auto; position:relative;"
+           ondragover="event.preventDefault(); this.style.backgroundColor='rgba(var(--accent-rgb), 0.05)';"
+           ondragleave="this.style.backgroundColor='transparent';"
+           ondrop="KnowledgePage.handleFileDrop(event)">
+        
         <div id="kb-loading" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.7); backdrop-filter:blur(4px); z-index:10; align-items:center; justify-content:center; flex-direction:column; color:var(--accent);">
           <i data-lucide="loader-2" class="spin" style="width:32px;height:32px;margin-bottom:12px;"></i>
           <span style="font-size:14px;font-weight:500;">ИИ анализирует текст...</span>
         </div>
 
-        <input type="text" id="kb-editor-title" value="${this.esc(item.title)}" placeholder="Заголовок документа..." style="font-size:32px; font-weight:800; border:none; background:transparent; color:var(--text-primary); outline:none; width:100%;" />
+        <input type="text" id="kb-editor-title" value="${this.esc(item.title)}" placeholder="Заголовок документа..." style="font-size:36px; font-weight:800; border:none; background:transparent; color:var(--text-primary); outline:none; width:100%;" />
         
-        <div class="note-meta-bar" style="display:flex; gap:16px; padding:12px 16px; background:var(--bg-surface); border-radius:12px; border:1px solid var(--border-light);">
+        <div class="note-meta-bar" style="display:flex; flex-wrap:wrap; gap:16px; padding:8px 0; border-top:1px solid var(--border-light); border-bottom:1px solid var(--border-light);">
           <div class="note-meta-item" style="display:flex; align-items:center; gap:8px;">
             <i data-lucide="layout-grid" style="width:16px;height:16px;color:var(--text-muted);"></i>
-            <select id="kb-editor-type" class="form-input" style="border:none;background:transparent;padding:0;height:auto;font-size:13px;font-weight:500;color:var(--text-primary);box-shadow:none;cursor:pointer;outline:none;">
+            <select id="kb-editor-type" class="form-input" style="border:none;background:transparent;padding:0;height:auto;font-size:14px;font-weight:500;color:var(--text-primary);box-shadow:none;cursor:pointer;outline:none;">
               ${this.TYPES.map(t => `<option value="${t}" ${(item.type||'Заметка')===t?'selected':''}>${t}</option>`).join('')}
             </select>
           </div>
-          <div style="width:1px; height:16px; background:var(--border-light); margin:auto 0;"></div>
-          <div class="note-meta-item" style="flex:1; display:flex; align-items:center; gap:8px;">
+          <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
+          <div class="note-meta-item" style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
             <i data-lucide="hash" style="width:16px;height:16px;color:var(--text-muted);"></i>
-            <input type="text" id="kb-editor-tags" value="${this.esc(tagsStr)}" placeholder="теги через запятую" style="border:none;background:transparent;font-size:13px;color:var(--text-primary);outline:none;width:100%;" />
+            <input type="text" id="kb-editor-tags" value="${this.esc(tagsStr)}" placeholder="Добавить теги через запятую..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:100%;" />
           </div>
-          <div style="width:1px; height:16px; background:var(--border-light); margin:auto 0;"></div>
-          <div class="note-meta-item" style="flex:1; display:flex; align-items:center; gap:8px;">
+          <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
+          <div class="note-meta-item" style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
             <i data-lucide="link" style="width:16px;height:16px;color:var(--text-muted);"></i>
-            <input type="url" id="kb-editor-source" value="${this.esc(item.source_url || '')}" placeholder="URL источника (опционально)" style="border:none;background:transparent;font-size:13px;color:var(--text-primary);outline:none;width:100%;" />
+            <input type="url" id="kb-editor-source" value="${this.esc(item.source_url || '')}" placeholder="URL источника (опционально)..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:100%;" />
           </div>
         </div>
         
-        <textarea id="kb-editor-content" placeholder="Напишите или вставьте содержимое документа (Markdown поддерживается)..." style="flex:1; border:none; background:transparent; resize:none; font-size:15px; line-height:1.6; color:var(--text-primary); outline:none; min-height: 400px; font-family:var(--font-mono);">${this.esc(item.content || '')}</textarea>
+        <textarea id="kb-editor-content" placeholder="Напишите текст или перетащите сюда файл (TXT, Markdown, CSV, JS...)" style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.7; color:var(--text-primary); outline:none; min-height: 400px; font-family:var(--font-mono); margin-top:8px;">${this.esc(item.content || '')}</textarea>
       </div>
     `;
     
@@ -355,6 +361,35 @@ const KnowledgePage = {
     } finally {
       if (loader) loader.style.display = 'none';
     }
+  },
+
+  handleFileDrop(e) {
+    e.preventDefault();
+    e.currentTarget.style.backgroundColor = 'transparent';
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      this.readFileContent(e.dataTransfer.files[0]);
+    }
+  },
+
+  handleFileUpload(e) {
+    if (e.target.files && e.target.files.length > 0) {
+      this.readFileContent(e.target.files[0]);
+    }
+  },
+
+  readFileContent(file) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const titleEl = document.getElementById('kb-editor-title');
+      const contentEl = document.getElementById('kb-editor-content');
+      if (titleEl && !titleEl.value) titleEl.value = file.name;
+      if (contentEl) {
+        contentEl.value = (contentEl.value ? contentEl.value + '\n\n' : '') + ev.target.result;
+      }
+      UI.toast('Файл загружен', 'success');
+      this.saveActiveItem(true);
+    };
+    reader.readAsText(file);
   },
 
   esc(str) {
