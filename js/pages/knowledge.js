@@ -366,6 +366,11 @@ const KnowledgePage = {
 
     let title = titleEl.value.trim();
     let content = KnowledgePage.editorInstance.getMarkdown().trim();
+    // 1. Unescape WYSIWYG typed brackets \[\[Title\]\]
+    content = content.replace(/\\\[\\\[(.*?)\\\]\\\]/g, '[[$1]]');
+    // 2. Unescape manually typed markdown links if any
+    content = content.replace(/\\\[(.*?)\\\]\(#kb:(.*?)\)/g, '[[$1]]');
+    // 3. Convert valid markdown links back to wiki
     content = content.replace(/\[(.*?)\]\(#kb:(.*?)\)/g, '[[$1]]');
     
     const type = document.getElementById('kb-editor-type').value;
@@ -602,6 +607,8 @@ const KnowledgePage = {
 
     const title = titleEl.value.trim() || 'document';
     let content = KnowledgePage.editorInstance.getMarkdown();
+    content = content.replace(/\\\[\\\[(.*?)\\\]\\\]/g, '[[$1]]');
+    content = content.replace(/\\\[(.*?)\\\]\(#kb:(.*?)\)/g, '[[$1]]');
     content = content.replace(/\[(.*?)\]\(#kb:(.*?)\)/g, '[[$1]]');
 
     let filename = title;
