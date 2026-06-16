@@ -697,3 +697,12 @@ http.createServer((req, res) => {
   console.log(`📡 Health-check сервер запущен на порту ${PORT}`);
 });
 
+// ---- Graceful Shutdown ----
+const gracefulShutdown = () => {
+  console.log('🔄 Остановка бота...');
+  bot.stopPolling();
+  process.exit(0);
+};
+
+process.once('SIGINT', gracefulShutdown);
+process.once('SIGTERM', gracefulShutdown);
