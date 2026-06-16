@@ -249,6 +249,24 @@ const DB = {
     await _supabase.from('knowledge_base').delete().eq('id', id);
   },
 
+  async uploadKnowledgeImage(file) {
+    const userId = Config.userId;
+    const ext = file.name.split('.').pop() || 'png';
+    const fileName = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+    
+    const { data, error } = await _supabase.storage
+      .from('kb-images')
+      .upload(fileName, file, { upsert: false });
+      
+    if (error) throw error;
+    
+    const { data: { publicUrl } } = _supabase.storage
+      .from('kb-images')
+      .getPublicUrl(fileName);
+      
+    return publicUrl;
+  },
+
   // ---- STATE SNAPSHOT ----
   async getLatestSnapshot() {
     const userId = Config.userId;

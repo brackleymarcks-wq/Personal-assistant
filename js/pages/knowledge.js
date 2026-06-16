@@ -68,6 +68,27 @@ const KnowledgePage = {
     } catch (e) {
       console.error('Knowledge load error:', e);
     }
+    
+    // Intercept clicks on links in the editor preview
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a');
+      if (!a) return;
+      const href = a.getAttribute('href');
+      if (href && href.startsWith('#kb:')) {
+        e.preventDefault();
+        const title = decodeURIComponent(href.substring(4));
+        KnowledgePage.openItemByTitle(title);
+      }
+    });
+  },
+
+  openItemByTitle(title) {
+    const item = this.items.find(i => i.title.toLowerCase() === title.toLowerCase());
+    if (item) {
+      this.openItem(item.id);
+    } else {
+      UI.toast('Документ не найден: ' + title, 'warning');
+    }
   },
 
   handleSearch(e) {
@@ -101,29 +122,46 @@ const KnowledgePage = {
       return;
     }
 
-    listEl.innerHTML = filtered.map(item => {
-      const isSelected = item.id === this.activeItemId;
-      const icon = this.TYPE_ICONS[item.type] || 'file-text';
-      
-      let dateObj = item.updated_at ? new Date(item.updated_at) : (item.created_at ? new Date(item.created_at) : new Date());
-      if (isNaN(dateObj.getTime())) dateObj = new Date();
-      const date = dateObj.toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
-      
-      return `
-        <div class="kb-list-item ${isSelected ? 'active' : ''}" onclick="KnowledgePage.openItem('${item.id}')" style="padding:12px; border-radius:12px; cursor:pointer; display:flex; flex-direction:column; gap:6px; background:${isSelected ? 'var(--bg-surface)' : 'transparent'}; border:1px solid ${isSelected ? 'var(--border-light)' : 'transparent'}; transition:all 0.2s;">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-            <div style="font-size:14px; font-weight:600; color:var(--text-primary); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">${this.esc(item.title)}</div>
-          </div>
-          <div style="display:flex; align-items:center; justify-content:space-between; font-size:11px; color:var(--text-muted);">
-            <div style="display:flex; align-items:center; gap:4px;">
-              <i data-lucide="${icon}" style="width:12px;height:12px;"></i>
-              ${item.type || 'Заметка'}
-            </div>
-            <span>${date}</span>
-          </div>
+    const grouped = {};
+    filtered.forEach(item => {
+      const f = item.folder || 'Общее';
+      if (!grouped[f]) grouped[f] = [];
+      grouped[f].push(item);
+    });
+
+    const html = [];
+    Object.keys(grouped).sort().forEach(folderName => {
+      html.push(`
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin:16px 8px 4px; display:flex; align-items:center; gap:6px;">
+          <i data-lucide="folder" style="width:12px;height:12px;"></i> ${this.esc(folderName)}
         </div>
-      `;
-    }).join('');
+      `);
+      grouped[folderName].forEach(item => {
+        const isSelected = item.id === this.activeItemId;
+        const icon = this.TYPE_ICONS[item.type] || 'file-text';
+        
+        let dateObj = item.updated_at ? new Date(item.updated_at) : (item.created_at ? new Date(item.created_at) : new Date());
+        if (isNaN(dateObj.getTime())) dateObj = new Date();
+        const date = dateObj.toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
+        
+        html.push(`
+          <div class="kb-list-item ${isSelected ? 'active' : ''}" onclick="KnowledgePage.openItem('${item.id}')" style="padding:12px; border-radius:12px; cursor:pointer; display:flex; flex-direction:column; gap:6px; background:${isSelected ? 'var(--bg-surface)' : 'transparent'}; border:1px solid ${isSelected ? 'var(--border-light)' : 'transparent'}; transition:all 0.2s;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+              <div style="font-size:14px; font-weight:600; color:var(--text-primary); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">${this.esc(item.title)}</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; font-size:11px; color:var(--text-muted);">
+              <div style="display:flex; align-items:center; gap:4px;">
+                <i data-lucide="${icon}" style="width:12px;height:12px;"></i>
+                ${item.type || 'Заметка'}
+              </div>
+              <span>${date}</span>
+            </div>
+          </div>
+        `);
+      });
+    });
+
+    listEl.innerHTML = html.join('');
 
     if (window.lucide) window.lucide.createIcons();
   },
@@ -213,6 +251,9 @@ const KnowledgePage = {
             <i data-lucide="sparkles" style="width:16px;height:16px;"></i>
             Авто-заполнение
           </button>
+          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.downloadActiveItem()" title="Скачать документ" style="background:var(--bg-surface);border:1px solid var(--border-light);">
+            <i data-lucide="download" style="width:16px;height:16px;"></i>
+          </button>
           <button class="btn btn-primary" onclick="KnowledgePage.saveActiveItem()" style="display:flex;align-items:center;gap:6px;box-shadow:var(--shadow-sm);">
             <i data-lucide="save" style="width:16px;height:16px;"></i>
             Сохранить
@@ -246,54 +287,66 @@ const KnowledgePage = {
               <input type="text" id="kb-editor-tags" value="${this.esc(tagsStr)}" placeholder="Добавить теги через запятую..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:100%;" />
             </div>
             <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
+            <div class="note-meta-item" style="display:flex; align-items:center; gap:8px;">
+              <i data-lucide="folder" style="width:16px;height:16px;color:var(--text-muted);"></i>
+              <input type="text" id="kb-editor-folder" value="${this.esc(item.folder || 'Общее')}" placeholder="Папка..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:120px;" />
+            </div>
+            <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
             <div class="note-meta-item" style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
               <i data-lucide="link" style="width:16px;height:16px;color:var(--text-muted);"></i>
               <input type="url" id="kb-editor-source" value="${this.esc(item.source_url || '')}" placeholder="URL источника (опционально)..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:100%;" />
             </div>
           </div>
-          
-          <div style="display:flex; gap:8px; margin-top:16px; padding:8px 12px; background:var(--bg-surface); border-radius:8px; border:1px solid var(--border-light);">
-            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('**', '**')" title="Жирный">
-              <i data-lucide="bold" style="width:14px;height:14px;"></i>
-            </button>
-            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('*', '*')" title="Курсив">
-              <i data-lucide="italic" style="width:14px;height:14px;"></i>
-            </button>
-            <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
-            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('## ')" title="Заголовок">
-              <i data-lucide="heading-2" style="width:14px;height:14px;"></i>
-            </button>
-            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('- ')" title="Список">
-              <i data-lucide="list" style="width:14px;height:14px;"></i>
-            </button>
-            <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
-            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('[', '](url)')" title="Ссылка">
-              <i data-lucide="link" style="width:14px;height:14px;"></i>
-            </button>
-            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('\`\`\`\n', '\n\`\`\`')" title="Блок кода">
-              <i data-lucide="code" style="width:14px;height:14px;"></i>
-            </button>
-            <div style="flex:1;"></div>
-            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.downloadActiveItem()" title="Скачать документ">
-              <i data-lucide="download" style="width:14px;height:14px;"></i>
-            </button>
-            <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
-            <button class="btn btn-icon btn-ghost" onclick="document.execCommand('undo')" title="Назад (Отменить)">
-              <i data-lucide="undo" style="width:14px;height:14px;"></i>
-            </button>
-            <button class="btn btn-icon btn-ghost" onclick="document.execCommand('redo')" title="Вперед (Повторить)">
-              <i data-lucide="redo" style="width:14px;height:14px;"></i>
-            </button>
           </div>
         </div>
 
-        <div style="flex:1; padding: 16px 10% 40px; display:flex; flex-direction:column; overflow:hidden;">
-          <textarea id="kb-editor-content" placeholder="Напишите текст или перетащите сюда файл (TXT, Markdown, CSV, JS...)" style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.7; color:var(--text-primary); outline:none; overflow-y:auto; font-family:inherit;">${this.esc(item.content || '')}</textarea>
+        <div style="flex:1; padding: 0 10% 40px; display:flex; flex-direction:column; overflow:hidden;">
+          <div id="kb-editor-toastui" style="flex:1; width:100%;"></div>
         </div>
       </div>
     `;
     
     if (window.lucide) window.lucide.createIcons();
+    
+    setTimeout(() => {
+      if (KnowledgePage.editorInstance) {
+        KnowledgePage.editorInstance.destroy();
+      }
+      
+      if (window.toastui && window.toastui.Editor) {
+        KnowledgePage.editorInstance = new window.toastui.Editor({
+          el: document.querySelector('#kb-editor-toastui'),
+          height: '100%',
+          initialEditType: 'wysiwyg',
+          previewStyle: 'vertical',
+          initialValue: (item.content || '').replace(/\[\[(.*?)\]\]/g, '[$1](#kb:$1)'),
+          autofocus: false,
+          toolbarItems: [
+            ['heading', 'bold', 'italic', 'strike'],
+            ['hr', 'quote'],
+            ['ul', 'ol', 'task', 'indent', 'outdent'],
+            ['table', 'image', 'link'],
+            ['code', 'codeblock']
+          ],
+          hooks: {
+            addImageBlobHook: async (blob, callback) => {
+              try {
+                UI.toast('Загрузка картинки...', 'info');
+                const url = await DB.uploadKnowledgeImage(blob);
+                callback(url, 'Изображение');
+              } catch (e) {
+                console.error('Image upload failed:', e);
+                UI.toast('Ошибка при загрузке картинки', 'error');
+              }
+            }
+          }
+        });
+        
+        // Hide toolbar border for cleaner UI
+        const toolbar = document.querySelector('.toastui-editor-toolbar');
+        if (toolbar) toolbar.style.border = 'none';
+      }
+    }, 50);
   },
 
   closeActiveItem() {
@@ -309,12 +362,14 @@ const KnowledgePage = {
     if (!this.activeItemId) return;
     
     const titleEl = document.getElementById('kb-editor-title');
-    const contentEl = document.getElementById('kb-editor-content');
-    if (!titleEl || !contentEl) return;
+    if (!titleEl || !KnowledgePage.editorInstance) return;
 
     let title = titleEl.value.trim();
-    const content = contentEl.value.trim();
+    let content = KnowledgePage.editorInstance.getMarkdown().trim();
+    content = content.replace(/\[(.*?)\]\(#kb:(.*?)\)/g, '[[$1]]');
+    
     const type = document.getElementById('kb-editor-type').value;
+    const folder = document.getElementById('kb-editor-folder').value.trim() || 'Общее';
     const source_url = document.getElementById('kb-editor-source').value.trim() || null;
     const tagsStr = document.getElementById('kb-editor-tags').value;
     const tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
@@ -331,7 +386,7 @@ const KnowledgePage = {
     }
 
     title = title || 'Без заголовка';
-    const dataToSave = { title, content, type, tags, source_url };
+    const dataToSave = { title, content, type, tags, source_url, folder };
 
     try {
       if (item.isNew) {
@@ -399,11 +454,11 @@ const KnowledgePage = {
   },
 
   async handleAutoFill() {
-    const contentEl = document.getElementById('kb-editor-content');
-    if (!contentEl) return;
-    
-    const content = contentEl.value.trim();
-    if (content.length < 50) {
+    const titleEl = document.getElementById('kb-editor-title');
+    if (!titleEl || !KnowledgePage.editorInstance) return;
+
+    const content = KnowledgePage.editorInstance.getMarkdown().trim();
+    if (content.length < 10) {
       UI.toast('Слишком мало текста для анализа', 'warning');
       return;
     }
@@ -479,8 +534,9 @@ const KnowledgePage = {
         });
       }
 
-      if (contentEl) {
-        contentEl.value = (contentEl.value ? contentEl.value + '\n\n' : '') + text;
+      if (KnowledgePage.editorInstance) {
+        const currentMarkdown = KnowledgePage.editorInstance.getMarkdown();
+        KnowledgePage.editorInstance.setMarkdown(currentMarkdown + (currentMarkdown ? '\n\n' : '') + text);
       }
       UI.toast('Файл загружен', 'success');
       this.saveActiveItem(true);
@@ -488,30 +544,6 @@ const KnowledgePage = {
       console.error('Ошибка чтения файла:', err);
       UI.toast('Ошибка чтения: ' + err.message, 'error');
     }
-  },
-
-  insertMarkdown(prefix, suffix = '') {
-    const textarea = document.getElementById('kb-editor-content');
-    if (!textarea) return;
-    
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const before = text.substring(0, start);
-    const selected = text.substring(start, end);
-    const after = text.substring(end, text.length);
-
-    // Using execCommand for undo support if possible
-    const newText = prefix + selected + suffix;
-    textarea.focus();
-    if (document.execCommand('insertText', false, newText)) {
-      // success
-    } else {
-      // fallback
-      textarea.value = before + newText + after;
-    }
-    
-    textarea.setSelectionRange(start + prefix.length, end + prefix.length);
   },
 
   downloadActiveItem() {
@@ -566,11 +598,11 @@ const KnowledgePage = {
     if (modal) modal.remove();
 
     const titleEl = document.getElementById('kb-editor-title');
-    const contentEl = document.getElementById('kb-editor-content');
-    if (!titleEl || !contentEl) return;
+    if (!titleEl || !KnowledgePage.editorInstance) return;
 
     const title = titleEl.value.trim() || 'document';
-    const content = contentEl.value;
+    let content = KnowledgePage.editorInstance.getMarkdown();
+    content = content.replace(/\[(.*?)\]\(#kb:(.*?)\)/g, '[[$1]]');
 
     let filename = title;
     if (filename.includes('.')) {
