@@ -25,7 +25,7 @@ const Config = {
   get supabaseUrl() { return this.get().supabaseUrl || ''; },
   get supabaseKey() { return this.get().supabaseKey || ''; },
   get geminiKey()   { return this.get().geminiKey || ''; }, // AI API Key
-  get aiApiUrl()    { return this.get().aiApiUrl || 'https://bothub.chat/api/v2/openai/v1/chat/completions'; },
+  get aiApiUrl()    { return this.get().aiApiUrl || 'https://api.vsegpt.ru/v1/chat/completions'; },
   get aiModel()     { return this.get().aiModel || 'gpt-4o-mini'; },
   get userName()    { return this.get().userName || 'Пользователь'; },
   get userId()      { return this.get().userId || null; },

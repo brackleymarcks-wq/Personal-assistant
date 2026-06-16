@@ -3,7 +3,7 @@
 // ============================================
 
 // Defaults, will be overridden by Config
-const DEFAULT_API_URL = 'https://bothub.chat/api/v2/openai/v1/chat/completions';
+const DEFAULT_API_URL = 'https://api.vsegpt.ru/v1/chat/completions';
 const DEFAULT_MODEL = 'gpt-4o-mini';
 
 // Function declarations in OpenAI format
