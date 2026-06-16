@@ -264,7 +264,7 @@ const TasksPage = {
     }
 
     return `
-      <div class="task-card card" data-id="${task.id}" style="${isDone ? 'opacity:0.7;' : ''} ${task.status === 'В работе' ? 'border: 1px solid var(--warning); box-shadow: 0 0 10px rgba(245, 158, 11, 0.1);' : ''}">
+      <div class="task-card card" data-id="${task.id}" style="${isDone ? 'opacity:0.7;' : ''} ${task.status === 'В работе' ? 'border: 1px solid var(--warning);' : ''}">
         <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${task.id}" data-done="${isDone}">
           <i data-lucide="check" style="width: 14px; height: 14px; opacity: ${isDone ? 1 : 0}"></i>
         </div>
@@ -411,7 +411,7 @@ const TasksPage = {
     }
 
     return `
-      <div class="kanban-card task-card" data-id="${task.id}" style="position:relative; ${task.status === 'В работе' ? 'border: 1px solid var(--warning); box-shadow: 0 0 10px rgba(245, 158, 11, 0.1);' : ''}" draggable="true">
+      <div class="kanban-card task-card" data-id="${task.id}" style="position:relative; ${task.status === 'В работе' ? 'border: 1px solid var(--warning);' : ''}" draggable="true">
         ${projectBadge}
         ${directionBadge}
         <div class="kanban-card-title">${this.escHtml(task.title)}</div>
