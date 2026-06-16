@@ -202,11 +202,11 @@ const KnowledgePage = {
           <button class="btn btn-icon" onclick="KnowledgePage.deleteActiveItem()" title="${item.isNew ? 'Отменить создание' : 'Удалить документ'}" style="background:var(--bg-surface);border:1px solid var(--border-light);">
             <i data-lucide="trash-2" style="color:var(--danger);width:16px;height:16px;"></i>
           </button>
-          <button class="btn btn-secondary" onclick="document.getElementById('kb-file-upload').click()" title="Загрузить текст из файла (TXT, MD, CSV, JS и др.)" style="display:flex;align-items:center;gap:6px;">
+          <button class="btn btn-secondary" onclick="document.getElementById('kb-file-upload').click()" title="Загрузить файл (TXT, MD, DOCX, XLSX и др.)" style="display:flex;align-items:center;gap:6px;">
             <i data-lucide="upload-cloud" style="width:16px;height:16px;"></i>
             Загрузить файл
           </button>
-          <input type="file" id="kb-file-upload" accept=".txt,.md,.csv,.js,.json,.py,.html" style="display:none;" onchange="KnowledgePage.handleFileUpload(event)" />
+          <input type="file" id="kb-file-upload" accept=".txt,.md,.csv,.js,.json,.html,.docx,.xlsx" style="display:none;" onchange="KnowledgePage.handleFileUpload(event)" />
           
           <button class="btn btn-ghost" onclick="KnowledgePage.handleAutoFill()" title="ИИ сам прочтет текст и заполнит заголовок, тип и теги" style="display:flex;align-items:center;gap:6px; color:var(--accent); background:rgba(var(--accent-rgb),0.1);">
             <i data-lucide="sparkles" style="width:16px;height:16px;"></i>
@@ -420,19 +420,49 @@ const KnowledgePage = {
     }
   },
 
-  readFileContent(file) {
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const titleEl = document.getElementById('kb-editor-title');
-      const contentEl = document.getElementById('kb-editor-content');
-      if (titleEl && !titleEl.value) titleEl.value = file.name;
+  async readFileContent(file) {
+    const titleEl = document.getElementById('kb-editor-title');
+    const contentEl = document.getElementById('kb-editor-content');
+    
+    if (titleEl && !titleEl.value) titleEl.value = file.name;
+    
+    const ext = file.name.split('.').pop().toLowerCase();
+    
+    try {
+      let text = '';
+      if (ext === 'docx') {
+        if (!window.mammoth) throw new Error('Mammoth.js не загружен');
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await window.mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+        text = result.value;
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        if (!window.XLSX) throw new Error('SheetJS (XLSX) не загружен');
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = window.XLSX.read(arrayBuffer, { type: 'array' });
+        text = '';
+        workbook.SheetNames.forEach(sheetName => {
+          const csv = window.XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+          text += `## Лист: ${sheetName}\n\n${csv}\n\n`;
+        });
+      } else {
+        // Обычные текстовые файлы
+        text = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result);
+          reader.onerror = e => reject(e);
+          reader.readAsText(file);
+        });
+      }
+
       if (contentEl) {
-        contentEl.value = (contentEl.value ? contentEl.value + '\n\n' : '') + ev.target.result;
+        contentEl.value = (contentEl.value ? contentEl.value + '\n\n' : '') + text;
       }
       UI.toast('Файл загружен', 'success');
       this.saveActiveItem(true);
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      console.error('Ошибка чтения файла:', err);
+      UI.toast('Ошибка чтения: ' + err.message, 'error');
+    }
   },
 
   insertMarkdown(prefix, suffix = '') {
