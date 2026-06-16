@@ -25,8 +25,8 @@ const Config = {
   get supabaseUrl() { return this.get().supabaseUrl || ''; },
   get supabaseKey() { return this.get().supabaseKey || ''; },
   get geminiKey()   { return this.get().geminiKey || ''; }, // AI API Key
-  get aiApiUrl()    { return this.get().aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions'; },
-  get aiModel()     { return this.get().aiModel || 'meta-llama/llama-3.3-70b-instruct:free'; },
+  get aiApiUrl()    { return this.get().aiApiUrl || 'https://api.vsegpt.ru/v1/chat/completions'; },
+  get aiModel()     { return this.get().aiModel || 'gpt-4o-mini'; },
   get userName()    { return this.get().userName || 'Пользователь'; },
   get userId()      { return this.get().userId || null; },
 };
