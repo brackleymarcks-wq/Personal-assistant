@@ -117,7 +117,7 @@ const DashboardPage = {
         ` : ''}
         <div style="display:flex;flex-direction:column;gap:var(--space-xs)">
           ${[...overdueTasks.slice(0, 3), ...todayTasks.filter(t => !overdueTasks.includes(t)).slice(0, 5)].map(t => `
-            <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-sm);border-radius:var(--radius-md);background:var(--glass-bg);border:1px solid var(--glass-border);cursor:pointer" onclick="App.navigateTo('tasks')">
+            <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-sm);border-radius:var(--radius-md);background:${t.status === 'В работе' ? 'rgba(245, 158, 11, 0.05)' : 'var(--glass-bg)'};border:1px solid ${t.status === 'В работе' ? 'var(--warning)' : 'var(--glass-border)'};box-shadow:${t.status === 'В работе' ? '0 0 10px rgba(245, 158, 11, 0.1)' : 'none'};cursor:pointer" onclick="App.navigateTo('tasks')">
               <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'}"></div>
               <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.esc(t.title)}</span>
               <span style="font-size:11px;color:${t.deadline < new Date().toISOString().split('T')[0] ? 'var(--danger)' : 'var(--text-muted)'}">${t.deadline ? this.shortDate(t.deadline) : ''}</span>
