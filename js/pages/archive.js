@@ -4,6 +4,7 @@
 
 const ArchivePage = {
   tasks: [],
+  projects: [],
   
   render() {
     return `
@@ -22,7 +23,11 @@ const ArchivePage = {
   },
 
   async load() {
-    const allTasks = await DB.getTasks();
+    const [allTasks, allProjects] = await Promise.all([
+      DB.getTasks(),
+      DB.getProjects()
+    ]);
+    this.projects = allProjects;
     this.tasks = allTasks.filter(t => ['Готово', 'Отменена'].includes(t.status));
     
     // Сортировка по дате обновления (сначала новые)
@@ -132,6 +137,14 @@ const ArchivePage = {
             <span style="color:var(--text-muted); font-size: 11px;">Создана:</span> 
             <strong style="font-size: 13px;">${createdDate}</strong>
           </div>
+          
+          ${task.pomodoros_done ? `
+          <div class="glass-panel" style="padding: 8px 14px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="timer" style="width: 14px; height: 14px; color: var(--warning);"></i>
+            <span style="color:var(--text-muted); font-size: 11px;">Помодоро:</span> 
+            <strong style="font-size: 13px;">${task.pomodoros_done}</strong>
+          </div>
+          ` : ''}
         </div>
 
         ${task.next_step ? `
@@ -166,7 +179,10 @@ const ArchivePage = {
             <div style="font-weight: 500; font-size: 15px; margin-bottom: 4px; ${!isDone ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${this.escHtml(task.title)}</div>
             <div style="display: flex; gap: 12px; font-size: 12px; color: var(--text-muted);">
               ${directionBadge}
-              ${task.project?.name ? `<span><i data-lucide="folder" style="width: 12px; height: 12px; vertical-align: text-bottom;"></i> ${this.escHtml(task.project.name)}</span>` : ''}
+              ${task.project_id ? (() => {
+                const proj = this.projects.find(p => p.id === task.project_id);
+                return proj ? `<span><i data-lucide="folder" style="width: 12px; height: 12px; vertical-align: text-bottom;"></i> ${this.escHtml(proj.name)}</span>` : '';
+              })() : ''}
             </div>
           </div>
           <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; text-align: right;">
