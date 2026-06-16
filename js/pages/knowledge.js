@@ -262,7 +262,7 @@ const KnowledgePage = {
         </div>
       </div>
       
-      <div id="kb-drop-zone" class="kb-editor-body" style="flex:1; display:flex; flex-direction:column; overflow:hidden; position:relative; background: var(--bg-body);"
+      <div id="kb-drop-zone" class="kb-editor-body" style="flex:1; display:flex; flex-direction:row; overflow:hidden; position:relative; background: var(--bg-body);"
            ondragover="event.preventDefault(); this.style.backgroundColor='rgba(var(--accent-rgb), 0.05)';"
            ondragleave="this.style.backgroundColor='var(--bg-body)';"
            ondrop="KnowledgePage.handleFileDrop(event)">
@@ -272,41 +272,49 @@ const KnowledgePage = {
           <span style="font-size:14px;font-weight:500;">ИИ анализирует текст...</span>
         </div>
 
-        <div style="padding: 24px 10% 0; flex-shrink: 0;">
-          <input type="text" id="kb-editor-title" value="${this.esc(item.title)}" placeholder="Заголовок документа..." style="font-size:36px; font-weight:800; border:none; background:transparent; color:var(--text-primary); outline:none; width:100%;" />
-          
-          <div class="note-meta-bar" style="display:flex; flex-wrap:wrap; gap:16px; padding:8px 0; border-top:1px solid var(--border-light); border-bottom:1px solid var(--border-light); margin-top:16px;">
-            <div class="note-meta-item" style="display:flex; align-items:center; gap:8px;">
-              <i data-lucide="layout-grid" style="width:16px;height:16px;color:var(--text-muted);"></i>
-              <select id="kb-editor-type" class="form-input" style="border:none;background:transparent;padding:0;height:auto;font-size:14px;font-weight:500;color:var(--text-primary);box-shadow:none;cursor:pointer;outline:none;">
-                ${this.TYPES.map(t => `<option value="${t}" ${(item.type||'Заметка')===t?'selected':''}>${t}</option>`).join('')}
-              </select>
-            </div>
-            <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
-            <div class="note-meta-item" style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
-              <i data-lucide="hash" style="width:16px;height:16px;color:var(--text-muted);"></i>
-              <input type="text" id="kb-editor-tags" value="${this.esc(tagsStr)}" placeholder="Добавить теги через запятую..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:100%;" />
-            </div>
-            <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
-            <div class="note-meta-item" style="display:flex; align-items:center; gap:8px;">
-              <i data-lucide="folder" style="width:16px;height:16px;color:var(--text-muted);"></i>
-              <input type="text" id="kb-editor-folder" value="${this.esc(item.folder || 'Общее')}" placeholder="Папка..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:120px;" />
-            </div>
-            <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">URL источника (опционально)</label>
-              <input type="text" id="kb-editor-source" class="form-input" placeholder="https://" value="${this.esc(item.source_url || '')}" style="background:transparent;border:none;border-bottom:1px solid var(--border-light);border-radius:0;padding-left:0;font-size:13px;" />
-            </div>
+        <!-- Main Editor Area -->
+        <div style="flex:1; display:flex; flex-direction:column; overflow:hidden; position:relative;">
+          <div style="padding: 24px 40px 16px; flex-shrink: 0; background: var(--bg-body); z-index: 2;">
+            <input type="text" id="kb-editor-title" value="${this.esc(item.title)}" placeholder="Заголовок документа..." style="font-size:36px; font-weight:800; border:none; background:transparent; color:var(--text-primary); outline:none; width:100%;" />
           </div>
           
-          <div class="form-group" style="margin-top: 16px;">
-            <label class="form-label" style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Прикрепленные задачи</label>
-            <div id="kb-linked-tasks-container" data-selected='${JSON.stringify(item?.linked_tasks || [])}'></div>
+          <div style="flex:1; padding: 0 40px 40px; display:flex; flex-direction:column; overflow:hidden;">
+            <div id="kb-editor-toastui" style="flex:1; width:100%;"></div>
           </div>
         </div>
 
-        <div style="flex:1; padding: 0 10% 40px; display:flex; flex-direction:column; overflow:hidden;">
-          <div id="kb-editor-toastui" style="flex:1; width:100%;"></div>
+        <!-- Properties Sidebar (Right) -->
+        <div style="width: 320px; background: var(--bg-surface); border-left: 1px solid var(--border-light); padding: 24px 20px; display:flex; flex-direction:column; gap: 20px; overflow-y: auto;">
+          
+          <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); border-bottom: 1px solid var(--border-light); padding-bottom: 8px; margin-bottom: 4px;">Свойства</div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size:11px;color:var(--text-muted);text-transform:uppercase;"><i data-lucide="folder" style="width:12px;height:12px;margin-right:4px;vertical-align:middle;"></i>Папка</label>
+            <input type="text" id="kb-editor-folder" class="form-input" value="${this.esc(item.folder || 'Общее')}" placeholder="Название папки..." />
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size:11px;color:var(--text-muted);text-transform:uppercase;"><i data-lucide="layout-grid" style="width:12px;height:12px;margin-right:4px;vertical-align:middle;"></i>Тип документа</label>
+            <select id="kb-editor-type" class="form-input">
+              ${this.TYPES.map(t => `<option value="${t}" ${(item.type||'Заметка')===t?'selected':''}>${t}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size:11px;color:var(--text-muted);text-transform:uppercase;"><i data-lucide="hash" style="width:12px;height:12px;margin-right:4px;vertical-align:middle;"></i>Теги</label>
+            <input type="text" id="kb-editor-tags" class="form-input" value="${this.esc(tagsStr)}" placeholder="Через запятую..." />
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size:11px;color:var(--text-muted);text-transform:uppercase;"><i data-lucide="link" style="width:12px;height:12px;margin-right:4px;vertical-align:middle;"></i>URL источника</label>
+            <input type="text" id="kb-editor-source" class="form-input" placeholder="https://" value="${this.esc(item.source_url || '')}" />
+          </div>
+          
+          <div class="form-group" style="margin-top: 8px;">
+            <label class="form-label" style="font-size:11px;color:var(--text-muted);text-transform:uppercase;"><i data-lucide="check-square" style="width:12px;height:12px;margin-right:4px;vertical-align:middle;"></i>Прикрепленные задачи</label>
+            <div id="kb-linked-tasks-container" data-selected='${JSON.stringify(item?.linked_tasks || [])}'></div>
+          </div>
+          
         </div>
       </div>
     `;
