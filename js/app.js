@@ -180,6 +180,7 @@ const App = {
 
     // Initialize Global modules
     if (window.QuickActions) QuickActions.init();
+    if (window.ChatWidget) window.ChatWidget.init();
 
     console.log('App initialized.');
     this.startReminderCheck();
