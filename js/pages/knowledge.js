@@ -199,9 +199,9 @@ const KnowledgePage = {
           </div>
         </div>
         <div class="kb-editor-actions" style="display:flex;gap:var(--space-sm);">
-          ${!item.isNew ? `<button class="btn btn-icon" onclick="KnowledgePage.deleteActiveItem()" title="Удалить" style="background:var(--bg-surface);border:1px solid var(--border-light);">
+          <button class="btn btn-icon" onclick="KnowledgePage.deleteActiveItem()" title="${item.isNew ? 'Отменить создание' : 'Удалить документ'}" style="background:var(--bg-surface);border:1px solid var(--border-light);">
             <i data-lucide="trash-2" style="color:var(--danger);width:16px;height:16px;"></i>
-          </button>` : ''}
+          </button>
           <button class="btn btn-secondary" onclick="document.getElementById('kb-file-upload').click()" title="Загрузить текст из файла (TXT, MD, CSV, JS и др.)" style="display:flex;align-items:center;gap:6px;">
             <i data-lucide="upload-cloud" style="width:16px;height:16px;"></i>
             Загрузить файл
@@ -250,6 +250,36 @@ const KnowledgePage = {
           </div>
         </div>
         
+        <div style="display:flex; gap:8px; margin-top:16px; padding:8px 12px; background:var(--bg-surface); border-radius:8px; border:1px solid var(--border-light);">
+          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('**', '**')" title="Жирный">
+            <i data-lucide="bold" style="width:14px;height:14px;"></i>
+          </button>
+          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('*', '*')" title="Курсив">
+            <i data-lucide="italic" style="width:14px;height:14px;"></i>
+          </button>
+          <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
+          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('## ')" title="Заголовок">
+            <i data-lucide="heading-2" style="width:14px;height:14px;"></i>
+          </button>
+          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('- ')" title="Список">
+            <i data-lucide="list" style="width:14px;height:14px;"></i>
+          </button>
+          <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
+          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('[', '](url)')" title="Ссылка">
+            <i data-lucide="link" style="width:14px;height:14px;"></i>
+          </button>
+          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('\`\`\`\n', '\n\`\`\`')" title="Блок кода">
+            <i data-lucide="code" style="width:14px;height:14px;"></i>
+          </button>
+          <div style="flex:1;"></div>
+          <button class="btn btn-icon btn-ghost" onclick="document.execCommand('undo')" title="Назад (Отменить)">
+            <i data-lucide="undo" style="width:14px;height:14px;"></i>
+          </button>
+          <button class="btn btn-icon btn-ghost" onclick="document.execCommand('redo')" title="Вперед (Повторить)">
+            <i data-lucide="redo" style="width:14px;height:14px;"></i>
+          </button>
+        </div>
+
         <textarea id="kb-editor-content" placeholder="Напишите текст или перетащите сюда файл (TXT, Markdown, CSV, JS...)" style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.7; color:var(--text-primary); outline:none; min-height: 400px; font-family:var(--font-mono); margin-top:8px;">${this.esc(item.content || '')}</textarea>
       </div>
     `;
@@ -306,16 +336,29 @@ const KnowledgePage = {
 
   async deleteActiveItem() {
     if (!this.activeItemId) return;
-    if (!confirm('Удалить этот документ из Базы знаний?')) return;
     
     const item = this.items.find(i => i.id === this.activeItemId);
-    if (!item.isNew) {
-      try {
-        await DB.deleteKnowledge(this.activeItemId);
-      } catch (e) {
-        UI.toast('Ошибка при удалении', 'error');
-        return;
+    
+    if (item.isNew) {
+      // Just remove the unsaved item from array
+      this.items = this.items.filter(i => i.id !== this.activeItemId);
+      this.activeItemId = null;
+      this.renderSidebar();
+      if (this.items.length > 0) {
+        this.openItem(this.items[0].id);
+      } else {
+        document.getElementById('kb-editor-pane').innerHTML = this.renderEmptyEditor();
       }
+      return;
+    }
+
+    if (!confirm('Удалить этот документ из Базы знаний?')) return;
+    
+    try {
+      await DB.deleteKnowledge(this.activeItemId);
+    } catch (e) {
+      UI.toast('Ошибка при удалении', 'error');
+      return;
     }
     
     this.items = this.items.filter(i => i.id !== this.activeItemId);
@@ -390,6 +433,30 @@ const KnowledgePage = {
       this.saveActiveItem(true);
     };
     reader.readAsText(file);
+  },
+
+  insertMarkdown(prefix, suffix = '') {
+    const textarea = document.getElementById('kb-editor-content');
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const before = text.substring(0, start);
+    const selected = text.substring(start, end);
+    const after = text.substring(end, text.length);
+
+    // Using execCommand for undo support if possible
+    const newText = prefix + selected + suffix;
+    textarea.focus();
+    if (document.execCommand('insertText', false, newText)) {
+      // success
+    } else {
+      // fallback
+      textarea.value = before + newText + after;
+    }
+    
+    textarea.setSelectionRange(start + prefix.length, end + prefix.length);
   },
 
   esc(str) {
