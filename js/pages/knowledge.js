@@ -513,37 +513,104 @@ const KnowledgePage = {
     if (!titleEl || !contentEl) return;
 
     const title = titleEl.value.trim() || 'document';
+
+    const modalId = 'kb-download-modal';
+    const existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = modalId;
+    overlay.style = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); z-index:9999; display:flex; align-items:center; justify-content:center;";
+
+    overlay.innerHTML = `
+      <div style="background:var(--bg-primary); width:400px; border-radius:16px; padding:24px; box-shadow:var(--shadow-lg);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h3 style="margin:0; font-size:18px;">Скачать документ</h3>
+          <button class="btn btn-icon btn-ghost" onclick="document.getElementById('${modalId}').remove()">
+            <i data-lucide="x" style="width:20px;height:20px;"></i>
+          </button>
+        </div>
+        <p style="color:var(--text-muted); font-size:14px; margin-bottom:24px;">Выберите формат для скачивания <b>${this.esc(title)}</b>:</p>
+        
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <button class="btn btn-secondary" onclick="KnowledgePage.processDownload('md')" style="justify-content:flex-start;">
+            <i data-lucide="file-text" style="width:16px;height:16px;margin-right:8px;color:var(--accent);"></i> Markdown (.md) — для ИИ
+          </button>
+          <button class="btn btn-secondary" onclick="KnowledgePage.processDownload('txt')" style="justify-content:flex-start;">
+            <i data-lucide="file" style="width:16px;height:16px;margin-right:8px;"></i> Обычный текст (.txt)
+          </button>
+          <button class="btn btn-secondary" onclick="KnowledgePage.processDownload('doc')" style="justify-content:flex-start;">
+            <i data-lucide="file-type-2" style="width:16px;height:16px;margin-right:8px;color:#2b579a;"></i> Microsoft Word (.doc)
+          </button>
+          <button class="btn btn-secondary" onclick="KnowledgePage.processDownload('pdf')" style="justify-content:flex-start;">
+            <i data-lucide="file-image" style="width:16px;height:16px;margin-right:8px;color:#d32f2f;"></i> Документ PDF (.pdf)
+          </button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    if (window.lucide) window.lucide.createIcons();
+  },
+
+  processDownload(ext) {
+    const modal = document.getElementById('kb-download-modal');
+    if (modal) modal.remove();
+
+    const titleEl = document.getElementById('kb-editor-title');
+    const contentEl = document.getElementById('kb-editor-content');
+    if (!titleEl || !contentEl) return;
+
+    const title = titleEl.value.trim() || 'document';
     const content = contentEl.value;
-    
-    const formats = ['md', 'txt', 'html', 'doc'];
-    const chosen = prompt('В каком формате скачать? Доступно: md, txt, html, doc (упрощенный Word)', 'md');
-    if (!chosen) return;
-    let ext = chosen.toLowerCase().replace('.', '');
-    if (!formats.includes(ext)) {
-      UI.toast('Неподдерживаемый формат, сохраняем как .txt', 'warning');
-      ext = 'txt';
-    }
-    
-    let downloadContent = content;
-    let mimeType = 'text/plain;charset=utf-8';
-    
-    // Simple HTML/DOC wrapper if requested
-    if (ext === 'html' || ext === 'doc') {
-      const htmlContent = window.marked ? window.marked.parse(content) : content;
-      downloadContent = `
-        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-        <head><meta charset='utf-8'><title>${title}</title></head>
-        <body>${htmlContent}</body>
-        </html>
-      `;
-      mimeType = ext === 'doc' ? 'application/msword;charset=utf-8' : 'text/html;charset=utf-8';
-    }
-    
+
     let filename = title;
     if (filename.includes('.')) {
       filename = filename.substring(0, filename.lastIndexOf('.'));
     }
     filename += '.' + ext;
+
+    if (ext === 'pdf') {
+      UI.toast('Генерация PDF...', 'info');
+      const htmlContent = window.marked ? window.marked.parse(content) : content;
+      const wrap = document.createElement('div');
+      wrap.innerHTML = `<div style="font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; color: #333;">
+        <h1 style="border-bottom: 1px solid #eee; padding-bottom: 10px;">${this.esc(title)}</h1>
+        ${htmlContent}
+      </div>`;
+      
+      if (window.html2pdf) {
+        window.html2pdf().set({
+          margin: 15,
+          filename: filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(wrap).save().then(() => {
+          UI.toast('PDF успешно скачан', 'success');
+        });
+      } else {
+        UI.toast('Библиотека PDF не загружена', 'error');
+      }
+      return;
+    }
+
+    let downloadContent = content;
+    let mimeType = 'text/plain;charset=utf-8';
+    
+    if (ext === 'html' || ext === 'doc') {
+      const htmlContent = window.marked ? window.marked.parse(content) : content;
+      downloadContent = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head><meta charset='utf-8'><title>${title}</title></head>
+        <body style="font-family: Arial, sans-serif;">
+          <h1>${this.esc(title)}</h1>
+          ${htmlContent}
+        </body>
+        </html>
+      `;
+      mimeType = ext === 'doc' ? 'application/msword;charset=utf-8' : 'text/html;charset=utf-8';
+    }
 
     const blob = new Blob([downloadContent], { type: mimeType });
     const url = URL.createObjectURL(blob);
