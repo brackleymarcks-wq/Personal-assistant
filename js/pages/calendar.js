@@ -225,8 +225,13 @@ const CalendarPage = {
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <span style="font-weight: 600; min-width: 100px; color: var(--text-secondary);">Направление:</span>
-                  <span>${t.direction}</span>
+                  <span>${t.direction || '—'}</span>
                 </div>
+                ${t.project_id ? `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-weight: 600; min-width: 100px; color: var(--text-secondary);">Проект:</span>
+                  <span><i data-lucide="folder" style="width: 12px; height: 12px; margin-right: 4px; vertical-align: text-bottom;"></i>${this.esc(this.projects?.find(p => p.id === t.project_id)?.name || 'Неизвестный проект')}</span>
+                </div>` : ''}
                 ${t.next_step ? `
                 <div style="margin-top: 8px; padding: 12px; background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-light);">
                   <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;">Следующий шаг:</div>
