@@ -7,6 +7,7 @@ const NotesPage = {
   activeNoteId: null,
 
   render() {
+    return `
       <div class="notes-page" style="height: 100%; display: flex; flex-direction: column; background: transparent;">
         <div class="page-header" style="background:transparent;padding:var(--space-md) var(--space-xl);display:flex;align-items:center;justify-content:space-between;flex-shrink:0; border-bottom: 1px solid var(--glass-border);">
           <div>
