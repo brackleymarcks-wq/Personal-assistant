@@ -193,8 +193,9 @@ const KnowledgePage = {
     pane.innerHTML = `
       <div class="kb-editor-header" style="padding: var(--space-xl) var(--space-2xl); border-bottom: 1px solid var(--border-light); display: flex; align-items: center; justify-content: space-between; background: rgba(var(--bg-surface-rgb), 0.5);">
         <div style="display:flex; align-items:center; gap: 16px;">
-          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.closeActiveItem()" title="Закрыть документ">
-            <i data-lucide="x" style="width:20px;height:20px;"></i>
+          <button class="btn btn-secondary" onclick="KnowledgePage.closeActiveItem()" title="Вернуться к списку">
+            <i data-lucide="arrow-left" style="width:16px;height:16px;"></i>
+            Назад
           </button>
           <div style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
             <i data-lucide="clock" style="width:14px;height:14px;"></i>
@@ -222,9 +223,9 @@ const KnowledgePage = {
         </div>
       </div>
       
-      <div id="kb-drop-zone" class="kb-editor-body" style="flex:1; padding: 40px 10%; display:flex; flex-direction:column; gap:24px; overflow-y:auto; position:relative;"
+      <div id="kb-drop-zone" class="kb-editor-body" style="flex:1; display:flex; flex-direction:column; overflow:hidden; position:relative; background: var(--bg-body);"
            ondragover="event.preventDefault(); this.style.backgroundColor='rgba(var(--accent-rgb), 0.05)';"
-           ondragleave="this.style.backgroundColor='transparent';"
+           ondragleave="this.style.backgroundColor='var(--bg-body)';"
            ondrop="KnowledgePage.handleFileDrop(event)">
         
         <div id="kb-loading" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.7); backdrop-filter:blur(4px); z-index:10; align-items:center; justify-content:center; flex-direction:column; color:var(--accent);">
@@ -232,75 +233,70 @@ const KnowledgePage = {
           <span style="font-size:14px;font-weight:500;">ИИ анализирует текст...</span>
         </div>
 
-        <input type="text" id="kb-editor-title" value="${this.esc(item.title)}" placeholder="Заголовок документа..." style="font-size:36px; font-weight:800; border:none; background:transparent; color:var(--text-primary); outline:none; width:100%;" />
-        
-        <div class="note-meta-bar" style="display:flex; flex-wrap:wrap; gap:16px; padding:8px 0; border-top:1px solid var(--border-light); border-bottom:1px solid var(--border-light);">
-          <div class="note-meta-item" style="display:flex; align-items:center; gap:8px;">
-            <i data-lucide="layout-grid" style="width:16px;height:16px;color:var(--text-muted);"></i>
-            <select id="kb-editor-type" class="form-input" style="border:none;background:transparent;padding:0;height:auto;font-size:14px;font-weight:500;color:var(--text-primary);box-shadow:none;cursor:pointer;outline:none;">
-              ${this.TYPES.map(t => `<option value="${t}" ${(item.type||'Заметка')===t?'selected':''}>${t}</option>`).join('')}
-            </select>
+        <div style="padding: 24px 10% 0; flex-shrink: 0;">
+          <input type="text" id="kb-editor-title" value="${this.esc(item.title)}" placeholder="Заголовок документа..." style="font-size:36px; font-weight:800; border:none; background:transparent; color:var(--text-primary); outline:none; width:100%;" />
+          
+          <div class="note-meta-bar" style="display:flex; flex-wrap:wrap; gap:16px; padding:8px 0; border-top:1px solid var(--border-light); border-bottom:1px solid var(--border-light); margin-top:16px;">
+            <div class="note-meta-item" style="display:flex; align-items:center; gap:8px;">
+              <i data-lucide="layout-grid" style="width:16px;height:16px;color:var(--text-muted);"></i>
+              <select id="kb-editor-type" class="form-input" style="border:none;background:transparent;padding:0;height:auto;font-size:14px;font-weight:500;color:var(--text-primary);box-shadow:none;cursor:pointer;outline:none;">
+                ${this.TYPES.map(t => `<option value="${t}" ${(item.type||'Заметка')===t?'selected':''}>${t}</option>`).join('')}
+              </select>
+            </div>
+            <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
+            <div class="note-meta-item" style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
+              <i data-lucide="hash" style="width:16px;height:16px;color:var(--text-muted);"></i>
+              <input type="text" id="kb-editor-tags" value="${this.esc(tagsStr)}" placeholder="Добавить теги через запятую..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:100%;" />
+            </div>
+            <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
+            <div class="note-meta-item" style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
+              <i data-lucide="link" style="width:16px;height:16px;color:var(--text-muted);"></i>
+              <input type="url" id="kb-editor-source" value="${this.esc(item.source_url || '')}" placeholder="URL источника (опционально)..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:100%;" />
+            </div>
           </div>
-          <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
-          <div class="note-meta-item" style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
-            <i data-lucide="hash" style="width:16px;height:16px;color:var(--text-muted);"></i>
-            <input type="text" id="kb-editor-tags" value="${this.esc(tagsStr)}" placeholder="Добавить теги через запятую..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:100%;" />
+          
+          <div style="display:flex; gap:8px; margin-top:16px; padding:8px 12px; background:var(--bg-surface); border-radius:8px; border:1px solid var(--border-light);">
+            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('**', '**')" title="Жирный">
+              <i data-lucide="bold" style="width:14px;height:14px;"></i>
+            </button>
+            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('*', '*')" title="Курсив">
+              <i data-lucide="italic" style="width:14px;height:14px;"></i>
+            </button>
+            <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
+            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('## ')" title="Заголовок">
+              <i data-lucide="heading-2" style="width:14px;height:14px;"></i>
+            </button>
+            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('- ')" title="Список">
+              <i data-lucide="list" style="width:14px;height:14px;"></i>
+            </button>
+            <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
+            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('[', '](url)')" title="Ссылка">
+              <i data-lucide="link" style="width:14px;height:14px;"></i>
+            </button>
+            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('\`\`\`\n', '\n\`\`\`')" title="Блок кода">
+              <i data-lucide="code" style="width:14px;height:14px;"></i>
+            </button>
+            <div style="flex:1;"></div>
+            <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.downloadActiveItem()" title="Скачать документ">
+              <i data-lucide="download" style="width:14px;height:14px;"></i>
+            </button>
+            <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
+            <button class="btn btn-icon btn-ghost" onclick="document.execCommand('undo')" title="Назад (Отменить)">
+              <i data-lucide="undo" style="width:14px;height:14px;"></i>
+            </button>
+            <button class="btn btn-icon btn-ghost" onclick="document.execCommand('redo')" title="Вперед (Повторить)">
+              <i data-lucide="redo" style="width:14px;height:14px;"></i>
+            </button>
           </div>
-          <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
-          <div class="note-meta-item" style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
-            <i data-lucide="link" style="width:16px;height:16px;color:var(--text-muted);"></i>
-            <input type="url" id="kb-editor-source" value="${this.esc(item.source_url || '')}" placeholder="URL источника (опционально)..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:100%;" />
-          </div>
-        </div>
-        
-        <div style="display:flex; gap:8px; margin-top:16px; padding:8px 12px; background:var(--bg-surface); border-radius:8px; border:1px solid var(--border-light);">
-          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('**', '**')" title="Жирный">
-            <i data-lucide="bold" style="width:14px;height:14px;"></i>
-          </button>
-          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('*', '*')" title="Курсив">
-            <i data-lucide="italic" style="width:14px;height:14px;"></i>
-          </button>
-          <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
-          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('## ')" title="Заголовок">
-            <i data-lucide="heading-2" style="width:14px;height:14px;"></i>
-          </button>
-          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('- ')" title="Список">
-            <i data-lucide="list" style="width:14px;height:14px;"></i>
-          </button>
-          <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
-          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('[', '](url)')" title="Ссылка">
-            <i data-lucide="link" style="width:14px;height:14px;"></i>
-          </button>
-          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.insertMarkdown('\`\`\`\n', '\n\`\`\`')" title="Блок кода">
-            <i data-lucide="code" style="width:14px;height:14px;"></i>
-          </button>
-          <div style="flex:1;"></div>
-          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.downloadActiveItem()" title="Скачать документ">
-            <i data-lucide="download" style="width:14px;height:14px;"></i>
-          </button>
-          <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
-          <button class="btn btn-icon btn-ghost" onclick="document.execCommand('undo')" title="Назад (Отменить)">
-            <i data-lucide="undo" style="width:14px;height:14px;"></i>
-          </button>
-          <button class="btn btn-icon btn-ghost" onclick="document.execCommand('redo')" title="Вперед (Повторить)">
-            <i data-lucide="redo" style="width:14px;height:14px;"></i>
-          </button>
         </div>
 
-        <textarea id="kb-editor-content" oninput="this.style.height='';this.style.height=this.scrollHeight+'px';" placeholder="Напишите текст или перетащите сюда файл (TXT, Markdown, CSV, JS...)" style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.7; color:var(--text-primary); outline:none; min-height: 400px; height:auto; overflow:hidden; font-family:inherit; margin-top:8px;">${this.esc(item.content || '')}</textarea>
+        <div style="flex:1; padding: 16px 10% 40px; display:flex; flex-direction:column; overflow:hidden;">
+          <textarea id="kb-editor-content" placeholder="Напишите текст или перетащите сюда файл (TXT, Markdown, CSV, JS...)" style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.7; color:var(--text-primary); outline:none; overflow-y:auto; font-family:inherit;">${this.esc(item.content || '')}</textarea>
+        </div>
       </div>
     `;
     
     if (window.lucide) window.lucide.createIcons();
-    
-    // Auto-resize initially
-    setTimeout(() => {
-      const ta = document.getElementById('kb-editor-content');
-      if (ta) {
-        ta.style.height = '';
-        ta.style.height = ta.scrollHeight + 'px';
-      }
-    }, 10);
   },
 
   closeActiveItem() {
