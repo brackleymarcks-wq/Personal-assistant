@@ -189,12 +189,12 @@ window.ChatWidget = {
 
     let parsedContent = isUser ? this.escapeHtml(content) : this.renderMarkdown(content);
 
-    const html = \`
-      <div class="chat-widget-msg \${isUser ? 'user' : 'assistant'}" \${animate ? '' : 'style="animation:none"'}>
-        <div class="chat-widget-bubble">\${parsedContent}</div>
-        <div class="chat-widget-time">\${timeStr}</div>
+    const html = `
+      <div class="chat-widget-msg ${isUser ? 'user' : 'assistant'}" ${animate ? '' : 'style="animation:none"'}>
+        <div class="chat-widget-bubble">${parsedContent}</div>
+        <div class="chat-widget-time">${timeStr}</div>
       </div>
-    \`;
+    `;
 
     container.insertAdjacentHTML('beforeend', html);
     this.scrollToBottom();
@@ -202,7 +202,7 @@ window.ChatWidget = {
 
   showTyping() {
     const container = document.getElementById('global-chat-messages');
-    container.insertAdjacentHTML('beforeend', \`
+    container.insertAdjacentHTML('beforeend', `
       <div class="chat-widget-msg assistant typing-indicator" id="global-chat-typing">
         <div class="chat-widget-bubble">
           <div class="typing-dot"></div>
@@ -210,7 +210,7 @@ window.ChatWidget = {
           <div class="typing-dot"></div>
         </div>
       </div>
-    \`);
+    `);
     this.scrollToBottom();
   },
 
