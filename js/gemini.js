@@ -3,8 +3,8 @@
 // ============================================
 
 // Defaults, will be overridden by Config
-const DEFAULT_API_URL = 'https://api.vsegpt.ru/v1/chat/completions';
-const DEFAULT_MODEL = 'gpt-4o-mini';
+const DEFAULT_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const DEFAULT_MODEL = 'google/gemini-2.5-flash';
 
 // Function declarations in OpenAI format
 const TOOLS = [
