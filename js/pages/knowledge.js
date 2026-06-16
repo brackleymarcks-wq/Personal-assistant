@@ -193,6 +193,9 @@ const KnowledgePage = {
     pane.innerHTML = `
       <div class="kb-editor-header" style="padding: var(--space-xl) var(--space-2xl); border-bottom: 1px solid var(--border-light); display: flex; align-items: center; justify-content: space-between; background: rgba(var(--bg-surface-rgb), 0.5);">
         <div style="display:flex; align-items:center; gap: 16px;">
+          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.closeActiveItem()" title="Закрыть документ">
+            <i data-lucide="x" style="width:20px;height:20px;"></i>
+          </button>
           <div style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
             <i data-lucide="clock" style="width:14px;height:14px;"></i>
             ${item.isNew ? 'Новая запись' : 'Изменено: ' + new Date(item.updated_at || item.created_at).toLocaleString('ru-RU', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}
@@ -284,11 +287,26 @@ const KnowledgePage = {
           </button>
         </div>
 
-        <textarea id="kb-editor-content" placeholder="Напишите текст или перетащите сюда файл (TXT, Markdown, CSV, JS...)" style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.7; color:var(--text-primary); outline:none; min-height: 400px; font-family:inherit; margin-top:8px;">${this.esc(item.content || '')}</textarea>
+        <textarea id="kb-editor-content" oninput="this.style.height='';this.style.height=this.scrollHeight+'px';" placeholder="Напишите текст или перетащите сюда файл (TXT, Markdown, CSV, JS...)" style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.7; color:var(--text-primary); outline:none; min-height: 400px; height:auto; overflow:hidden; font-family:inherit; margin-top:8px;">${this.esc(item.content || '')}</textarea>
       </div>
     `;
     
     if (window.lucide) window.lucide.createIcons();
+    
+    // Auto-resize initially
+    setTimeout(() => {
+      const ta = document.getElementById('kb-editor-content');
+      if (ta) {
+        ta.style.height = '';
+        ta.style.height = ta.scrollHeight + 'px';
+      }
+    }, 10);
+  },
+
+  closeActiveItem() {
+    this.activeItemId = null;
+    this.renderSidebar();
+    document.getElementById('kb-editor-pane').innerHTML = this.renderEmptyEditor();
   },
 
   async saveActiveItem(silent = false) {
@@ -501,23 +519,38 @@ const KnowledgePage = {
 
     const title = titleEl.value.trim() || 'document';
     const content = contentEl.value;
-    const type = document.getElementById('kb-editor-type').value;
     
-    let ext = '.md';
-    if (type === 'Промт' || type === 'Инструмент') ext = '.txt';
-    // If title already has an extension, don't append another one (unless it's docx/xlsx which we extracted as text)
-    if (title.includes('.') && !title.endsWith('.docx') && !title.endsWith('.xlsx')) {
-      ext = '';
+    const formats = ['md', 'txt', 'html', 'doc'];
+    const chosen = prompt('В каком формате скачать? Доступно: md, txt, html, doc (упрощенный Word)', 'md');
+    if (!chosen) return;
+    let ext = chosen.toLowerCase().replace('.', '');
+    if (!formats.includes(ext)) {
+      UI.toast('Неподдерживаемый формат, сохраняем как .txt', 'warning');
+      ext = 'txt';
+    }
+    
+    let downloadContent = content;
+    let mimeType = 'text/plain;charset=utf-8';
+    
+    // Simple HTML/DOC wrapper if requested
+    if (ext === 'html' || ext === 'doc') {
+      const htmlContent = window.marked ? window.marked.parse(content) : content;
+      downloadContent = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head><meta charset='utf-8'><title>${title}</title></head>
+        <body>${htmlContent}</body>
+        </html>
+      `;
+      mimeType = ext === 'doc' ? 'application/msword;charset=utf-8' : 'text/html;charset=utf-8';
     }
     
     let filename = title;
-    if (filename.endsWith('.docx') || filename.endsWith('.xlsx')) {
-      filename = filename.replace(/\.(docx|xlsx)$/i, ext);
-    } else {
-      filename += ext;
+    if (filename.includes('.')) {
+      filename = filename.substring(0, filename.lastIndexOf('.'));
     }
+    filename += '.' + ext;
 
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([downloadContent], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
