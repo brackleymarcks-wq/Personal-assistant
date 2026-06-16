@@ -13,11 +13,13 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 let CHAT_ID = process.env.TELEGRAM_CHAT_ID || null;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
-const GROQ_KEY = process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY; // Поддержка старого названия переменной
-const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+const AI_API_KEY = process.env.AI_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY;
+const AI_API_URL = process.env.AI_API_URL || 'https://api.groq.com/openai/v1/chat/completions';
+const AI_MODEL = process.env.AI_MODEL || 'llama-3.3-70b-versatile';
 
 if (!BOT_TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN не задан в .env'); process.exit(1); }
+if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
+if (!AI_API_KEY) { console.warn('⚠️ AI_API_KEY не задан. Бот не сможет отвечать!'); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
 
 // ---- Init ----
@@ -285,7 +287,7 @@ async function executeFunctionCall(name, args) {
 }
 
 async function askAI(userMessage, context = '') {
-  if (!OPENROUTER_KEY) return 'API ключ OpenRouter не настроен в .env';
+  if (!AI_API_KEY) return 'API ключ для нейросети не настроен (AI_API_KEY).';
 
   const settings = await getSettings();
   const now = new Date();
@@ -339,14 +341,14 @@ async function askAI(userMessage, context = '') {
 }
 
 async function callAPI(systemInstruction, messages, retryCount = 0) {
-  const res = await fetch(GROQ_API, {
+  const res = await fetch(AI_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_KEY}`
+      'Authorization': `Bearer ${AI_API_KEY}`
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: AI_MODEL,
       messages: [
         { role: 'system', content: systemInstruction },
         ...messages
