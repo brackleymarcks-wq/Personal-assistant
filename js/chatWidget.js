@@ -2,7 +2,7 @@
 // GLOBAL FLOATING CHAT WIDGET
 // ============================================
 
-const ChatWidget = {
+window.ChatWidget = {
   isOpen: false,
   isTyping: false,
   messages: [],
