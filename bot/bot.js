@@ -61,7 +61,7 @@ async function getTasks(filters = {}) {
 }
 
 async function getTasksDueToday() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
   const { data } = await db.from('tasks').select('*')
     .eq('deadline', today)
     .not('status', 'in', '("Готово","Отменена")');
@@ -69,7 +69,7 @@ async function getTasksDueToday() {
 }
 
 async function getOverdueTasks() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
   const { data } = await db.from('tasks').select('*')
     .lt('deadline', today)
     .not('status', 'in', '("Готово","Отменена")');
@@ -81,18 +81,18 @@ async function getUpcomingDeadlines(days = 3) {
   const future = new Date();
   future.setDate(today.getDate() + days);
   const { data } = await db.from('tasks').select('*')
-    .gte('deadline', today.toISOString().split('T')[0])
-    .lte('deadline', future.toISOString().split('T')[0])
+    .gte('deadline', today.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' }))
+    .lte('deadline', future.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' }))
     .not('status', 'in', '("Готово","Отменена")');
   return data || [];
 }
 
 async function getTodayEvents() {
-  const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
-  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString();
+  const minskDateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+  const start = new Date(minskDateStr + 'T00:00:00.000+03:00').toISOString();
+  const end = new Date(minskDateStr + 'T23:59:59.999+03:00').toISOString();
   const { data } = await db.from('events').select('*')
-    .gte('start_at', start).lt('start_at', end).order('start_at');
+    .gte('start_at', start).lte('start_at', end).order('start_at');
   return data || [];
 }
 
@@ -102,7 +102,7 @@ async function getHabits() {
 }
 
 async function getHabitLogsToday() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
   const { data } = await db.from('habit_logs').select('*, habits(name)')
     .eq('date', today);
   return data || [];
@@ -266,8 +266,8 @@ async function executeFunctionCall(name, args) {
         const now = new Date();
         return {
           success: true,
-          date: now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }),
-          time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+          date: now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'long', day: 'numeric', month: 'long' }),
+          time: now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' }),
           events, tasks_due_today: todayTasks, overdue_tasks: overdue
         };
       }
@@ -292,6 +292,7 @@ async function askAI(userMessage, context = '') {
   const settings = await getSettings();
   const now = new Date();
   const timeStr = now.toLocaleString('ru-RU', {
+    timeZone: 'Europe/Minsk',
     weekday: 'long', year: 'numeric', month: 'long',
     day: 'numeric', hour: '2-digit', minute: '2-digit'
   });

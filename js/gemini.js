@@ -339,8 +339,8 @@ async function executeFunctionCall(name, args) {
         const now = new Date();
         return {
           success: true,
-          date: now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }),
-          time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+          date: now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'long', day: 'numeric', month: 'long' }),
+          time: now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' }),
           events,
           tasks_due_today: today,
           overdue_tasks: overdue
@@ -465,6 +465,7 @@ const Gemini = {
     const rhythm = settings.rhythm || DEFAULT_SETTINGS.rhythm;
     const now = new Date();
     const timeStr = now.toLocaleString('ru-RU', {
+      timeZone: 'Europe/Minsk',
       weekday: 'long', year: 'numeric', month: 'long',
       day: 'numeric', hour: '2-digit', minute: '2-digit'
     });

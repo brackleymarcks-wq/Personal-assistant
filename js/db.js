@@ -530,20 +530,16 @@ const DB = {
   async getTasksForContext() {
     const tasks = await this.getTasks({});
     const active = tasks.filter(t => !['Готово', 'Отменена'].includes(t.status));
-    const overdue = active.filter(t => t.deadline && new Date(t.deadline) < new Date());
-    const today = active.filter(t => {
-      if (!t.deadline) return false;
-      const d = new Date(t.deadline);
-      const now = new Date();
-      return d.toDateString() === now.toDateString();
-    });
+    const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+    const overdue = active.filter(t => t.deadline && t.deadline < todayStr);
+    const today = active.filter(t => t.deadline === todayStr);
     return { active, overdue, today, all: tasks };
   },
 
   async getTodayEvents() {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+    const minskDateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+    const start = new Date(minskDateStr + 'T00:00:00.000+03:00').toISOString();
+    const end = new Date(minskDateStr + 'T23:59:59.999+03:00').toISOString();
     return this.getEvents(start, end);
   }
 };
