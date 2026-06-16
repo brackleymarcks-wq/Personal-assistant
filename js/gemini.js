@@ -335,7 +335,7 @@ async function executeFunctionCall(name, args) {
       }
       case 'get_todays_schedule': {
         const events = await DB.getTodayEvents();
-        const { today, overdue } = await DB.getTasksForContext();
+        const { today, overdue, upcoming } = await DB.getTasksForContext();
         const now = new Date();
         return {
           success: true,
@@ -343,7 +343,8 @@ async function executeFunctionCall(name, args) {
           time: now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' }),
           events,
           tasks_due_today: today,
-          overdue_tasks: overdue
+          overdue_tasks: overdue,
+          upcoming_tasks_this_week: upcoming
         };
       }
       case 'create_event': {
@@ -472,7 +473,10 @@ const Gemini = {
 
     let extraContext = '';
     if (settings.context?.custom_instructions?.length) {
-      extraContext = `\n\nДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ:\n` + settings.context.custom_instructions.map((ins, i) => `${i+1}. ${ins}`).join('\n');
+      const validInstructions = settings.context.custom_instructions.filter(i => !i.includes('ALTER TABLE tasks'));
+      if (validInstructions.length) {
+        extraContext = `\n\nДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ:\n` + validInstructions.map((ins, i) => `${i+1}. ${ins}`).join('\n');
+      }
     }
 
     return `${systemPrompt}\n\n${userContext}\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr}\n\nРИТМ ДНЯ:\n- Подъём: ${rhythm.wake}\n- Deep Work: ${rhythm.deep_work_start}–${rhythm.deep_work_end}\n- Обед: ${rhythm.lunch_start}–${rhythm.lunch_end}\n- Стоп работы: ${rhythm.work_stop}\n- Сон: ${rhythm.sleep}${extraContext}`;

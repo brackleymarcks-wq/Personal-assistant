@@ -81,7 +81,7 @@ async function getUpcomingDeadlines(days = 3) {
   const future = new Date();
   future.setDate(today.getDate() + days);
   const { data } = await db.from('tasks').select('*')
-    .gte('deadline', today.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' }))
+    .gt('deadline', today.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' }))
     .lte('deadline', future.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' }))
     .not('status', 'in', '("Готово","Отменена")');
   return data || [];
@@ -263,12 +263,13 @@ async function executeFunctionCall(name, args) {
         const events = await getTodayEvents();
         const todayTasks = await getTasksDueToday();
         const overdue = await getOverdueTasks();
+        const upcoming = await getUpcomingDeadlines(7);
         const now = new Date();
         return {
           success: true,
           date: now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'long', day: 'numeric', month: 'long' }),
           time: now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' }),
-          events, tasks_due_today: todayTasks, overdue_tasks: overdue
+          events, tasks_due_today: todayTasks, overdue_tasks: overdue, upcoming_tasks_this_week: upcoming
         };
       }
       case 'add_to_inbox': {
@@ -299,8 +300,11 @@ async function askAI(userMessage, context = '') {
 
   let extraCtx = '';
   if (settings.context?.custom_instructions?.length) {
-    extraCtx = '\n\nДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ:\n' +
-      settings.context.custom_instructions.map((ins, i) => `${i+1}. ${ins}`).join('\n');
+    const validInstructions = settings.context.custom_instructions.filter(i => !i.includes('ALTER TABLE tasks'));
+    if (validInstructions.length) {
+      extraCtx = '\n\nДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ:\n' +
+        validInstructions.map((ins, i) => `${i+1}. ${ins}`).join('\n');
+    }
   }
 
   const systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr}${extraCtx}${context ? '\n\n' + context : ''}`;

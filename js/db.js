@@ -531,9 +531,15 @@ const DB = {
     const tasks = await this.getTasks({});
     const active = tasks.filter(t => !['Готово', 'Отменена'].includes(t.status));
     const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+    const future = new Date();
+    future.setDate(future.getDate() + 7);
+    const futureStr = future.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+    
     const overdue = active.filter(t => t.deadline && t.deadline < todayStr);
     const today = active.filter(t => t.deadline === todayStr);
-    return { active, overdue, today, all: tasks };
+    const upcoming = active.filter(t => t.deadline && t.deadline > todayStr && t.deadline <= futureStr);
+    
+    return { active, overdue, today, upcoming, all: tasks };
   },
 
   async getTodayEvents() {
