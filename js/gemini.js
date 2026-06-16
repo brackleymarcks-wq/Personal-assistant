@@ -16,7 +16,7 @@ const TOOLS = [
         type: 'object',
         properties: {
           status: { type: 'string', description: 'Статус: Идея/Ждёт меня/В работе/Ждёт других/Делегирована/Готово/Отменена' },
-          direction: { type: 'string', description: 'Направление: Митап/Портал/Telegram/Английский/Личное/Горшков' },
+          direction: { type: 'string', description: 'Направление: Митап AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Английский/Личное' },
           priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
           search: { type: 'string', description: 'Поиск по названию задачи' }
         }
@@ -32,7 +32,7 @@ const TOOLS = [
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Название задачи' },
-          direction: { type: 'string', description: 'Направление: Митап/Портал/Telegram/Английский/Личное/Горшков' },
+          direction: { type: 'string', description: 'Направление: Митап AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Английский/Личное' },
           status: { type: 'string', description: 'Статус задачи (по умолч. "Ждёт меня")' },
           priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
           deadline: { type: 'string', description: 'Дедлайн в формате YYYY-MM-DD' },
