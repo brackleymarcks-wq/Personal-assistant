@@ -278,8 +278,36 @@ const KnowledgePage = {
             <input type="text" id="kb-editor-title" value="${this.esc(item.title)}" placeholder="Заголовок документа..." style="font-size:36px; font-weight:800; border:none; background:transparent; color:var(--text-primary); outline:none; width:100%;" />
           </div>
           
-          <div style="flex:1; padding: 0 40px 40px; display:flex; flex-direction:column; overflow:hidden;">
+          <div style="flex:1; padding: 0 40px 40px; display:flex; flex-direction:column; overflow:hidden; position:relative;">
             <div id="kb-editor-toastui" style="flex:1; width:100%;"></div>
+            
+            ${item.isNew && !item.content ? `
+              <div id="kb-template-gallery" style="position:absolute; top:60px; left:60px; right:60px; z-index:10; background:var(--bg-body); padding:20px; border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); border:1px solid var(--border-light);">
+                <div style="font-size:14px; font-weight:600; color:var(--text-muted); margin-bottom:16px;">Начать с пустого листа или выбрать шаблон:</div>
+                <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                  <button class="btn btn-secondary" onclick="KnowledgePage.applyTemplate('meeting', 'Встреча / Синхронизация')" style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; width:130px; height:110px; border:1px solid var(--border-light); background:var(--bg-surface);">
+                    <i data-lucide="users" style="width:28px;height:28px;color:var(--accent);"></i>
+                    <span style="font-size:13px;font-weight:500;text-align:center;white-space:normal;">Встреча</span>
+                  </button>
+                  <button class="btn btn-secondary" onclick="KnowledgePage.applyTemplate('idea', 'Новая идея')" style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; width:130px; height:110px; border:1px solid var(--border-light); background:var(--bg-surface);">
+                    <i data-lucide="lightbulb" style="width:28px;height:28px;color:var(--warning);"></i>
+                    <span style="font-size:13px;font-weight:500;text-align:center;white-space:normal;">Идея</span>
+                  </button>
+                  <button class="btn btn-secondary" onclick="KnowledgePage.applyTemplate('article', 'Черновик статьи')" style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; width:130px; height:110px; border:1px solid var(--border-light); background:var(--bg-surface);">
+                    <i data-lucide="newspaper" style="width:28px;height:28px;color:var(--success);"></i>
+                    <span style="font-size:13px;font-weight:500;text-align:center;white-space:normal;">Статья</span>
+                  </button>
+                  <button class="btn btn-secondary" onclick="KnowledgePage.applyTemplate('course', 'План урока')" style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; width:130px; height:110px; border:1px solid var(--border-light); background:var(--bg-surface);">
+                    <i data-lucide="graduation-cap" style="width:28px;height:28px;color:var(--info);"></i>
+                    <span style="font-size:13px;font-weight:500;text-align:center;white-space:normal;">Урок / Курс</span>
+                  </button>
+                  <button class="btn btn-secondary" onclick="KnowledgePage.applyTemplate('prompt', 'Системный промпт')" style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; width:130px; height:110px; border:1px solid var(--border-light); background:var(--bg-surface);">
+                    <i data-lucide="bot" style="width:28px;height:28px;color:var(--accent-vibrant);"></i>
+                    <span style="font-size:13px;font-weight:500;text-align:center;white-space:normal;">Промпт</span>
+                  </button>
+                </div>
+              </div>
+            ` : ''}
           </div>
         </div>
 
@@ -484,6 +512,36 @@ const KnowledgePage = {
     }
   },
 
+  applyTemplate(type, defaultTitle) {
+    const templates = {
+      meeting: "# Заметки со встречи\\n\\n**Дата:** \\n**Участники:** \\n\\n## Повестка\\n- \\n\\n## Решения\\n- \\n\\n## Следующие шаги\\n- [ ] ",
+      idea: "# Новая идея\\n\\n**Суть в одном предложении:** \\n\\n## Проблема, которую мы решаем\\n\\n## Предлагаемое решение\\n\\n## Что нужно для старта\\n- \\n",
+      article: "# Черновик статьи\\n\\n**Тема / Заголовок:** \\n**Целевая аудитория:** \\n\\n## Введение\\n\\n## Основная часть\\n\\n## Заключение\\n",
+      course: "# План урока\\n\\n**Тема:** \\n**Цель урока (что должен уметь студент в конце):** \\n\\n## Теоретический блок\\n\\n## Практическое задание\\n\\n## Домашнее задание\\n",
+      prompt: "# Структура Промпта\\n\\n**Контекст / Роль:** Ты эксперт в...\\n\\n**Задача:** \\n\\n**Формат ответа:** \\n\\n**Ограничения:** \\n"
+    };
+    
+    if (this.editorInstance && templates[type]) {
+      this.editorInstance.setMarkdown(templates[type]);
+      const gallery = document.getElementById('kb-template-gallery');
+      if (gallery) gallery.remove();
+      
+      const titleInput = document.getElementById('kb-editor-title');
+      if (titleInput && !titleInput.value) {
+        titleInput.value = defaultTitle;
+      }
+      
+      const typeSelect = document.getElementById('kb-editor-type');
+      if (typeSelect) {
+        if (type === 'meeting') typeSelect.value = 'Заметка';
+        if (type === 'idea') typeSelect.value = 'Заметка';
+        if (type === 'article') typeSelect.value = 'Статья';
+        if (type === 'course') typeSelect.value = 'Урок';
+        if (type === 'prompt') typeSelect.value = 'Промт';
+      }
+    }
+  },
+
   async handleAutoFill() {
     const titleEl = document.getElementById('kb-editor-title');
     if (!titleEl || !KnowledgePage.editorInstance) return;
@@ -533,7 +591,6 @@ const KnowledgePage = {
 
   async readFileContent(file) {
     const titleEl = document.getElementById('kb-editor-title');
-    const contentEl = document.getElementById('kb-editor-content');
     
     if (titleEl && !titleEl.value) titleEl.value = file.name;
     
@@ -580,8 +637,7 @@ const KnowledgePage = {
   downloadActiveItem() {
     if (!this.activeItemId) return;
     const titleEl = document.getElementById('kb-editor-title');
-    const contentEl = document.getElementById('kb-editor-content');
-    if (!titleEl || !contentEl) return;
+    if (!titleEl || !KnowledgePage.editorInstance) return;
 
     const title = titleEl.value.trim() || 'document';
 
