@@ -133,6 +133,20 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'search_knowledge_base',
+      description: 'Поиск информации в Базе Знаний пользователя. Используй этот инструмент, когда нужно найти документы, инструкции, статьи или сохраненные знания пользователя по ключевым словам.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Поисковый запрос (ключевые слова)' }
+        },
+        required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_state_snapshot',
       description: 'Получить текущий контекст пользователя: активные задачи, состояние, открытые вопросы',
       parameters: { type: 'object', properties: {} }
@@ -399,6 +413,17 @@ async function executeFunctionCall(name, args) {
         }
         return { success: false, error: 'Файл не найден' };
       }
+      case 'search_knowledge_base': {
+        const results = await DB.getKnowledge({ search: args.query });
+        const limited = results.slice(0, 5).map(item => ({
+          id: item.id,
+          title: item.title,
+          type: item.type,
+          tags: item.tags,
+          content: item.content
+        }));
+        return { success: true, count: limited.length, items: limited };
+      }
       case 'add_transaction': {
         const tx = await DB.createTransaction(args);
         return { success: true, tx, message: 'Транзакция добавлена' };
@@ -660,5 +685,45 @@ const Gemini = {
 
     const data = await res.json();
     return data.choices?.[0]?.message?.content?.trim() || '';
+  },
+
+  async autoFillKnowledge(content) {
+    const apiKey = Config.geminiKey;
+    if (!apiKey) throw new Error('API ключ не настроен (нужен для ИИ)');
+
+    const systemPrompt = `Ты — умный ассистент, который помогает структурировать базу знаний пользователя. 
+Пользователь передаст тебе текст документа. Твоя задача — сгенерировать подходящий Заголовок, определить Тип и придумать 3-5 Тегов.
+Доступные типы (выбери один строго из списка): Промт, Инструмент, Статья, Кейс, Урок, Заметка, Документ.
+Верни ТОЛЬКО валидный JSON без маркдаун-блоков. Формат: { "title": "...", "type": "...", "tags": ["tag1", "tag2"] }`;
+
+    const res = await fetch(GROQ_API, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: content.substring(0, 4000) } // Ограничиваем длину для экономии
+        ],
+        temperature: 0.1,
+        response_format: { type: 'json_object' }
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || `API error ${res.status}`);
+    }
+
+    const data = await res.json();
+    let jsonStr = data.choices?.[0]?.message?.content?.trim() || '{}';
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    }
+    
+    return JSON.parse(jsonStr);
   }
 };
