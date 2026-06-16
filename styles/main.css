@@ -1853,6 +1853,13 @@ textarea {
   text-decoration: none !important;
   border: none !important;
 }
+.calendar-event.event-deadline.event-in-progress { 
+  background: linear-gradient(135deg, var(--warning), #f59e0b) !important;
+  color: white !important;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.8), inset 0 0 8px rgba(255,255,255,0.3) !important;
+  opacity: 1 !important;
+  border: none !important;
+}
 .calendar-event.event-personal { background: var(--success-dim); color: var(--success); border-left: 3px solid var(--success); }
 
 /* ============================================

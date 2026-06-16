@@ -293,7 +293,7 @@ const CalendarPage = {
           }
         }
         return `
-          <div class="calendar-event event-deadline ${isDone ? 'event-done' : ''}" data-id="${t.id}" data-type="task" title="Дедлайн: ${this.esc(t.title)}" draggable="true">
+          <div class="calendar-event event-deadline ${isDone ? 'event-done' : ''} ${t.status === 'В работе' ? 'event-in-progress' : ''}" data-id="${t.id}" data-type="task" title="Дедлайн: ${this.esc(t.title)}" draggable="true">
             <i data-lucide="${isDone ? 'check-square' : 'target'}" style="width:12px;height:12px;min-width:12px;"></i>
             ${projectIcon}${this.esc(t.title)}
           </div>
