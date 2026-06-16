@@ -14,7 +14,7 @@ window.CommandPalette = {
 
     // Listen for Ctrl+K
     document.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.code === 'KeyK')) {
         e.preventDefault();
         this.toggle();
       }
