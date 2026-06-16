@@ -2,8 +2,9 @@
 // AI agent with function calling (Groq / Llama 3)
 // ============================================
 
-const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile'; // Возвращаем умную модель (лимит 12000 TPM)
+// Defaults, will be overridden by Config
+const DEFAULT_API_URL = 'https://bothub.chat/api/v2/openai/v1/chat/completions';
+const DEFAULT_MODEL = 'gpt-4o-mini';
 
 // Function declarations in OpenAI format
 const TOOLS = [
@@ -204,7 +205,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'create_goal',
-      description: 'Создать новую стратегическую цель',
+      description: 'Создать новую стратегическуюческую цель',
       parameters: {
         type: 'object',
         properties: {
@@ -429,7 +430,6 @@ async function executeFunctionCall(name, args) {
         return { success: true, tx, message: 'Транзакция добавлена' };
       }
       case 'update_context': {
-        // Мы читаем текущие настройки, добавляем инструкцию и сохраняем
         const settings = await DB.getSettings() || {};
         const context = settings.context || {};
         if (!context.custom_instructions) context.custom_instructions = [];
@@ -452,7 +452,6 @@ const Gemini = {
     let systemPrompt = window.SYSTEM_PROMPT || settings.system_prompt || '';
     let userContext = window.USER_CONTEXT || '';
 
-    // Пытаемся загрузить базовые файлы из корня, если запущен сервер
     try {
       const promptRes = await fetch('/SYSTEM_PROMPT.md');
       if (promptRes.ok) systemPrompt = await promptRes.text();
@@ -479,16 +478,14 @@ const Gemini = {
   },
 
   async chat(userMessage, historyMessages = []) {
-    // Используем ключ из того же поля Gemini API Key для удобства
     const apiKey = Config.geminiKey;
-    if (!apiKey) throw new Error('API ключ Groq не настроен');
+    if (!apiKey) throw new Error('API ключ не настроен');
 
     const systemContext = await this.buildSystemContext();
 
     const messages = [];
     
-    // Add history
-    const recentHistory = historyMessages.slice(-10); // Уменьшено с 30 до 10 для экономии лимитов токенов
+    const recentHistory = historyMessages.slice(-10);
     for (const msg of recentHistory) {
       if (msg.role === 'user' || msg.role === 'assistant') {
         messages.push({
@@ -498,7 +495,6 @@ const Gemini = {
       }
     }
 
-    // Add current message
     messages.push({
       role: 'user',
       content: userMessage
@@ -507,7 +503,6 @@ const Gemini = {
     let response = await this._callAPI(apiKey, systemContext, messages);
     let maxIter = 5;
 
-    // Agentic loop
     while (maxIter-- > 0) {
       const choice = response.choices?.[0];
       if (!choice) break;
@@ -544,14 +539,17 @@ const Gemini = {
   },
 
   async _callAPI(apiKey, systemInstruction, messages, retryCount = 0) {
-    const res = await fetch(GROQ_API, {
+    const apiUrl = Config.aiApiUrl || DEFAULT_API_URL;
+    const model = Config.aiModel || DEFAULT_MODEL;
+
+    const res = await fetch(apiUrl, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: model,
         messages: [
           { role: 'system', content: systemInstruction },
           ...messages
