@@ -102,38 +102,38 @@ const ArchivePage = {
     let detailsHtml = `
       <div class="archive-card-details" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color); font-size: 13px;">
         
-        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;">
-          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 6px; display: flex; align-items: center; gap: 6px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px;">
+          <div class="glass-panel" style="padding: 8px 14px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
             <i data-lucide="${statusIcon}" style="width: 14px; height: 14px; color: ${statusColor};"></i>
             <span style="color:var(--text-muted); font-size: 11px;">Статус:</span> 
-            <strong>${task.status}</strong>
+            <strong style="font-size: 13px;">${task.status}</strong>
           </div>
           
-          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 6px; display: flex; align-items: center; gap: 6px;">
+          <div class="glass-panel" style="padding: 8px 14px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
             <i data-lucide="flag" style="width: 14px; height: 14px; color: ${prioColor};"></i>
             <span style="color:var(--text-muted); font-size: 11px;">Приоритет:</span> 
-            <strong>${task.priority || 'Средний'}</strong>
+            <strong style="font-size: 13px;">${task.priority || 'Средний'}</strong>
           </div>
 
-          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 6px; display: flex; align-items: center; gap: 6px;">
+          <div class="glass-panel" style="padding: 8px 14px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
             <i data-lucide="calendar-off" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
             <span style="color:var(--text-muted); font-size: 11px;">Дедлайн:</span> 
-            <strong>${deadlineStr}</strong>
+            <strong style="font-size: 13px;">${deadlineStr}</strong>
           </div>
 
-          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 6px; display: flex; align-items: center; gap: 6px;">
+          <div class="glass-panel" style="padding: 8px 14px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
             <i data-lucide="calendar-plus" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
             <span style="color:var(--text-muted); font-size: 11px;">Создана:</span> 
-            <strong>${createdDate}</strong>
+            <strong style="font-size: 13px;">${createdDate}</strong>
           </div>
         </div>
 
         ${task.next_step ? `
-          <div style="margin-bottom: 16px;">
-            <div style="font-weight: 600; color:var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-              <i data-lucide="corner-down-right" style="width: 14px; height: 14px;"></i> Следующий шаг
+          <div style="margin-bottom: 20px;">
+            <div style="font-weight: 600; color:var(--text-secondary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="corner-down-right" style="width: 16px; height: 16px;"></i> Следующий шаг
             </div>
-            <div style="padding: 10px 14px; background: var(--bg-primary); border-left: 3px solid var(--primary); border-radius: 0 6px 6px 0; color: var(--text-primary);">
+            <div class="glass-panel" style="padding: 14px 18px; border-left: 4px solid var(--accent); border-radius: 12px; color: var(--text-primary); font-size: 14px;">
               ${this.escHtml(task.next_step)}
             </div>
           </div>
@@ -141,10 +141,10 @@ const ArchivePage = {
 
         ${task.description ? `
           <div>
-            <div style="font-weight: 600; color:var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-              <i data-lucide="file-text" style="width: 14px; height: 14px;"></i> Комментарии / Заметки
+            <div style="font-weight: 600; color:var(--text-secondary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="file-text" style="width: 16px; height: 16px;"></i> Комментарии / Заметки
             </div>
-            <div style="padding: 14px; background: var(--bg-primary); border-radius: 8px; white-space: pre-wrap; color: var(--text-primary); border: 1px solid var(--border-color); line-height: 1.5; font-size: 14px;">
+            <div class="glass-panel" style="padding: 16px 20px; border-radius: 12px; white-space: pre-wrap; color: var(--text-primary); line-height: 1.6; font-size: 14px;">
               ${this.escHtml(task.description)}
             </div>
           </div>
@@ -154,7 +154,7 @@ const ArchivePage = {
     `;
 
     return `
-      <div class="archive-card card" style="padding: 16px; cursor: pointer; transition: background 0.2s; border-left: 4px solid ${isDone ? 'var(--success)' : 'var(--text-muted)'};" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='var(--bg-card)'">
+      <div class="archive-card glass-panel" style="padding: 20px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; border-left: 4px solid ${isDone ? 'var(--success)' : 'var(--text-muted)'}; margin-bottom: 16px;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.transform='none'; this.style.boxShadow='var(--shadow-glass)'">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
           <div>
             <div style="font-weight: 500; font-size: 15px; margin-bottom: 4px; ${!isDone ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${this.escHtml(task.title)}</div>
