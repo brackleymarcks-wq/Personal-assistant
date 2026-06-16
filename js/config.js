@@ -57,7 +57,7 @@ const DEFAULT_SETTINGS = {
 
   context: {
     work: 'Бизнес-аналитик в HR-сфере',
-    projects: 'Митап AI-Connect, Учись и применяй, ИИ Дайджест, Операционные задачи',
+    projects: 'Митап AI-Connect, ТГ AI-Connect, Учись и применяй, ИИ Дайджест, Операционные задачи',
     students: 'Учеников по английскому',
     clients: 'Горшков',
     family: ''

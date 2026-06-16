@@ -128,7 +128,7 @@ const SettingsModule = {
           </div>
           <div class="form-group">
             <label class="form-label">🗂 Активные проекты</label>
-            <input id="ctx-projects" type="text" class="form-input" value="${this.esc(context.projects || '')}" placeholder="Митап AI-Connect, Учись и применяй, ИИ Дайджест, Операционные задачи" />
+            <input id="ctx-projects" type="text" class="form-input" value="${this.esc(context.projects || '')}" placeholder="Митап AI-Connect, ТГ AI-Connect, Учись и применяй, ИИ Дайджест" />
           </div>
           <div class="form-group">
             <label class="form-label">🎓 Ученики / Студенты</label>

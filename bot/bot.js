@@ -179,7 +179,7 @@ const TOOLS = [
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Название задачи' },
-          direction: { type: 'string', description: 'Направление: Митап AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Операционные задачи/Английский/Личное' },
+          direction: { type: 'string', description: 'Направления (можно несколько через запятую): Митап AI-Connect/ТГ AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Операционная задача/Английский/Личное' },
           status: { type: 'string', description: 'Статус (по умолч. "Ждёт меня")' },
           priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
           deadline: { type: 'string', description: 'Дедлайн YYYY-MM-DD' },

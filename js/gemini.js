@@ -16,7 +16,7 @@ const TOOLS = [
         type: 'object',
         properties: {
           status: { type: 'string', description: 'Статус: Идея/Ждёт меня/В работе/Ждёт других/Делегирована/Готово/Отменена' },
-          direction: { type: 'string', description: 'Направление: Митап AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Операционные задачи/Английский/Личное' },
+          direction: { type: 'string', description: 'Направления (можно несколько через запятую): Митап AI-Connect/ТГ AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Операционная задача/Английский/Личное' },
           priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
           search: { type: 'string', description: 'Поиск по названию задачи' }
         }
@@ -32,7 +32,7 @@ const TOOLS = [
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Название задачи' },
-          direction: { type: 'string', description: 'Направление: Митап AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Операционные задачи/Английский/Личное' },
+          direction: { type: 'string', description: 'Направления (можно несколько через запятую): Митап AI-Connect/ТГ AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Операционная задача/Английский/Личное' },
           status: { type: 'string', description: 'Статус задачи (по умолч. "Ждёт меня")' },
           priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
           deadline: { type: 'string', description: 'Дедлайн в формате YYYY-MM-DD' },
@@ -52,6 +52,7 @@ const TOOLS = [
         properties: {
           id: { type: 'string', description: 'ID задачи' },
           title: { type: 'string' },
+          direction: { type: 'string', description: 'Направления (через запятую)' },
           status: { type: 'string' },
           priority: { type: 'string' },
           deadline: { type: 'string' },

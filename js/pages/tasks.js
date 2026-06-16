@@ -8,7 +8,7 @@ const TasksPage = {
   view: 'list', // list | kanban
   filters: { status: '', direction: '', priority: '', search: '' },
 
-  DIRECTIONS: ['Митап AI-Connect', 'Учись и применяй', 'ИИ Дайджест', 'Задача от руководителя', 'Банк промтов', 'Smart-запрос/ответ', 'Операционные задачи', 'Английский', 'Личное'],
+  DIRECTIONS: ['Митап AI-Connect', 'ТГ AI-Connect', 'Учись и применяй', 'ИИ Дайджест', 'Задача от руководителя', 'Банк промтов', 'Smart-запрос/ответ', 'Операционная задача', 'Английский', 'Личное'],
   STATUSES: ['Идея', 'Ждёт меня', 'В работе', 'Ждёт других', 'Делегирована', 'Готово', 'Отменена'],
   PRIORITIES: ['Высокий', 'Средний', 'Низкий'],
 
@@ -124,7 +124,9 @@ const TasksPage = {
   getFilteredTasks() {
     return this.tasks.filter(t => {
       if (this.filters.status && t.status !== this.filters.status) return false;
-      if (this.filters.direction && t.direction !== this.filters.direction) return false;
+      if (this.filters.direction) {
+        if (!t.direction || !t.direction.includes(this.filters.direction)) return false;
+      }
       if (this.filters.priority && t.priority !== this.filters.priority) return false;
       if (this.filters.search) {
         const s = this.filters.search.toLowerCase();
@@ -156,6 +158,13 @@ const TasksPage = {
     }
     
     if (window.lucide) window.lucide.createIcons();
+
+    // Direction pills toggle logic
+    document.querySelectorAll('#tf-directions-container .direction-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        pill.classList.toggle('active');
+      });
+    });
   },
 
   renderList(tasks) {
@@ -227,50 +236,53 @@ const TasksPage = {
     container.querySelectorAll('.task-project-badge').forEach(badge => {
       badge.addEventListener('click', (e) => {
         e.stopPropagation();
-        App.navigateTo('projects').then(() => {
-          if (typeof ProjectsPage !== 'undefined') ProjectsPage.openProjectModal(badge.dataset.pid);
-        });
+        const pid = badge.dataset.pid;
+        if(pid) {
+          App.navigateTo('projects').then(() => {
+            if (typeof ProjectsPage !== 'undefined') ProjectsPage.openProjectModal(pid);
+          });
+        }
       });
     });
   },
 
   renderTaskCard(task, now = new Date()) {
     const deadline = task.deadline ? new Date(task.deadline) : null;
-    const isOverdue = deadline && deadline < now && !['Готово', 'Отменена'].includes(task.status);
-    const isToday = deadline && deadline.toDateString() === now.toDateString();
     const isDone = task.status === 'Готово';
 
-    const deadlineText = deadline
-      ? deadline.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-      : '';
+    const prioIcons = {
+      'Высокий': '<i data-lucide="arrow-up-circle" style="color:var(--danger);width:12px;height:12px;vertical-align:middle;margin-right:2px;"></i>',
+      'Средний': '<i data-lucide="minus-circle" style="color:var(--warning);width:12px;height:12px;vertical-align:middle;margin-right:2px;"></i>',
+      'Низкий': '<i data-lucide="arrow-down-circle" style="color:var(--success);width:12px;height:12px;vertical-align:middle;margin-right:2px;"></i>'
+    };
       
-    // Check if task belongs to a project
     let projectBadge = '';
     if (task.project_id) {
       const project = this.projects.find(p => p.id === task.project_id);
       if (project) {
-        projectBadge = `<div class="task-project-badge" data-pid="${project.id}"><i data-lucide="folder" style="width:12px;height:12px;"></i> ${this.escHtml(project.name)}</div>`;
+        projectBadge = `<span class="task-project-badge" data-pid="${project.id}"><i data-lucide="folder" style="width:10px;height:10px;margin-right:2px;"></i> ${this.escHtml(project.name)}</span>`;
       }
     }
 
+    let directionBadge = '';
+    if (task.direction) {
+      const dirs = task.direction.split(',').map(d => d.trim()).filter(Boolean);
+      directionBadge = dirs.map(d => `<span class="task-project-badge" data-dir="${this.escHtml(d)}"><i data-lucide="tag" style="width:10px;height:10px;margin-right:2px;vertical-align:middle;"></i>${this.escHtml(d)}</span>`).join('');
+    }
+
     return `
-      <div class="task-card ${isOverdue ? 'overdue' : ''} ${isToday && !isOverdue ? 'today' : ''} ${isDone ? 'done' : ''}" data-id="${task.id}">
-        <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${task.id}" data-done="${isDone}"></div>
-        <div class="task-info">
-          <div class="task-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            ${this.escHtml(task.title)}
-            ${projectBadge}
-          </div>
+      <div class="task-card card" data-id="${task.id}" style="${isDone ? 'opacity:0.7;' : ''}">
+        <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${task.id}" data-done="${isDone}">
+          <i data-lucide="check" style="width: 14px; height: 14px; opacity: ${isDone ? 1 : 0}"></i>
+        </div>
+        <div class="task-content">
+          <div class="task-title" style="${isDone ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${this.escHtml(task.title)}</div>
+          ${task.next_step ? `<div class="task-next-step" style="${isDone ? 'color: var(--text-muted);' : ''}"><i data-lucide="corner-down-right" style="width: 12px; height: 12px;"></i> ${this.escHtml(task.next_step)}</div>` : ''}
           <div class="task-meta">
-            ${task.direction ? `<span class="task-badge badge-direction">${task.direction}</span>` : ''}
-            <span class="task-badge badge-${(task.priority || 'medium').toLowerCase().replace('высокий','high').replace('средний','medium').replace('низкий','low')}">${task.priority || ''}</span>
-            ${task.status ? `<span class="task-badge" style="background:var(--bg-elevated);color:var(--text-secondary)">${task.status}</span>` : ''}
-            ${deadline ? `<span class="task-deadline ${isOverdue ? 'overdue' : ''} ${isToday ? 'today' : ''}">
-              <i data-lucide="calendar" style="width:12px;height:12px;"></i>
-              ${isOverdue ? 'Просрочено: ' : ''}${deadlineText}
-            </span>` : ''}
+            ${projectBadge}
+            ${directionBadge}
+            <span>${prioIcons[task.priority] || ''} ${task.priority || ''}</span>
           </div>
-          ${task.next_step ? `<div class="task-next-step"><i data-lucide="corner-down-right" style="width:14px;height:14px;vertical-align:middle;"></i> ${this.escHtml(task.next_step)}</div>` : ''}
         </div>
         <div class="task-actions-overlay">
           <button class="task-action-btn start-pomodoro-btn" data-id="${task.id}" data-title="${this.escHtml(task.title)}" title="Начать Помодоро для этой задачи">
@@ -399,9 +411,16 @@ const TasksPage = {
       }
     }
 
+    let directionBadge = '';
+    if (task.direction) {
+      const dirs = task.direction.split(',').map(d => d.trim()).filter(Boolean);
+      directionBadge = dirs.map(d => `<span style="display:inline-block;background:var(--bg-hover);border:1px solid var(--border-color);padding:2px 6px;border-radius:var(--radius-full);font-size:10px;margin-bottom:6px;margin-right:4px;color:var(--text-secondary);"><i data-lucide="tag" style="width:10px;height:10px;vertical-align:middle;"></i> ${this.escHtml(d)}</span>`).join('');
+    }
+
     return `
       <div class="kanban-card task-card" data-id="${task.id}" style="position:relative;" draggable="true">
         ${projectBadge}
+        ${directionBadge}
         <div class="kanban-card-title">${this.escHtml(task.title)}</div>
         ${task.next_step ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><i data-lucide="corner-down-right" style="width:12px;height:12px;vertical-align:middle;"></i> ${this.escHtml(task.next_step)}</div>` : ''}
         <div class="kanban-card-meta" style="display:flex;justify-content:space-between;align-items:center;">
@@ -444,32 +463,32 @@ const TasksPage = {
         <label class="form-label">Название *</label>
         <input id="tf-title" type="text" class="form-input" placeholder="Что нужно сделать?" value="${task ? this.escHtml(task.title) : (prefillData && prefillData.title ? this.escHtml(prefillData.title) : '')}" />
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Направление</label>
-          <select id="tf-direction" class="form-input">
-            <option value="">— выбрать —</option>
-            ${this.DIRECTIONS.map(d => `<option value="${d}" ${task?.direction === d ? 'selected' : ''}>${d}</option>`).join('')}
-          </select>
+      <div class="form-group">
+        <label class="form-label">Направление</label>
+        <div id="tf-directions-container" class="directions-container">
+          ${(() => {
+            const taskDirs = task?.direction ? task.direction.split(',').map(d => d.trim()) : [];
+            return this.DIRECTIONS.map(d => `<div class="direction-pill ${taskDirs.includes(d) ? 'active' : ''}" data-val="${d}">${d}</div>`).join('');
+          })()}
         </div>
+      </div>
+      <div class="form-row">
         <div class="form-group">
           <label class="form-label">Приоритет</label>
           <select id="tf-priority" class="form-input">
             ${this.PRIORITIES.map(p => `<option value="${p}" ${(task?.priority || 'Средний') === p ? 'selected' : ''}>${p}</option>`).join('')}
           </select>
         </div>
-      </div>
-      <div class="form-row">
         <div class="form-group">
           <label class="form-label">Статус</label>
           <select id="tf-status" class="form-input">
             ${this.STATUSES.map(s => `<option value="${s}" ${(task?.status || 'Ждёт меня') === s ? 'selected' : ''}>${s}</option>`).join('')}
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Дедлайн</label>
-          <input id="tf-deadline" type="date" class="form-input" value="${task?.deadline || ''}" />
-        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Дедлайн</label>
+        <input id="tf-deadline" type="date" class="form-input" value="${task?.deadline || ''}" />
       </div>
       <div class="form-group">
         <label class="form-label">Следующий шаг</label>
@@ -509,8 +528,8 @@ const TasksPage = {
     if (!title) { UI.toast('Введи название задачи', 'warning'); return; }
 
     const data = {
-      title,
-      direction: document.getElementById('tf-direction').value,
+      title: document.getElementById('tf-title').value.trim(),
+      direction: Array.from(document.querySelectorAll('#tf-directions-container .direction-pill.active')).map(p => p.dataset.val).join(', ') || null,
       priority: document.getElementById('tf-priority').value,
       status: document.getElementById('tf-status').value,
       deadline: document.getElementById('tf-deadline').value || null,

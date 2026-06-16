@@ -99,6 +99,12 @@ const ArchivePage = {
     const statusIcon = task.status === 'Готово' ? 'check-circle-2' : 'x-circle';
     const statusColor = task.status === 'Готово' ? 'var(--success)' : 'var(--text-muted)';
     
+    let directionBadge = '';
+    if (task.direction) {
+      const dirs = task.direction.split(',').map(d => d.trim()).filter(Boolean);
+      directionBadge = dirs.map(d => `<span><i data-lucide="tag" style="width: 12px; height: 12px; vertical-align: text-bottom;"></i> ${this.escHtml(d)}</span>`).join('');
+    }
+
     let detailsHtml = `
       <div class="archive-card-details" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color); font-size: 13px;">
         
@@ -159,7 +165,7 @@ const ArchivePage = {
           <div>
             <div style="font-weight: 500; font-size: 15px; margin-bottom: 4px; ${!isDone ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${this.escHtml(task.title)}</div>
             <div style="display: flex; gap: 12px; font-size: 12px; color: var(--text-muted);">
-              <span><i data-lucide="tag" style="width: 12px; height: 12px; vertical-align: text-bottom;"></i> ${task.direction}</span>
+              ${directionBadge}
               ${task.project?.name ? `<span><i data-lucide="folder" style="width: 12px; height: 12px; vertical-align: text-bottom;"></i> ${this.escHtml(task.project.name)}</span>` : ''}
             </div>
           </div>
