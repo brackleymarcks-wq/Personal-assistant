@@ -59,6 +59,7 @@ const KnowledgePage = {
   async load() {
     try {
       this.items = await DB.getKnowledge();
+      this.tasks = await DB.getTasks();
       this.renderSidebar();
       if (this.activeItemId) {
         this.openItem(this.activeItemId);
@@ -292,11 +293,24 @@ const KnowledgePage = {
               <input type="text" id="kb-editor-folder" value="${this.esc(item.folder || 'Общее')}" placeholder="Папка..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:120px;" />
             </div>
             <div style="width:1px; height:20px; background:var(--border-light); margin:auto 0;"></div>
-            <div class="note-meta-item" style="display:flex; align-items:center; gap:8px; flex:1; min-width:200px;">
-              <i data-lucide="link" style="width:16px;height:16px;color:var(--text-muted);"></i>
-              <input type="url" id="kb-editor-source" value="${this.esc(item.source_url || '')}" placeholder="URL источника (опционально)..." style="border:none;background:transparent;font-size:14px;color:var(--text-primary);outline:none;width:100%;" />
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">URL источника (опционально)</label>
+              <input type="text" id="kb-editor-source" class="form-input" placeholder="https://" value="${this.esc(item.source_url || '')}" style="background:transparent;border:none;border-bottom:1px solid var(--border-light);border-radius:0;padding-left:0;font-size:13px;" />
             </div>
           </div>
+          
+          <div class="form-group" style="margin-top: 16px;">
+            <label class="form-label" style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Прикрепленные задачи</label>
+            <div style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 8px;">
+              ${(!this.tasks || this.tasks.length === 0) ? '<div style="font-size:12px; color:var(--text-muted);">Задач нет</div>' : ''}
+              ${(this.tasks || []).map(t => `
+                <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; cursor:pointer;">
+                  <input type="checkbox" class="kb-linked-task" value="${t.id}" ${(item?.linked_tasks || []).includes(t.id) ? 'checked' : ''}>
+                  <i data-lucide="check-square" style="width:14px;height:14px;color:var(--accent);"></i>
+                  ${this.esc(t.title)}
+                </label>
+              `).join('')}
+            </div>
           </div>
         </div>
 
@@ -378,6 +392,7 @@ const KnowledgePage = {
     const source_url = document.getElementById('kb-editor-source').value.trim() || null;
     const tagsStr = document.getElementById('kb-editor-tags').value;
     const tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
+    const linked_tasks = Array.from(document.querySelectorAll('.kb-linked-task:checked')).map(cb => cb.value);
 
     const itemIdx = this.items.findIndex(i => i.id === this.activeItemId);
     if (itemIdx < 0) return;
@@ -391,7 +406,7 @@ const KnowledgePage = {
     }
 
     title = title || 'Без заголовка';
-    const dataToSave = { title, content, type, tags, source_url, folder };
+    const dataToSave = { title, content, type, tags, source_url, folder, linked_tasks };
 
     try {
       if (item.isNew) {

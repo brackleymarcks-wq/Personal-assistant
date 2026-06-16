@@ -5,6 +5,7 @@
 const TasksPage = {
   tasks: [],
   projects: [],
+  knowledge: [],
   view: 'list', // list | kanban
   filters: { status: '', direction: '', priority: '', search: '' },
 
@@ -116,7 +117,11 @@ const TasksPage = {
   },
 
   async load() {
-    [this.tasks, this.projects] = await Promise.all([DB.getTasks(), DB.getProjects()]);
+    this.tasks = await DB.getTasks();
+    if (DB.getProjects) {
+      this.projects = await DB.getProjects();
+    }
+    this.knowledge = await DB.getKnowledge();
     this.renderContent();
     App.refreshTasksBadge();
   },
@@ -438,6 +443,7 @@ const TasksPage = {
             <i data-lucide="calendar" style="width:10px;height:10px;"></i>
             ${deadline.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
           </span>` : ''}
+          ${(task.linked_notes && task.linked_notes.length > 0) ? `<span style="font-size:11px;color:var(--accent);display:flex;align-items:center;gap:2px;" title="Прикрепленные документы"><i data-lucide="paperclip" style="width:10px;height:10px;"></i> ${task.linked_notes.length}</span>` : ''}
         </div>
         <div class="task-actions-overlay" style="right:var(--space-sm);">
           <button class="task-action-btn start-pomodoro-btn" data-id="${task.id}" data-title="${this.escHtml(task.title)}" title="Начать Помодоро для этой задачи">
@@ -514,6 +520,19 @@ const TasksPage = {
           ${this.projects.map(p => `<option value="${p.id}" ${task?.project_id === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
         </select>
       </div>
+      <div class="form-group">
+        <label class="form-label">Прикрепленные документы (База Знаний)</label>
+        <div style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 8px;">
+          ${this.knowledge.length === 0 ? '<div style="font-size:12px; color:var(--text-muted);">База знаний пуста</div>' : ''}
+          ${this.knowledge.map(k => `
+            <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; cursor:pointer;">
+              <input type="checkbox" class="task-linked-note" value="${k.id}" ${(task?.linked_notes || []).includes(k.id) ? 'checked' : ''}>
+              <i data-lucide="file-text" style="width:14px;height:14px;color:var(--accent);"></i>
+              ${this.escHtml(k.title)}
+            </label>
+          `).join('')}
+        </div>
+      </div>
     `;
 
     const saveBtn = document.getElementById('task-modal-save');
@@ -551,7 +570,8 @@ const TasksPage = {
       deadline: document.getElementById('tf-deadline').value || null,
       next_step: document.getElementById('tf-next-step').value,
       description: document.getElementById('tf-description').value,
-      project_id: document.getElementById('tf-project').value || null
+      project_id: document.getElementById('tf-project').value || null,
+      linked_notes: Array.from(document.querySelectorAll('.task-linked-note:checked')).map(cb => cb.value)
     };
 
     try {
