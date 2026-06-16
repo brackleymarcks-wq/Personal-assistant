@@ -7,11 +7,10 @@ const KnowledgePage = {
   activeItemId: null,
   filters: { type: '', search: '', tag: '' },
 
-  TYPES: ['Промт', 'Инструмент', 'Статья', 'Кейс', 'Урок', 'Заметка', 'Документ'],
+  TYPES: ['Промт', 'Инструмент', 'Статья', 'Кейс', 'Урок', 'Заметка'],
   TYPE_ICONS: {
     'Промт': 'bot', 'Инструмент': 'wrench', 'Статья': 'newspaper',
-    'Кейс': 'briefcase', 'Урок': 'graduation-cap', 'Заметка': 'edit-3',
-    'Документ': 'file-text'
+    'Кейс': 'briefcase', 'Урок': 'graduation-cap', 'Заметка': 'edit-3'
   },
 
   render() {
