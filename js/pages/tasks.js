@@ -263,8 +263,11 @@ const TasksPage = {
       directionBadge = dirs.map(d => `<span class="task-project-badge" data-dir="${this.escHtml(d)}"><i data-lucide="tag" style="width:10px;height:10px;margin-right:2px;vertical-align:middle;"></i>${this.escHtml(d)}</span>`).join('');
     }
 
+    const statusColor = this.STATUS_COLORS[task.status] || '#64748b';
+    const borderStyle = `border: 1px solid ${statusColor}80; box-shadow: 0 2px 8px ${statusColor}26;`;
+
     return `
-      <div class="task-card card" data-id="${task.id}" style="${isDone ? 'opacity:0.7;' : ''} ${task.status === 'В работе' ? 'border: 1px solid var(--warning);' : ''}">
+      <div class="task-card card" data-id="${task.id}" style="${isDone ? 'opacity:0.7;' : ''} ${borderStyle}">
         <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${task.id}" data-done="${isDone}">
           <i data-lucide="check" style="width: 14px; height: 14px; opacity: ${isDone ? 1 : 0}"></i>
         </div>
@@ -410,8 +413,11 @@ const TasksPage = {
       directionBadge = dirs.map(d => `<span style="display:inline-block;background:var(--bg-hover);border:1px solid var(--border-color);padding:2px 6px;border-radius:var(--radius-full);font-size:10px;margin-bottom:6px;margin-right:4px;color:var(--text-secondary);"><i data-lucide="tag" style="width:10px;height:10px;vertical-align:middle;"></i> ${this.escHtml(d)}</span>`).join('');
     }
 
+    const statusColor = this.STATUS_COLORS[task.status] || '#64748b';
+    const borderStyle = `border: 1px solid ${statusColor}80; box-shadow: 0 2px 8px ${statusColor}26;`;
+
     return `
-      <div class="kanban-card task-card" data-id="${task.id}" style="position:relative; ${task.status === 'В работе' ? 'border: 1px solid var(--warning);' : ''}" draggable="true">
+      <div class="kanban-card task-card" data-id="${task.id}" style="position:relative; ${borderStyle}" draggable="true">
         ${projectBadge}
         ${directionBadge}
         <div class="kanban-card-title">${this.escHtml(task.title)}</div>
