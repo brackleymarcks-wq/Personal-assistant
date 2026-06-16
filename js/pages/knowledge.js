@@ -60,9 +60,7 @@ const KnowledgePage = {
     try {
       this.items = await DB.getKnowledge();
       this.renderSidebar();
-      if (this.items.length > 0 && !this.activeItemId) {
-        this.openItem(this.items[0].id);
-      } else if (this.activeItemId) {
+      if (this.activeItemId) {
         this.openItem(this.activeItemId);
       } else {
         document.getElementById('kb-editor-pane').innerHTML = this.renderEmptyEditor();
