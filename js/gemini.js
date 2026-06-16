@@ -4,7 +4,7 @@
 
 // Defaults, will be overridden by Config
 const DEFAULT_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'google/gemini-2.0-flash-lite-preview-02-05:free';
+const DEFAULT_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
 
 // Function declarations in OpenAI format
 const TOOLS = [

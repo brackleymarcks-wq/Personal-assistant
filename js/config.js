@@ -26,7 +26,7 @@ const Config = {
   get supabaseKey() { return this.get().supabaseKey || ''; },
   get geminiKey()   { return this.get().geminiKey || ''; }, // AI API Key
   get aiApiUrl()    { return this.get().aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions'; },
-  get aiModel()     { return this.get().aiModel || 'google/gemini-2.0-flash-lite-preview-02-05:free'; },
+  get aiModel()     { return this.get().aiModel || 'meta-llama/llama-3.3-70b-instruct:free'; },
   get userName()    { return this.get().userName || 'Пользователь'; },
   get userId()      { return this.get().userId || null; },
 };
