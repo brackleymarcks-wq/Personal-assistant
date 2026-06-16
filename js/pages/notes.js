@@ -225,57 +225,60 @@ const NotesPage = {
         </div>
       </div>
       
-      <div class="notes-editor-body" style="flex:1; padding: 40px 10%; display:flex; flex-direction:column; gap:24px; overflow-y:auto;">
-        <input type="text" id="editor-title" class="note-title-input" value="${this.esc(note.title)}" placeholder="Заголовок..." style="font-size:32px; font-weight:800; border:none; background:transparent; color:var(--text-primary); outline:none; width:100%;" />
-        
-        <div class="note-meta-bar" style="display:flex; gap:16px; padding:12px 16px; background:var(--bg-surface); border-radius:12px; border:1px solid var(--border-light);">
-          <div class="note-meta-item" style="display:flex; align-items:center; gap:8px;">
-            <i data-lucide="smile" style="width:16px;height:16px;color:var(--text-muted);"></i>
-            <select id="editor-mood" class="form-input" style="border:none;background:transparent;padding:0;height:auto;font-size:13px;font-weight:500;color:var(--text-primary);box-shadow:none;cursor:pointer;outline:none;">
-              <option value="📝" ${note.mood === '📝' ? 'selected' : ''}>📝 Нейтральное</option>
-              <option value="🚀" ${note.mood === '🚀' ? 'selected' : ''}>🚀 Продуктивное</option>
-              <option value="😊" ${note.mood === '😊' ? 'selected' : ''}>😊 Радостное</option>
-              <option value="🤔" ${note.mood === '🤔' ? 'selected' : ''}>🤔 Задумчивое</option>
-              <option value="😫" ${note.mood === '😫' ? 'selected' : ''}>😫 Усталое</option>
-              <option value="💡" ${note.mood === '💡' ? 'selected' : ''}>💡 Инсайт</option>
-            </select>
+      <div style="flex:1; display:flex; overflow:hidden;">
+        <!-- Left Pane: Note Content -->
+        <div class="notes-editor-body" style="flex:1; padding: 40px 5%; display:flex; flex-direction:column; gap:24px; overflow-y:auto;">
+          <input type="text" id="editor-title" class="note-title-input" value="${this.esc(note.title)}" placeholder="Заголовок..." style="font-size:32px; font-weight:800; border:none; background:transparent; color:var(--text-primary); outline:none; width:100%;" />
+          
+          <div class="note-meta-bar" style="display:flex; gap:16px; padding:12px 16px; background:var(--bg-surface); border-radius:12px; border:1px solid var(--border-light);">
+            <div class="note-meta-item" style="display:flex; align-items:center; gap:8px;">
+              <i data-lucide="smile" style="width:16px;height:16px;color:var(--text-muted);"></i>
+              <select id="editor-mood" class="form-input" style="border:none;background:transparent;padding:0;height:auto;font-size:13px;font-weight:500;color:var(--text-primary);box-shadow:none;cursor:pointer;outline:none;">
+                <option value="📝" ${note.mood === '📝' ? 'selected' : ''}>📝 Нейтральное</option>
+                <option value="🚀" ${note.mood === '🚀' ? 'selected' : ''}>🚀 Продуктивное</option>
+                <option value="😊" ${note.mood === '😊' ? 'selected' : ''}>😊 Радостное</option>
+                <option value="🤔" ${note.mood === '🤔' ? 'selected' : ''}>🤔 Задумчивое</option>
+                <option value="😫" ${note.mood === '😫' ? 'selected' : ''}>😫 Усталое</option>
+                <option value="💡" ${note.mood === '💡' ? 'selected' : ''}>💡 Инсайт</option>
+              </select>
+            </div>
+            <div style="width:1px; height:16px; background:var(--border-light); margin:auto 0;"></div>
+            <div class="note-meta-item" style="flex:1; display:flex; align-items:center; gap:8px;">
+              <i data-lucide="hash" style="width:16px;height:16px;color:var(--text-muted);"></i>
+              <input type="text" id="editor-tags" class="note-tags-input" value="${this.esc(tagsStr)}" placeholder="теги через запятую (проект, идея...)" style="border:none;background:transparent;font-size:13px;color:var(--text-primary);outline:none;width:100%;" />
+            </div>
           </div>
-          <div style="width:1px; height:16px; background:var(--border-light); margin:auto 0;"></div>
-          <div class="note-meta-item" style="flex:1; display:flex; align-items:center; gap:8px;">
-            <i data-lucide="hash" style="width:16px;height:16px;color:var(--text-muted);"></i>
-            <input type="text" id="editor-tags" class="note-tags-input" value="${this.esc(tagsStr)}" placeholder="теги через запятую (проект, идея...)" style="border:none;background:transparent;font-size:13px;color:var(--text-primary);outline:none;width:100%;" />
-          </div>
+          
+          <textarea id="editor-content" class="note-content-textarea" placeholder="Начните писать здесь... Нажмите Сохранить для записи." style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.6; color:var(--text-primary); outline:none; min-height: 200px;">${this.esc(textContent)}</textarea>
         </div>
         
-        <textarea id="editor-content" class="note-content-textarea" placeholder="Начните писать здесь... Нажмите Сохранить для записи." style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.6; color:var(--text-primary); outline:none; min-height: 200px;">${this.esc(textContent)}</textarea>
-        
-        <div id="ai-chat-container" style="display:flex; flex-direction:column; gap:12px; margin-top:16px;">
-          ${this.renderChatMessages(this.currentChatHistory)}
-        </div>
-        
-        <!-- AI Assistant Bar -->
-        <div class="note-ai-bar" style="margin-top: auto; display:flex; flex-direction:column; gap:8px; padding:16px; background: rgba(var(--accent-rgb), 0.05); border: 1px solid var(--accent-soft); border-radius: 12px; position:relative; flex-shrink: 0;">
-          <div id="ai-loading" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.7); backdrop-filter:blur(4px); border-radius:12px; z-index:10; align-items:center; justify-content:center; flex-direction:column; color:var(--accent);">
-            <i data-lucide="loader-2" class="spin" style="width:24px;height:24px;margin-bottom:8px;"></i>
-            <span style="font-size:13px;font-weight:500;">ИИ думает...</span>
-          </div>
-
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom: 4px;">
+        <!-- Right Pane: AI Chat -->
+        <div style="width: 350px; min-width: 300px; border-left: 1px solid var(--border-light); display:flex; flex-direction:column; background:var(--bg-surface);">
+          <div style="padding:16px; border-bottom:1px solid var(--border-light); font-weight:600; display:flex; align-items:center; gap:8px;">
             <i data-lucide="sparkles" style="width:16px;height:16px;color:var(--accent);"></i>
-            <span style="font-weight:600; font-size:13px; color:var(--text-primary);">AI-Ассистент</span>
-            <button class="btn btn-ghost" onclick="NotesPage.handleAIRewrite()" style="margin-left:auto; font-size:12px; padding:4px 10px; display:flex; align-items:center; gap:4px; color:var(--accent); background:rgba(var(--accent-rgb),0.1);" title="Превратить черновик в красивый текст">
-              <i data-lucide="wand-2" style="width:14px;height:14px;"></i> Причесать текст
+            <span style="font-size:14px;">AI-Ассистент</span>
+            <button class="btn btn-ghost" onclick="NotesPage.handleAIRewrite()" style="margin-left:auto; font-size:12px; padding:6px 12px; display:flex; align-items:center; gap:4px; color:var(--accent); background:rgba(var(--accent-rgb),0.1);" title="Превратить черновик в красивый текст">
+              <i data-lucide="wand-2" style="width:14px;height:14px;"></i> Причесать
             </button>
           </div>
           
-          <div style="display:flex; gap:8px;">
-            <input type="text" id="ai-prompt-input" placeholder="Спросить совет или идею по заметке..." style="flex:1; padding:10px 16px; border-radius:8px; border:1px solid var(--border-light); background:var(--bg-default); font-size:13px; outline:none;" onkeypress="if(event.key==='Enter') NotesPage.handleAIAdvice()" />
-            <button class="btn btn-primary" onclick="NotesPage.handleAIAdvice()" style="padding:0 16px; border-radius:8px;" title="Отправить">
-              <i data-lucide="send" style="width:16px;height:16px;"></i>
-            </button>
+          <div id="ai-chat-container" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px;">
+            ${this.renderChatMessages(this.currentChatHistory)}
+          </div>
+          
+          <div class="note-ai-bar" style="padding:16px; border-top: 1px solid var(--border-light); background:var(--bg-default); position:relative;">
+            <div id="ai-loading" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.7); backdrop-filter:blur(4px); z-index:10; align-items:center; justify-content:center; flex-direction:column; color:var(--accent);">
+              <i data-lucide="loader-2" class="spin" style="width:24px;height:24px;margin-bottom:8px;"></i>
+            </div>
+
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="ai-prompt-input" placeholder="Спросить совет..." style="flex:1; padding:10px 16px; border-radius:8px; border:1px solid var(--border-light); background:var(--bg-surface); font-size:13px; outline:none;" onkeypress="if(event.key==='Enter') NotesPage.handleAIAdvice()" />
+              <button class="btn btn-primary" onclick="NotesPage.handleAIAdvice()" style="padding:0 16px; border-radius:8px;" title="Отправить">
+                <i data-lucide="send" style="width:16px;height:16px;"></i>
+              </button>
+            </div>
           </div>
         </div>
-
       </div>
     `;
     
@@ -383,8 +386,8 @@ const NotesPage = {
       promptEl.value = '';
       await this.saveActiveNote(true);
       
-      const bodyEl = document.querySelector('.notes-editor-body');
-      if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
+      const chatContainerEl = document.getElementById('ai-chat-container');
+      if (chatContainerEl) chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
       
       UI.toast('Ответ ИИ добавлен', 'success');
     } catch (e) {
