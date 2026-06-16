@@ -392,6 +392,15 @@ const KnowledgePage = {
                 UI.toast('Ошибка при загрузке картинки', 'error');
               }
             }
+          },
+          events: {
+            change: () => {
+              const gallery = document.getElementById('kb-template-gallery');
+              if (gallery && KnowledgePage.editorInstance) {
+                const content = KnowledgePage.editorInstance.getMarkdown().trim();
+                if (content.length > 0) gallery.style.display = 'none';
+              }
+            }
           }
         });
         
