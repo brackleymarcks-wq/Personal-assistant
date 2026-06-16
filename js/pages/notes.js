@@ -164,7 +164,10 @@ const NotesPage = {
     }
   },
 
-  closeEditor() {
+  async closeEditor() {
+    if (this.activeNoteId) {
+      await this.saveActiveNote(true); // silent save
+    }
     this.activeNoteId = null;
     document.getElementById('notes-editor-pane').innerHTML = this.renderEmptyEditor();
     if (window.lucide) window.lucide.createIcons();
@@ -235,18 +238,22 @@ const NotesPage = {
     }
   },
 
-  async saveActiveNote() {
+  async saveActiveNote(silent = false) {
     if (!this.activeNoteId) return;
     
-    const title = document.getElementById('editor-title').value.trim() || 'Без заголовка';
-    const content = document.getElementById('editor-content').value.trim();
+    const titleEl = document.getElementById('editor-title');
+    const contentEl = document.getElementById('editor-content');
+    if (!titleEl || !contentEl) return;
+
+    const title = titleEl.value.trim() || 'Без заголовка';
+    const content = contentEl.value.trim();
     const mood = document.getElementById('editor-mood').value;
     const tagsStr = document.getElementById('editor-tags').value;
     const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t);
 
     try {
       await DB.updateNote(this.activeNoteId, { title, content, mood, tags });
-      UI.toast('Сохранено', 'success');
+      if (!silent) UI.toast('Сохранено', 'success');
       // We don't want to lose cursor position if we do a full reload,
       // so we just update the local data and sidebar silently
       const noteIdx = this.notes.findIndex(n => n.id === this.activeNoteId);
