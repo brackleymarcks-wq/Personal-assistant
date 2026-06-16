@@ -56,7 +56,8 @@ async function getTasks(filters = {}) {
   if (filters.status) q = q.eq('status', filters.status);
   if (filters.direction) q = q.eq('direction', filters.direction);
   if (filters.priority) q = q.eq('priority', filters.priority);
-  const { data } = await q;
+  const { data, error } = await q;
+  if (error) { console.error('getTasks error:', error); throw error; }
   return data || [];
 }
 
@@ -73,27 +74,30 @@ function getMinskDateString(daysOffset = 0) {
 
 async function getTasksDueToday() {
   const today = getMinskDateString(0);
-  const { data } = await db.from('tasks').select('*')
+  const { data, error } = await db.from('tasks').select('*')
     .eq('deadline', today)
     .neq('status', 'Готово').neq('status', 'Отменена');
+  if (error) { console.error('getTasksDueToday error:', error); throw error; }
   return data || [];
 }
 
 async function getOverdueTasks() {
   const today = getMinskDateString(0);
-  const { data } = await db.from('tasks').select('*')
+  const { data, error } = await db.from('tasks').select('*')
     .lt('deadline', today)
     .neq('status', 'Готово').neq('status', 'Отменена');
+  if (error) { console.error('getOverdueTasks error:', error); throw error; }
   return data || [];
 }
 
 async function getUpcomingDeadlines(days = 3) {
   const today = getMinskDateString(0);
   const future = getMinskDateString(days);
-  const { data } = await db.from('tasks').select('*')
+  const { data, error } = await db.from('tasks').select('*')
     .gt('deadline', today)
     .lte('deadline', future)
     .neq('status', 'Готово').neq('status', 'Отменена');
+  if (error) { console.error('getUpcomingDeadlines error:', error); throw error; }
   return data || [];
 }
 
