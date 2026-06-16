@@ -225,6 +225,30 @@ const NotesPage = {
         </div>
         
         <textarea id="editor-content" class="note-content-textarea" placeholder="Начните писать здесь... Нажмите Сохранить для записи." style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.6; color:var(--text-primary); outline:none;">${this.esc(note.content || '')}</textarea>
+        
+        <!-- AI Assistant Bar -->
+        <div class="note-ai-bar" style="margin-top: auto; display:flex; flex-direction:column; gap:8px; padding:16px; background: rgba(var(--accent-rgb), 0.05); border: 1px solid var(--accent-soft); border-radius: 12px; position:relative; flex-shrink: 0;">
+          <div id="ai-loading" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.7); backdrop-filter:blur(4px); border-radius:12px; z-index:10; align-items:center; justify-content:center; flex-direction:column; color:var(--accent);">
+            <i data-lucide="loader-2" class="spin" style="width:24px;height:24px;margin-bottom:8px;"></i>
+            <span style="font-size:13px;font-weight:500;">ИИ думает...</span>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom: 4px;">
+            <i data-lucide="sparkles" style="width:16px;height:16px;color:var(--accent);"></i>
+            <span style="font-weight:600; font-size:13px; color:var(--text-primary);">AI-Ассистент</span>
+            <button class="btn btn-ghost" onclick="NotesPage.handleAIRewrite()" style="margin-left:auto; font-size:12px; padding:4px 10px; display:flex; align-items:center; gap:4px; color:var(--accent); background:rgba(var(--accent-rgb),0.1);" title="Превратить черновик в красивый текст">
+              <i data-lucide="wand-2" style="width:14px;height:14px;"></i> Причесать текст
+            </button>
+          </div>
+          
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="ai-prompt-input" placeholder="Спросить совет или идею по заметке..." style="flex:1; padding:10px 16px; border-radius:8px; border:1px solid var(--border-light); background:var(--bg-default); font-size:13px; outline:none;" onkeypress="if(event.key==='Enter') NotesPage.handleAIAdvice()" />
+            <button class="btn btn-primary" onclick="NotesPage.handleAIAdvice()" style="padding:0 16px; border-radius:8px;" title="Отправить">
+              <i data-lucide="send" style="width:16px;height:16px;"></i>
+            </button>
+          </div>
+        </div>
+
       </div>
     `;
     
@@ -254,8 +278,7 @@ const NotesPage = {
     try {
       await DB.updateNote(this.activeNoteId, { title, content, mood, tags });
       if (!silent) UI.toast('Сохранено', 'success');
-      // We don't want to lose cursor position if we do a full reload,
-      // so we just update the local data and sidebar silently
+      
       const noteIdx = this.notes.findIndex(n => n.id === this.activeNoteId);
       if (noteIdx >= 0) {
         this.notes[noteIdx] = { 
@@ -263,20 +286,72 @@ const NotesPage = {
           title, content, mood, tags, 
           updated_at: new Date().toISOString() 
         };
-        // Re-sort notes by updated_at descending
         this.notes.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
         this.renderSidebar();
         
-        // Update header time
-        const timeEl = document.querySelector('.notes-editor-header div:first-child');
-        if (timeEl) {
+        const timeEl = document.querySelector('.notes-editor-header div:last-child');
+        if (timeEl && timeEl.innerHTML.includes('Изменено')) {
           timeEl.innerHTML = `<i data-lucide="clock" style="width:14px;height:14px;"></i> Изменено: только что`;
           if (window.lucide) window.lucide.createIcons();
         }
       }
     } catch (e) {
       console.error(e);
-      UI.toast('Ошибка при сохранении', 'error');
+      if (!silent) UI.toast('Ошибка при сохранении', 'error');
+    }
+  },
+
+  async handleAIRewrite() {
+    const contentEl = document.getElementById('editor-content');
+    if (!contentEl) return;
+    const content = contentEl.value.trim();
+    if (!content) {
+      UI.toast('Напишите что-нибудь, чтобы ИИ мог улучшить текст', 'warning');
+      return;
+    }
+
+    const loader = document.getElementById('ai-loading');
+    if (loader) loader.style.display = 'flex';
+
+    try {
+      const rewritten = await Gemini.assistWithNote(content, '', 'rewrite');
+      contentEl.value = rewritten;
+      await this.saveActiveNote(true);
+      UI.toast('Текст успешно улучшен!', 'success');
+    } catch (e) {
+      console.error(e);
+      UI.toast('Ошибка ИИ: ' + e.message, 'error');
+    } finally {
+      if (loader) loader.style.display = 'none';
+    }
+  },
+
+  async handleAIAdvice() {
+    const promptEl = document.getElementById('ai-prompt-input');
+    const contentEl = document.getElementById('editor-content');
+    if (!promptEl || !contentEl) return;
+
+    const prompt = promptEl.value.trim();
+    const content = contentEl.value.trim();
+    if (!prompt) return;
+
+    const loader = document.getElementById('ai-loading');
+    if (loader) loader.style.display = 'flex';
+
+    try {
+      const advice = await Gemini.assistWithNote(content, prompt, 'advice');
+      const newText = content + (content ? '\\n\\n' : '') + `--- 💡 Ответ ИИ на: "${prompt}" ---\\n${advice}\\n`;
+      contentEl.value = newText;
+      promptEl.value = '';
+      await this.saveActiveNote(true);
+      
+      contentEl.scrollTop = contentEl.scrollHeight;
+      UI.toast('Ответ ИИ добавлен в заметку', 'success');
+    } catch (e) {
+      console.error(e);
+      UI.toast('Ошибка ИИ: ' + e.message, 'error');
+    } finally {
+      if (loader) loader.style.display = 'none';
     }
   },
 

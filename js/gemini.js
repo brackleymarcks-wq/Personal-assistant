@@ -611,5 +611,54 @@ const Gemini = {
     }
     
     return JSON.parse(jsonStr);
+  },
+
+  async assistWithNote(content, userPrompt, type) {
+    const apiKey = Config.geminiKey;
+    if (!apiKey) throw new Error('API ключ не настроен (нужен для ИИ)');
+
+    let systemPrompt = '';
+    
+    if (type === 'rewrite') {
+      systemPrompt = `Ты — эксперт-редактор. Твоя задача — взять черновик пользователя и переписать его в красивый, связный и структурированный текст. 
+Сохрани смысл, но сделай текст профессиональным и легким для чтения. Форматируй текст абзацами и списками, если нужно.
+Верни ТОЛЬКО улучшенный текст, без вводных фраз вроде "Вот улучшенный вариант:".`;
+    } else {
+      systemPrompt = `Ты — личный наставник и ИИ-ассистент. Пользователь показывает тебе свои заметки/идеи и задает вопрос или просит совета. 
+Твоя задача — проанализировать текст заметки и дать полезный, конструктивный и практичный ответ или совет на основе запроса пользователя.
+Отвечай лаконично, структурированно, без лишней воды.`;
+    }
+
+    const messages = [];
+    if (type === 'rewrite') {
+      messages.push({ role: 'user', content: `Текст для улучшения:\n\n${content}` });
+    } else {
+      messages.push({ role: 'user', content: `Вот моя текущая заметка/идея:\n\n${content}\n\n--- КОНЕЦ ЗАМЕТКИ ---\n\nМой запрос/вопрос: ${userPrompt}` });
+    }
+
+    const res = await fetch(GROQ_API, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...messages
+        ],
+        temperature: 0.7,
+        max_tokens: 2048
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || `API error ${res.status}`);
+    }
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || '';
   }
 };
