@@ -158,13 +158,6 @@ const TasksPage = {
     }
     
     if (window.lucide) window.lucide.createIcons();
-
-    // Direction pills toggle logic
-    document.querySelectorAll('#tf-directions-container .direction-pill').forEach(pill => {
-      pill.addEventListener('click', () => {
-        pill.classList.toggle('active');
-      });
-    });
   },
 
   renderList(tasks) {
@@ -518,6 +511,13 @@ const TasksPage = {
     closeBtn.onclick = close;
     modal.onclick = (e) => { if (e.target === modal) close(); };
     deleteBtn.onclick = () => this.deleteTask(task?.id);
+
+    // Direction pills toggle logic
+    document.querySelectorAll('#tf-directions-container .direction-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        pill.classList.toggle('active');
+      });
+    });
 
     document.getElementById('tf-title').focus();
     modal.classList.remove('hidden');
