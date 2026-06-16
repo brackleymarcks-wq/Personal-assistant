@@ -52,7 +52,7 @@ async function getUser() {
 }
 
 async function getTasks(filters = {}) {
-  let q = db.from('tasks').select('*').not('status', 'in', '("Готово","Отменена")').order('created_at', { ascending: false });
+  let q = db.from('tasks').select('*').neq('status', 'Готово').neq('status', 'Отменена').order('created_at', { ascending: false });
   if (filters.status) q = q.eq('status', filters.status);
   if (filters.direction) q = q.eq('direction', filters.direction);
   if (filters.priority) q = q.eq('priority', filters.priority);
@@ -60,30 +60,40 @@ async function getTasks(filters = {}) {
   return data || [];
 }
 
+function getMinskDateString(daysOffset = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + daysOffset);
+  const ms = date.toLocaleString('en-US', { timeZone: 'Europe/Minsk' });
+  const minskDate = new Date(ms);
+  const y = minskDate.getFullYear();
+  const m = String(minskDate.getMonth() + 1).padStart(2, '0');
+  const d = String(minskDate.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 async function getTasksDueToday() {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+  const today = getMinskDateString(0);
   const { data } = await db.from('tasks').select('*')
     .eq('deadline', today)
-    .not('status', 'in', '("Готово","Отменена")');
+    .neq('status', 'Готово').neq('status', 'Отменена');
   return data || [];
 }
 
 async function getOverdueTasks() {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+  const today = getMinskDateString(0);
   const { data } = await db.from('tasks').select('*')
     .lt('deadline', today)
-    .not('status', 'in', '("Готово","Отменена")');
+    .neq('status', 'Готово').neq('status', 'Отменена');
   return data || [];
 }
 
 async function getUpcomingDeadlines(days = 3) {
-  const today = new Date();
-  const future = new Date();
-  future.setDate(today.getDate() + days);
+  const today = getMinskDateString(0);
+  const future = getMinskDateString(days);
   const { data } = await db.from('tasks').select('*')
-    .gt('deadline', today.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' }))
-    .lte('deadline', future.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' }))
-    .not('status', 'in', '("Готово","Отменена")');
+    .gt('deadline', today)
+    .lte('deadline', future)
+    .neq('status', 'Готово').neq('status', 'Отменена');
   return data || [];
 }
 

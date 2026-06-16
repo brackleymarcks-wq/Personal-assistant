@@ -527,13 +527,22 @@ const DB = {
   },
 
   // ---- HELPERS ----
+  getMinskDateString(daysOffset = 0) {
+    const date = new Date();
+    date.setDate(date.getDate() + daysOffset);
+    const ms = date.toLocaleString('en-US', { timeZone: 'Europe/Minsk' });
+    const minskDate = new Date(ms);
+    const y = minskDate.getFullYear();
+    const m = String(minskDate.getMonth() + 1).padStart(2, '0');
+    const d = String(minskDate.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  },
+
   async getTasksForContext() {
     const tasks = await this.getTasks({});
     const active = tasks.filter(t => !['Готово', 'Отменена'].includes(t.status));
-    const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
-    const future = new Date();
-    future.setDate(future.getDate() + 7);
-    const futureStr = future.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+    const todayStr = this.getMinskDateString(0);
+    const futureStr = this.getMinskDateString(7);
     
     const overdue = active.filter(t => t.deadline && t.deadline < todayStr);
     const today = active.filter(t => t.deadline === todayStr);
@@ -544,7 +553,7 @@ const DB = {
   },
 
   async getTodayEvents() {
-    const minskDateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+    const minskDateStr = this.getMinskDateString(0);
     const start = new Date(minskDateStr + 'T00:00:00.000+03:00').toISOString();
     const end = new Date(minskDateStr + 'T23:59:59.999+03:00').toISOString();
     return this.getEvents(start, end);
