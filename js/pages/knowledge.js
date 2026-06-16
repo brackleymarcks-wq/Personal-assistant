@@ -282,7 +282,7 @@ const KnowledgePage = {
             <div id="kb-editor-toastui" style="flex:1; width:100%;"></div>
             
             ${item.isNew && !item.content ? `
-              <div id="kb-template-gallery" style="position:absolute; top:60px; left:60px; right:60px; z-index:10; background:var(--bg-body); padding:20px; border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); border:1px solid var(--border-light);">
+              <div id="kb-template-gallery" style="position:absolute; top:60px; left:60px; right:60px; z-index:9999; pointer-events:auto; background:var(--bg-body); padding:20px; border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); border:1px solid var(--border-light);">
                 <div style="font-size:14px; font-weight:600; color:var(--text-muted); margin-bottom:16px;">Начать с пустого листа или выбрать шаблон:</div>
                 <div style="display:flex; gap:16px; flex-wrap:wrap;">
                   <button class="btn btn-secondary" onclick="KnowledgePage.applyTemplate('meeting', 'Встреча / Синхронизация')" style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; width:130px; height:110px; border:1px solid var(--border-light); background:var(--bg-surface);">
@@ -514,11 +514,11 @@ const KnowledgePage = {
 
   applyTemplate(type, defaultTitle) {
     const templates = {
-      meeting: "# Заметки со встречи\\n\\n**Дата:** \\n**Участники:** \\n\\n## Повестка\\n- \\n\\n## Решения\\n- \\n\\n## Следующие шаги\\n- [ ] ",
-      idea: "# Новая идея\\n\\n**Суть в одном предложении:** \\n\\n## Проблема, которую мы решаем\\n\\n## Предлагаемое решение\\n\\n## Что нужно для старта\\n- \\n",
-      article: "# Черновик статьи\\n\\n**Тема / Заголовок:** \\n**Целевая аудитория:** \\n\\n## Введение\\n\\n## Основная часть\\n\\n## Заключение\\n",
-      course: "# План урока\\n\\n**Тема:** \\n**Цель урока (что должен уметь студент в конце):** \\n\\n## Теоретический блок\\n\\n## Практическое задание\\n\\n## Домашнее задание\\n",
-      prompt: "# Структура Промпта\\n\\n**Контекст / Роль:** Ты эксперт в...\\n\\n**Задача:** \\n\\n**Формат ответа:** \\n\\n**Ограничения:** \\n"
+      meeting: "# Заметки со встречи\n\n**Дата:** \n**Участники:** \n\n## Повестка\n- \n\n## Решения\n- \n\n## Следующие шаги\n- [ ] ",
+      idea: "# Новая идея\n\n**Суть в одном предложении:** \n\n## Проблема, которую мы решаем\n\n## Предлагаемое решение\n\n## Что нужно для старта\n- \n",
+      article: "# Черновик статьи\n\n**Тема / Заголовок:** \n**Целевая аудитория:** \n\n## Введение\n\n## Основная часть\n\n## Заключение\n",
+      course: "# План урока\n\n**Тема:** \n**Цель урока (что должен уметь студент в конце):** \n\n## Теоретический блок\n\n## Практическое задание\n\n## Домашнее задание\n",
+      prompt: "# Структура Промпта\n\n**Контекст / Роль:** Ты эксперт в...\n\n**Задача:** \n\n**Формат ответа:** \n\n**Ограничения:** \n"
     };
     
     if (this.editorInstance && templates[type]) {
