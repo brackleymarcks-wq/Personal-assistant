@@ -272,6 +272,10 @@ const KnowledgePage = {
             <i data-lucide="code" style="width:14px;height:14px;"></i>
           </button>
           <div style="flex:1;"></div>
+          <button class="btn btn-icon btn-ghost" onclick="KnowledgePage.downloadActiveItem()" title="Скачать документ">
+            <i data-lucide="download" style="width:14px;height:14px;"></i>
+          </button>
+          <div style="width:1px; background:var(--border-light); margin:4px 0;"></div>
           <button class="btn btn-icon btn-ghost" onclick="document.execCommand('undo')" title="Назад (Отменить)">
             <i data-lucide="undo" style="width:14px;height:14px;"></i>
           </button>
@@ -280,7 +284,7 @@ const KnowledgePage = {
           </button>
         </div>
 
-        <textarea id="kb-editor-content" placeholder="Напишите текст или перетащите сюда файл (TXT, Markdown, CSV, JS...)" style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.7; color:var(--text-primary); outline:none; min-height: 400px; font-family:var(--font-mono); margin-top:8px;">${this.esc(item.content || '')}</textarea>
+        <textarea id="kb-editor-content" placeholder="Напишите текст или перетащите сюда файл (TXT, Markdown, CSV, JS...)" style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.7; color:var(--text-primary); outline:none; min-height: 400px; font-family:inherit; margin-top:8px;">${this.esc(item.content || '')}</textarea>
       </div>
     `;
     
@@ -487,6 +491,41 @@ const KnowledgePage = {
     }
     
     textarea.setSelectionRange(start + prefix.length, end + prefix.length);
+  },
+
+  downloadActiveItem() {
+    if (!this.activeItemId) return;
+    const titleEl = document.getElementById('kb-editor-title');
+    const contentEl = document.getElementById('kb-editor-content');
+    if (!titleEl || !contentEl) return;
+
+    const title = titleEl.value.trim() || 'document';
+    const content = contentEl.value;
+    const type = document.getElementById('kb-editor-type').value;
+    
+    let ext = '.md';
+    if (type === 'Промт' || type === 'Инструмент') ext = '.txt';
+    // If title already has an extension, don't append another one (unless it's docx/xlsx which we extracted as text)
+    if (title.includes('.') && !title.endsWith('.docx') && !title.endsWith('.xlsx')) {
+      ext = '';
+    }
+    
+    let filename = title;
+    if (filename.endsWith('.docx') || filename.endsWith('.xlsx')) {
+      filename = filename.replace(/\.(docx|xlsx)$/i, ext);
+    } else {
+      filename += ext;
+    }
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 
   esc(str) {
