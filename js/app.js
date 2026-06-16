@@ -51,20 +51,20 @@ const UI = {
 
 const PAGES = {
   dashboard: { module: () => DashboardPage, label: 'Дашборд' },
-  inbox:     { module: () => InboxPage,     label: 'Входящие' },
-  tasks:     { module: () => TasksPage,     label: 'Задачи' },
-  projects:  { module: () => ProjectsPage,  label: 'Проекты' },
-  calendar:  { module: () => CalendarPage,  label: 'Календарь' },
-  habits:    { module: () => HabitsPage,    label: 'Привычки' },
-  goals:     { module: () => GoalsPage,     label: 'Цели' },
+  inbox: { module: () => InboxPage, label: 'Входящие' },
+  tasks: { module: () => TasksPage, label: 'Задачи' },
+  projects: { module: () => ProjectsPage, label: 'Проекты' },
+  calendar: { module: () => CalendarPage, label: 'Календарь' },
+  habits: { module: () => HabitsPage, label: 'Привычки' },
+  goals: { module: () => GoalsPage, label: 'Цели' },
   knowledge: { module: () => KnowledgePage, label: 'База знаний' },
-  chat:      { module: () => ChatPage,      label: 'Чат' },
-  pomodoro:  { module: () => PomodoroPage,  label: 'Помодоро' },
-  gantt:     { module: () => GanttPage,     label: 'Гант' },
-  notes:     { module: () => NotesPage,     label: 'Заметки' },
-  finances:  { module: () => FinancesPage,  label: 'Финансы' },
+  chat: { module: () => ChatPage, label: 'Чат' },
+  pomodoro: { module: () => PomodoroPage, label: 'Помодоро' },
+  gantt: { module: () => GanttPage, label: 'Гант' },
+  notes: { module: () => NotesPage, label: 'Заметки' },
+  finances: { module: () => FinancesPage, label: 'Финансы' },
   analytics: { module: () => AnalyticsPage, label: 'Аналитика' },
-  archive:   { module: () => ArchivePage,   label: 'Архив задач' }
+  archive: { module: () => ArchivePage, label: 'Архив задач' }
 };
 
 const App = {
@@ -114,9 +114,9 @@ const App = {
     document.getElementById('main-layout').classList.add('hidden');
 
     document.getElementById('setup-save-btn').addEventListener('click', async () => {
-      const url  = document.getElementById('setup-supabase-url').value.trim();
-      const key  = document.getElementById('setup-supabase-key').value.trim();
-      const gem  = document.getElementById('setup-gemini-key').value.trim();
+      const url = document.getElementById('setup-supabase-url').value.trim();
+      const key = document.getElementById('setup-supabase-key').value.trim();
+      const gem = document.getElementById('setup-gemini-key').value.trim();
       const name = document.getElementById('setup-name').value.trim() || 'Пользователь';
       const errEl = document.getElementById('setup-error');
 
@@ -174,7 +174,7 @@ const App = {
     this.initThemeToggle();
     this.applyTheme();
     this.updateIcons();
-    
+
     // Start first page
     await this.navigateTo(this.currentPage);
 
@@ -230,7 +230,7 @@ const App = {
 
   initSidebar() {
     const sidebar = document.getElementById('sidebar');
-    const toggle  = document.getElementById('sidebar-toggle');
+    const toggle = document.getElementById('sidebar-toggle');
     const collapsed = localStorage.getItem('sidebar_collapsed') === 'true';
     if (collapsed) sidebar.classList.add('collapsed');
 
@@ -274,7 +274,7 @@ const App = {
         badge.style.display = urgent > 0 ? '' : 'none';
         badge.textContent = urgent;
       }
-    } catch {}
+    } catch { }
   },
 
   startReminderCheck() {
@@ -289,7 +289,7 @@ const App = {
         UI.toast(`⏰ ${r.message}`, 'warning', 8000);
         await DB.markReminderSent(r.id);
       }
-    } catch {}
+    } catch { }
   },
 
   updateIcons() {

@@ -183,6 +183,29 @@
       </div>
     </div>
 
+    <!-- Global Floating Chat Widget -->
+    <button id="global-chat-fab" class="global-chat-fab" title="AI-Ассистент">
+      <i data-lucide="bot" style="width: 28px; height: 28px;"></i>
+    </button>
+    <div id="global-chat-panel" class="global-chat-panel">
+      <div class="global-chat-header">
+        <div class="global-chat-title">
+          <i data-lucide="sparkles" style="width:16px;height:16px;color:var(--accent);"></i>
+          <span>ИИ-Ассистент</span>
+        </div>
+        <button id="global-chat-close" class="global-chat-close">
+          <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+        </button>
+      </div>
+      <div id="global-chat-messages" class="global-chat-messages"></div>
+      <div class="global-chat-input-area">
+        <textarea id="global-chat-input" placeholder="Спроси меня о чём угодно... (учитываю открытую заметку)"></textarea>
+        <button id="global-chat-send" class="global-chat-send" disabled>
+          <i data-lucide="send" style="width: 18px; height: 18px;"></i>
+        </button>
+      </div>
+    </div>
+
     <!-- Toast notifications -->
     <div id="toast-container" class="toast-container"></div>
   </div>
@@ -233,6 +256,7 @@
 
   <!-- Global UI Components -->
   <script src="js/entitySelect.js"></script>
+  <script src="js/chatWidget.js"></script>
 
   <!-- Main App -->
   <script src="js/commandPalette.js"></script>
