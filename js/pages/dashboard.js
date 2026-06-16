@@ -122,6 +122,7 @@ const DashboardPage = {
             <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-sm);border-radius:var(--radius-md);background:${sc}0a;border:1px solid ${sc}80;box-shadow:0 2px 8px ${sc}26;cursor:pointer" onclick="App.navigateTo('tasks')">
               <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'}"></div>
               <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.esc(t.title)}</span>
+              <span style="font-size:10px;padding:2px 6px;border-radius:10px;background:${sc}1a;color:${sc};border:1px solid ${sc}40;white-space:nowrap;display:inline-flex;align-items:center;gap:3px;"><div style="width:4px;height:4px;border-radius:50%;background:${sc}"></div>${this.esc(t.status)}</span>
               <span style="font-size:11px;color:${t.deadline < new Date().toISOString().split('T')[0] ? 'var(--danger)' : 'var(--text-muted)'}">${t.deadline ? this.shortDate(t.deadline) : ''}</span>
             </div>
             `;

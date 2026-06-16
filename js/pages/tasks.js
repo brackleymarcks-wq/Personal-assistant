@@ -278,6 +278,10 @@ const TasksPage = {
             ${projectBadge}
             ${directionBadge}
             <span>${prioIcons[task.priority] || ''} ${task.priority || ''}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:11px;background:${statusColor}1a;color:${statusColor};border:1px solid ${statusColor}40;margin-left:4px;">
+               <div style="width:6px;height:6px;border-radius:50%;background:${statusColor}"></div>
+               ${this.escHtml(task.status)}
+            </span>
           </div>
         </div>
         <div class="task-actions-overlay">
@@ -422,8 +426,14 @@ const TasksPage = {
         ${directionBadge}
         <div class="kanban-card-title">${this.escHtml(task.title)}</div>
         ${task.next_step ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><i data-lucide="corner-down-right" style="width:12px;height:12px;vertical-align:middle;"></i> ${this.escHtml(task.next_step)}</div>` : ''}
-        <div class="kanban-card-meta" style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:11px;">${prioIcons[task.priority] || ''} ${task.priority || ''}</span>
+        <div class="kanban-card-meta" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:11px;">${prioIcons[task.priority] || ''} ${task.priority || ''}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:12px;font-size:10px;background:${statusColor}1a;color:${statusColor};border:1px solid ${statusColor}40;">
+               <div style="width:4px;height:4px;border-radius:50%;background:${statusColor}"></div>
+               ${this.escHtml(task.status)}
+            </span>
+          </div>
           ${deadline ? `<span style="font-size:11px;color:${isOverdue ? 'var(--danger)' : 'var(--text-muted)'};display:flex;align-items:center;gap:2px;">
             <i data-lucide="calendar" style="width:10px;height:10px;"></i>
             ${deadline.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}

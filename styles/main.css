@@ -4116,17 +4116,17 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
   background: var(--glass-bg) !important;
   backdrop-filter: blur(24px) saturate(200%) !important;
   -webkit-backdrop-filter: blur(24px) saturate(200%) !important;
-  border: 1px solid var(--glass-border) !important;
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg) !important;
   padding: var(--space-lg) !important;
-  box-shadow: var(--shadow-sm) !important;
+  box-shadow: var(--shadow-sm);
   transition: all var(--transition-spring) !important;
 }
 
 .tasks-group .task-card:hover {
   transform: translateY(-3px) !important;
-  box-shadow: var(--shadow-md), var(--shadow-glow) !important;
-  border-color: var(--accent-soft) !important;
+  box-shadow: var(--shadow-md), var(--shadow-glow);
+  border-color: var(--accent-soft);
   background: var(--glass-bg-heavy) !important;
 }
 
