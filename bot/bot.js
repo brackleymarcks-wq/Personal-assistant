@@ -314,6 +314,9 @@ async function askAI(userMessage, context = '') {
   const messages = history.map(m => ({ role: m.role, content: m.content }));
   messages.push({ role: 'user', content: userMessage });
 
+  // Сразу отправляем статус "Печатает...", чтобы не казалось, что бот завис
+  bot.sendChatAction(CHAT_ID, 'typing').catch(() => {});
+
   let response = await callAPI(systemInstruction, messages);
   let maxIter = 5;
 
