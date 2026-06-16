@@ -95,16 +95,61 @@ const ArchivePage = {
     const updatedDate = new Date(task.updated_at || task.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
     const deadlineStr = task.deadline ? new Date(task.deadline).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
     
+    const prioColor = task.priority === 'Высокий' ? 'var(--danger)' : (task.priority === 'Средний' ? 'var(--warning)' : 'var(--success)');
+    const statusIcon = task.status === 'Готово' ? 'check-circle-2' : 'x-circle';
+    const statusColor = task.status === 'Готово' ? 'var(--success)' : 'var(--text-muted)';
+    
     let detailsHtml = `
       <div class="archive-card-details" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color); font-size: 13px;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-          <div><span style="color:var(--text-muted)">Статус:</span> <strong>${task.status}</strong></div>
-          <div><span style="color:var(--text-muted)">Приоритет:</span> <strong>${task.priority}</strong></div>
-          <div><span style="color:var(--text-muted)">Дедлайн:</span> <strong>${deadlineStr}</strong></div>
-          <div><span style="color:var(--text-muted)">Создана:</span> <strong>${createdDate}</strong></div>
+        
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;">
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 6px; display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="${statusIcon}" style="width: 14px; height: 14px; color: ${statusColor};"></i>
+            <span style="color:var(--text-muted); font-size: 11px;">Статус:</span> 
+            <strong>${task.status}</strong>
+          </div>
+          
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 6px; display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="flag" style="width: 14px; height: 14px; color: ${prioColor};"></i>
+            <span style="color:var(--text-muted); font-size: 11px;">Приоритет:</span> 
+            <strong>${task.priority || 'Средний'}</strong>
+          </div>
+
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 6px; display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="calendar-off" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+            <span style="color:var(--text-muted); font-size: 11px;">Дедлайн:</span> 
+            <strong>${deadlineStr}</strong>
+          </div>
+
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 6px; display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="calendar-plus" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+            <span style="color:var(--text-muted); font-size: 11px;">Создана:</span> 
+            <strong>${createdDate}</strong>
+          </div>
         </div>
-        ${task.next_step ? `<div style="margin-bottom: 12px;"><strong style="color:var(--text-muted)">Следующий шаг:</strong><br>${this.escHtml(task.next_step)}</div>` : ''}
-        ${task.description ? `<div><strong style="color:var(--text-muted)">Комментарии / Заметки:</strong><br><div style="margin-top:4px; padding: 12px; background: var(--bg-primary); border-radius: 8px; white-space: pre-wrap; color: var(--text-secondary); border: 1px solid var(--border-color);">${this.escHtml(task.description)}</div></div>` : ''}
+
+        ${task.next_step ? `
+          <div style="margin-bottom: 16px;">
+            <div style="font-weight: 600; color:var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="corner-down-right" style="width: 14px; height: 14px;"></i> Следующий шаг
+            </div>
+            <div style="padding: 10px 14px; background: var(--bg-primary); border-left: 3px solid var(--primary); border-radius: 0 6px 6px 0; color: var(--text-primary);">
+              ${this.escHtml(task.next_step)}
+            </div>
+          </div>
+        ` : ''}
+
+        ${task.description ? `
+          <div>
+            <div style="font-weight: 600; color:var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="file-text" style="width: 14px; height: 14px;"></i> Комментарии / Заметки
+            </div>
+            <div style="padding: 14px; background: var(--bg-primary); border-radius: 8px; white-space: pre-wrap; color: var(--text-primary); border: 1px solid var(--border-color); line-height: 1.5; font-size: 14px;">
+              ${this.escHtml(task.description)}
+            </div>
+          </div>
+        ` : ''}
+
       </div>
     `;
 
