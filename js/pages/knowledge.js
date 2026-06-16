@@ -297,6 +297,9 @@ const KnowledgePage = {
   },
 
   closeActiveItem() {
+    if (this.activeItemId) {
+      this.saveActiveItem(true);
+    }
     this.activeItemId = null;
     this.renderSidebar();
     document.getElementById('kb-editor-pane').innerHTML = this.renderEmptyEditor();
@@ -309,11 +312,10 @@ const KnowledgePage = {
     const contentEl = document.getElementById('kb-editor-content');
     if (!titleEl || !contentEl) return;
 
-    const title = titleEl.value.trim() || 'Без заголовка';
+    let title = titleEl.value.trim();
     const content = contentEl.value.trim();
     const type = document.getElementById('kb-editor-type').value;
     const source_url = document.getElementById('kb-editor-source').value.trim() || null;
-    
     const tagsStr = document.getElementById('kb-editor-tags').value;
     const tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
 
@@ -321,6 +323,14 @@ const KnowledgePage = {
     if (itemIdx < 0) return;
     const item = this.items[itemIdx];
 
+    // Auto-delete if new and completely empty
+    if (item.isNew && !title && !content && silent) {
+      this.items = this.items.filter(i => i.id !== this.activeItemId);
+      if (!this.activeItemId) return; // already handled
+      return;
+    }
+
+    title = title || 'Без заголовка';
     const dataToSave = { title, content, type, tags, source_url };
 
     try {
