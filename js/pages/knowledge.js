@@ -348,7 +348,7 @@ const KnowledgePage = {
       if (!silent) UI.toast('Сохранено', 'success');
     } catch (e) {
       console.error(e);
-      if (!silent) UI.toast('Ошибка при сохранении', 'error');
+      UI.toast('Ошибка при сохранении: ' + (e.message || e.details || ''), 'error');
     }
   },
 
