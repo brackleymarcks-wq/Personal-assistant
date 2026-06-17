@@ -11,6 +11,7 @@ const dns = require('dns');
 
 // Fix for Node.js 18+ fetch failing in Docker with incomplete IPv6 stacks
 dns.setDefaultResultOrder('ipv4first');
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Bypass SSL issues
 
 // ---- Config ----
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -18,6 +19,7 @@ let CHAT_ID = process.env.TELEGRAM_CHAT_ID || null;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const AI_API_KEY = process.env.AI_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY; // Для транскрибации Whisper
 const AI_API_URL = process.env.AI_API_URL || 'https://api.groq.com/openai/v1/chat/completions';
 const AI_MODEL = process.env.AI_MODEL || 'llama-3.3-70b-versatile';
 
@@ -519,7 +521,32 @@ bot.onText(/\/briefing/, async (msg) => {
   }
 });
 
-// Любое текстовое сообщение — отправляем в ИИ
+// ============================================
+// VOICE TO TEXT (WHISPER)
+// ============================================
+
+async function transcribeAudio(buffer, filename) {
+  if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY не задан в .env. Голосовые сообщения не работают.");
+  const formData = new FormData();
+  formData.append('file', new Blob([buffer]), filename);
+  formData.append('model', 'whisper-large-v3');
+
+  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}` },
+    body: formData
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Groq API error: ${res.status} ${errText}`);
+  }
+
+  const data = await res.json();
+  return data.text;
+}
+
+// Любое текстовое или голосовое сообщение — отправляем в ИИ
 bot.on('message', async (msg) => {
   if (msg.text?.startsWith('/')) return; // Команды обрабатываются выше
   const chatId = msg.chat.id;
@@ -528,14 +555,40 @@ bot.on('message', async (msg) => {
   if (!CHAT_ID) CHAT_ID = chatId.toString();
 
   try {
+    let textToProcess = msg.text;
+
+    // Обработка голосовых и видео-кружочков
+    let fileId = null;
+    let fileExt = 'ogg';
+    if (msg.voice) { fileId = msg.voice.file_id; fileExt = 'ogg'; }
+    else if (msg.video_note) { fileId = msg.video_note.file_id; fileExt = 'mp4'; }
+
+    if (fileId) {
+      bot.sendChatAction(chatId, 'typing');
+      const fileLink = await bot.getFileLink(fileId);
+      const res = await fetch(fileLink);
+      if (!res.ok) throw new Error("Не удалось скачать файл из Telegram");
+      const buffer = await res.arrayBuffer();
+      
+      const transcribed = await transcribeAudio(buffer, `audio.${fileExt}`);
+      if (!transcribed || transcribed.trim() === '') {
+        return bot.sendMessage(chatId, '🔕 Не удалось распознать речь (тишина или шум).');
+      }
+      
+      bot.sendMessage(chatId, `🎤 *Распознано:* _${transcribed}_`, { parse_mode: 'Markdown' });
+      textToProcess = transcribed;
+    }
+
+    if (!textToProcess) return; // Игнорируем фото/стикеры без текста
+
     // Сохраняем сообщение пользователя
-    await saveMessage('user', msg.text);
+    await saveMessage('user', textToProcess);
 
     // Показываем "печатает..."
     bot.sendChatAction(chatId, 'typing');
 
     // Получаем ответ от ИИ
-    const reply = await askAI(msg.text);
+    const reply = await askAI(textToProcess);
 
     // Сохраняем ответ ассистента
     await saveMessage('assistant', reply);
@@ -555,7 +608,10 @@ bot.on('message', async (msg) => {
     }
   } catch(e) {
     console.error('Bot message error:', e);
-    bot.sendMessage(chatId, '❌ Произошла ошибка: ' + e.message);
+    let debugInfo = e.message;
+    if (e.cause) debugInfo += '\nCause: ' + e.cause.message;
+    if (e.stack) debugInfo += '\nStack: ' + e.stack.substring(0, 200);
+    bot.sendMessage(chatId, '❌ Ошибка (Дебаг):\n' + debugInfo);
   }
 });
 
