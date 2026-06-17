@@ -52,7 +52,9 @@ async function getUser() {
 }
 
 async function getTasks(filters = {}) {
-  let q = db.from('tasks').select('*').neq('status', 'Готово').neq('status', 'Отменена').order('created_at', { ascending: false });
+  const user = await getUser();
+  if (!user) return [];
+  let q = db.from('tasks').select('*').eq('user_id', user.id).neq('status', 'Готово').neq('status', 'Отменена').order('created_at', { ascending: false });
   if (filters.status) q = q.eq('status', filters.status);
   if (filters.direction) q = q.eq('direction', filters.direction);
   if (filters.priority) q = q.eq('priority', filters.priority);
@@ -62,19 +64,19 @@ async function getTasks(filters = {}) {
 }
 
 function getMinskDateString(daysOffset = 0) {
-  const date = new Date();
-  date.setDate(date.getDate() + daysOffset);
-  const ms = date.toLocaleString('en-US', { timeZone: 'Europe/Minsk' });
-  const minskDate = new Date(ms);
-  const y = minskDate.getFullYear();
-  const m = String(minskDate.getMonth() + 1).padStart(2, '0');
-  const d = String(minskDate.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  // 100% пуленепробиваемый метод для серверов (без toLocaleString, который может баговать в Linux)
+  const d = new Date();
+  d.setTime(d.getTime() + (3 * 60 * 60 * 1000)); // +3 часа (Минск)
+  d.setDate(d.getDate() + daysOffset);
+  return d.toISOString().split('T')[0];
 }
 
 async function getTasksDueToday() {
+  const user = await getUser();
+  if (!user) return [];
   const today = getMinskDateString(0);
   const { data, error } = await db.from('tasks').select('*')
+    .eq('user_id', user.id)
     .eq('deadline', today)
     .neq('status', 'Готово').neq('status', 'Отменена');
   if (error) { console.error('getTasksDueToday error:', error); throw error; }
@@ -82,8 +84,11 @@ async function getTasksDueToday() {
 }
 
 async function getOverdueTasks() {
+  const user = await getUser();
+  if (!user) return [];
   const today = getMinskDateString(0);
   const { data, error } = await db.from('tasks').select('*')
+    .eq('user_id', user.id)
     .lt('deadline', today)
     .neq('status', 'Готово').neq('status', 'Отменена');
   if (error) { console.error('getOverdueTasks error:', error); throw error; }
@@ -91,9 +96,12 @@ async function getOverdueTasks() {
 }
 
 async function getUpcomingDeadlines(days = 3) {
+  const user = await getUser();
+  if (!user) return [];
   const today = getMinskDateString(0);
   const future = getMinskDateString(days);
   const { data, error } = await db.from('tasks').select('*')
+    .eq('user_id', user.id)
     .gt('deadline', today)
     .lte('deadline', future)
     .neq('status', 'Готово').neq('status', 'Отменена');
