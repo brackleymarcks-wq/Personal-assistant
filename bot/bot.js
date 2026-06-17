@@ -47,7 +47,11 @@ console.log('🤖 Бот запущен! Ожидаю сообщения...');
 // ============================================
 
 async function getUser() {
-  const { data } = await db.from('users').select('*').limit(1).single();
+  const { data, error } = await db.from('users').select('*').limit(1).single();
+  if (error) {
+    console.error('getUser error:', error);
+    throw error;
+  }
   return data;
 }
 
