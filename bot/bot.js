@@ -7,6 +7,10 @@ const cron = require('node-cron');
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
+const dns = require('dns');
+
+// Fix for Node.js 18+ fetch failing in Docker with incomplete IPv6 stacks
+dns.setDefaultResultOrder('ipv4first');
 
 // ---- Config ----
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
