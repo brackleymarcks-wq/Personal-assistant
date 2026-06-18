@@ -194,7 +194,7 @@ async function createNote(title, content, tags = []) {
 async function createTransaction(amount, type, category, comment = '', accountName = '') {
   const user = await getUser();
   
-  let descriptionObj = { rawComment: comment };
+  let descriptionObj = { text: comment };
   let searchName = accountName || 'карта'; // По умолчанию всё пишем на карту
   
   const settings = await getSettings();
