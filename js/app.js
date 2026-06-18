@@ -58,6 +58,7 @@ const PAGES = {
   habits: { module: () => HabitsPage, label: 'Привычки' },
   goals: { module: () => GoalsPage, label: 'Цели' },
   knowledge: { module: () => KnowledgePage, label: 'База знаний' },
+  graph: { module: () => GraphPage, label: 'Граф связей' },
   chat: { module: () => ChatPage, label: 'Чат' },
   pomodoro: { module: () => PomodoroPage, label: 'Помодоро' },
   gantt: { module: () => GanttPage, label: 'Гант' },

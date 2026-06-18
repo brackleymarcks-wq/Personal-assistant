@@ -175,7 +175,7 @@ const GanttPage = {
         // Bar gradient
         const barGrad = isPastDeadline
           ? 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)' // Red gradient for past deadline
-          : 'linear-gradient(90deg, var(--accent) 0%, var(--accent-light) 100%)'; // Unified firm accent
+          : 'linear-gradient(90deg, var(--accent) 0%, var(--accent-soft) 100%)'; // Unified firm accent
 
         html += `
           <div class="gantt-row" style="min-height:44px;border-bottom:1px solid var(--glass-border);">

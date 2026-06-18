@@ -77,6 +77,7 @@
           <a href="#archive" class="nav-item" data-page="archive"><i data-lucide="archive" class="nav-icon"></i><span class="nav-label">Архив задач</span></a>
           <a href="#notes" class="nav-item" data-page="notes"><i data-lucide="book-open" class="nav-icon"></i><span class="nav-label">Дневник</span></a>
           <a href="#knowledge" class="nav-item" data-page="knowledge"><i data-lucide="brain" class="nav-icon"></i><span class="nav-label">База знаний</span></a>
+          <a href="#graph" class="nav-item" data-page="graph"><i data-lucide="network" class="nav-icon"></i><span class="nav-label">Граф связей</span></a>
           <a href="#finances" class="nav-item" data-page="finances"><i data-lucide="wallet" class="nav-icon"></i><span class="nav-label">Финансы</span></a>
           <a href="#analytics" class="nav-item" data-page="analytics"><i data-lucide="trending-up" class="nav-icon"></i><span class="nav-label">Аналитика</span></a>
         </nav>
@@ -167,8 +168,27 @@
       </div>
     </div>
 
-    <!-- Knowledge Modal -->
-
+    <!-- Peek Modal (V2) -->
+    <div id="peek-modal" class="modal-overlay hidden" style="align-items: center; justify-content: center; z-index: 10000;">
+      <div class="modal peek-modal-container" style="width: 800px; max-width: 95vw; height: 85vh; max-height: 900px; display: flex; flex-direction: column; padding: 0; overflow: hidden; background: var(--bg-surface);">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border-light); background: var(--glass-bg-heavy);">
+          <div style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;" id="peek-modal-type">
+            <!-- Icon and Type -->
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-ghost" id="peek-modal-expand" title="Открыть полностью" style="padding: 6px;">
+              <i data-lucide="maximize-2" style="width: 18px; height: 18px;"></i>
+            </button>
+            <button class="btn btn-ghost" id="peek-modal-close" title="Закрыть (ESC)" style="padding: 6px;">
+              <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+          </div>
+        </div>
+        <div id="peek-modal-body" style="flex: 1; overflow-y: auto; padding: 0; position: relative;">
+          <!-- Content goes here -->
+        </div>
+      </div>
+    </div>
     <!-- Global Command Palette -->
     <div id="cmd-palette-modal" class="modal-overlay hidden" style="align-items: flex-start; padding-top: 10vh; z-index: 9999;">
       <div class="modal" style="width: 600px; padding: 0; overflow: hidden; background: var(--bg-surface);">
@@ -227,6 +247,9 @@
   <!-- html2pdf for PDF generation -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
+  <!-- vis-network for Graph View -->
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
   <!-- App modules -->
   <script src="js/config.js"></script>
   <script src="js/prompts.js"></script>
@@ -244,6 +267,7 @@
   <script src="js/pages/habits.js"></script>
   <script src="js/pages/goals.js"></script>
   <script src="js/pages/knowledge.js"></script>
+  <script src="js/pages/graph.js"></script>
   <script src="js/pages/chat.js"></script>
   
   <!-- New v2.0 Pages -->
@@ -259,6 +283,7 @@
   <script src="js/chatWidget.js"></script>
 
   <!-- Main App -->
+  <script src="js/peekView.js"></script>
   <script src="js/commandPalette.js"></script>
   <script src="js/app.js"></script>
 </body>

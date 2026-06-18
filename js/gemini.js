@@ -589,7 +589,10 @@ const Gemini = {
   },
 
   async parseInboxItem(text) {
-    const apiKey = Config.geminiKey;
+    const { geminiKey, geminiUrl, geminiModel } = Config.get();
+    const apiKey = geminiKey;
+    const apiUrl = geminiUrl || DEFAULT_API_URL;
+    const model = geminiModel || DEFAULT_MODEL;
     if (!apiKey) throw new Error('API ключ не настроен (нужен для ИИ)');
 
     const prompt = `Ты — умный парсер входящих мыслей по системе GTD. 
@@ -611,14 +614,14 @@ const Gemini = {
   { "type": "task", "title": "Купить молоко", "deadline": "${new Date().toISOString().split('T')[0]}", "priority": "Низкий" }
 ]`;
 
-    const res = await fetch(GROQ_API, {
+    const res = await fetch(apiUrl, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: model,
         messages: [
           { role: 'system', content: 'Ты возвращаешь только валидный JSON. Никакого Markdown.' },
           { role: 'user', content: prompt }
@@ -643,7 +646,10 @@ const Gemini = {
   },
 
   async assistWithNote(content, userPrompt, type) {
-    const apiKey = Config.geminiKey;
+    const { geminiKey, geminiUrl, geminiModel } = Config.get();
+    const apiKey = geminiKey;
+    const apiUrl = geminiUrl || DEFAULT_API_URL;
+    const model = geminiModel || DEFAULT_MODEL;
     if (!apiKey) throw new Error('API ключ не настроен (нужен для ИИ)');
 
     let systemPrompt = '';
@@ -665,14 +671,14 @@ const Gemini = {
       messages.push({ role: 'user', content: `Вот моя текущая заметка/идея:\n\n${content}\n\n--- КОНЕЦ ЗАМЕТКИ ---\n\nМой запрос/вопрос: ${userPrompt}` });
     }
 
-    const res = await fetch(GROQ_API, {
+    const res = await fetch(apiUrl, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: model,
         messages: [
           { role: 'system', content: systemPrompt },
           ...messages
@@ -692,7 +698,10 @@ const Gemini = {
   },
 
   async autoFillKnowledge(content) {
-    const apiKey = Config.geminiKey;
+    const { geminiKey, geminiUrl, geminiModel } = Config.get();
+    const apiKey = geminiKey;
+    const apiUrl = geminiUrl || DEFAULT_API_URL;
+    const model = geminiModel || DEFAULT_MODEL;
     if (!apiKey) throw new Error('API ключ не настроен (нужен для ИИ)');
 
     const systemPrompt = `Ты — умный ассистент, который помогает структурировать базу знаний пользователя. 
@@ -700,14 +709,14 @@ const Gemini = {
 Доступные типы (выбери один строго из списка): Промт, Инструмент, Статья, Кейс, Урок, Заметка.
 Верни ТОЛЬКО валидный JSON без маркдаун-блоков. Формат: { "title": "...", "type": "...", "tags": ["tag1", "tag2"] }`;
 
-    const res = await fetch(GROQ_API, {
+    const res = await fetch(apiUrl, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: content.substring(0, 4000) } // Ограничиваем длину для экономии

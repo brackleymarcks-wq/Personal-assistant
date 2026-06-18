@@ -6,7 +6,18 @@ const FinancesPage = {
   transactions: [],
   categories: {
     income: ['Зарплата', 'Фриланс', 'Бизнес', 'Инвестиции', 'Подарки', 'Крипта', 'Кэшбэк', 'Другое'],
-    expense: ['Продукты', 'Кафе и Рестораны', 'Транспорт', 'Авто', 'Жилье', 'Ипотека/Аренда', 'Развлечения', 'Здоровье', 'Одежда', 'Обучение', 'Подписки', 'Семья', 'Хобби', 'Техника', 'Путешествия', 'Другое']
+    expense: ['Продукты', 'Кафе и Рестораны', 'Транспорт', 'Авто', 'Жилье', 'Ипотека/Аренда', 'Развлечения', 'Здоровье', 'Одежда', 'Обучение', 'Подписки', 'Семья', 'Хобби', 'Техника', 'Путешествия', 'Другое'],
+    transfer: ['Перевод']
+  },
+  currentViewMonth: new Date().getMonth(),
+  currentViewYear: new Date().getFullYear(),
+  configNoteId: null,
+  config: {
+    accounts: [
+      { id: 'cash', name: 'Наличные', icon: 'banknote', color: '#10ac84' },
+      { id: 'card', name: 'Карта', icon: 'credit-card', color: '#5f27cd' }
+    ],
+    budgets: {}
   },
 
   // Map category names to lucide icons
@@ -24,10 +35,19 @@ const FinancesPage = {
       <div class="finances-page" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);overflow-y:auto;">
         <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
           <div>
-            <div class="page-title" style="font-size:20px;font-weight:700;">Финансы</div>
-            <div class="page-subtitle" id="finance-subtitle" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Учет доходов и расходов</div>
+            <div class="page-title" style="font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px;">
+              Финансы
+              <div style="display:flex;align-items:center;background:var(--bg-primary);border-radius:var(--radius-full);padding:2px;margin-left:8px;border:1px solid var(--border-light);">
+                <button onclick="FinancesPage.changeMonth(-1)" style="border:none;background:transparent;cursor:pointer;padding:4px;color:var(--text-secondary);border-radius:50%;display:flex;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'"><i data-lucide="chevron-left" style="width:16px;height:16px;"></i></button>
+                <span id="finance-subtitle" style="font-size:13px;font-weight:600;color:var(--text-primary);padding:0 8px;min-width:110px;text-align:center;">Загрузка...</span>
+                <button onclick="FinancesPage.changeMonth(1)" style="border:none;background:transparent;cursor:pointer;padding:4px;color:var(--text-secondary);border-radius:50%;display:flex;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'"><i data-lucide="chevron-right" style="width:16px;height:16px;"></i></button>
+              </div>
+            </div>
           </div>
           <div class="page-actions" style="display:flex;gap:var(--space-sm);">
+            <button class="btn btn-secondary" onclick="FinancesPage.openModal('transfer')" style="display:flex;align-items:center;gap:6px;color:var(--text-primary);border-color:var(--border);">
+              <i data-lucide="arrow-right-left" style="width:16px;height:16px;"></i> Перевод
+            </button>
             <button class="btn btn-secondary" onclick="FinancesPage.openModal('income')" style="display:flex;align-items:center;gap:6px;color:var(--success);border-color:rgba(16, 185, 129, 0.3);background:rgba(16, 185, 129, 0.05);">
               <i data-lucide="arrow-down-left" style="width:16px;height:16px;"></i> Доход
             </button>
@@ -37,6 +57,10 @@ const FinancesPage = {
           </div>
         </div>
 
+        <div id="finance-accounts-carousel" style="display:flex; gap: var(--space-md); padding: var(--space-lg) var(--space-xl) 0; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; flex-shrink: 0; min-height: 130px;">
+          <!-- Populated by JS -->
+        </div>
+
         <div class="finance-dashboard" id="finance-summary">
           <!-- Populated by JS -->
         </div>
@@ -44,8 +68,13 @@ const FinancesPage = {
         <div class="finance-middle-section" style="display:grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg); padding: 0 var(--space-xl); margin-bottom: var(--space-lg);">
           <!-- Analytics -->
           <div class="glass-panel" style="padding: var(--space-lg); border-radius: var(--radius-lg);">
-            <h3 style="font-size: 15px; margin-bottom: var(--space-lg); display: flex; align-items: center; gap: 8px; font-weight: 600;">
-              <i data-lucide="pie-chart" style="color: var(--accent); width: 18px; height: 18px;"></i> Расходы по категориям
+            <h3 style="font-size: 15px; margin-bottom: var(--space-lg); display: flex; align-items: center; justify-content: space-between; font-weight: 600;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i data-lucide="pie-chart" style="color: var(--accent); width: 18px; height: 18px;"></i> Бюджеты и расходы
+              </div>
+              <button class="btn btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="FinancesPage.openBudgetModal()">
+                <i data-lucide="settings" style="width:12px;height:12px;margin-right:4px;"></i> Настроить
+              </button>
             </h3>
             <div id="finance-analytics" style="display: flex; flex-direction: column; gap: 14px; max-height: 250px; overflow-y: auto; padding-right: 8px;"></div>
           </div>
@@ -58,9 +87,27 @@ const FinancesPage = {
             <div id="finance-ai-content" style="flex: 1; overflow-y: auto; font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); margin-bottom: var(--space-md);">
               <p>Нажми кнопку, чтобы ИИ проанализировал твои траты в этом месяце, нашел скрытые закономерности и дал персональный совет.</p>
             </div>
-            <button class="btn btn-primary btn-full" onclick="FinancesPage.runAIAnalysis()" id="finance-ai-btn">
-              <i data-lucide="brain" style="width:16px; height:16px;"></i> Проанализировать месяц
-            </button>
+            <div style="display: flex; gap: var(--space-sm); flex-shrink: 0; flex-wrap: wrap;">
+              <button class="btn btn-secondary" onclick="FinancesPage.runAIAnalysis()" id="finance-ai-btn" style="flex: 1; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px;">
+                <i data-lucide="brain" style="width: 14px; height: 14px;"></i> Анализ месяца
+              </button>
+              <button class="btn btn-primary" onclick="FinancesPage.runAITrendAnalysis()" id="finance-ai-trend-btn" style="flex: 1; min-width: 140px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; background: var(--accent); border-color: var(--accent);">
+                <i data-lucide="trending-up" style="width: 14px; height: 14px;"></i> Анализ трендов
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Monthly Archive Section -->
+        <div style="padding: 0 var(--space-xl); margin-bottom: var(--space-lg);">
+          <div class="glass-panel" style="padding: var(--space-lg); border-radius: var(--radius-lg);">
+            <h3 style="font-size: 15px; margin-bottom: var(--space-md); display: flex; align-items: center; gap: 8px; font-weight: 600;">
+              <i data-lucide="archive" style="color: var(--accent-soft); width: 18px; height: 18px;"></i>
+              История накоплений по месяцам
+            </h3>
+            <div id="finance-monthly-archive" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-md);">
+              <div style="color:var(--text-muted);font-size:13px;text-align:center;grid-column:1/-1;padding:20px 0;">Расчет накоплений...</div>
+            </div>
           </div>
         </div>
 
@@ -75,7 +122,42 @@ const FinancesPage = {
   },
 
   async init() {
+    await this.loadConfig();
     await this.load();
+  },
+
+  async loadConfig() {
+    try {
+      const allNotes = await DB.getNotes();
+      const configNote = allNotes.find(n => n.title === 'SYSTEM_CONFIG_FINANCES');
+      if (configNote) {
+        this.configNoteId = configNote.id;
+        try {
+          const parsed = JSON.parse(configNote.content);
+          this.config = { ...this.config, ...parsed };
+        } catch(e) {}
+      } else {
+        const newNote = await DB.createNote({
+          title: 'SYSTEM_CONFIG_FINANCES',
+          content: JSON.stringify(this.config),
+          mood: '⚙️',
+          tags: ['system']
+        });
+        this.configNoteId = newNote.id;
+      }
+    } catch(e) {
+      console.error('Failed to load finance config', e);
+    }
+  },
+
+  async saveConfig() {
+    try {
+      if (this.configNoteId) {
+        await DB.updateNote(this.configNoteId, { content: JSON.stringify(this.config) });
+      }
+    } catch(e) {
+      console.error('Failed to save finance config', e);
+    }
   },
 
   async load() {
@@ -89,10 +171,21 @@ const FinancesPage = {
     }
   },
 
+  changeMonth(dir) {
+    this.currentViewMonth += dir;
+    if (this.currentViewMonth < 0) {
+      this.currentViewMonth = 11;
+      this.currentViewYear--;
+    } else if (this.currentViewMonth > 11) {
+      this.currentViewMonth = 0;
+      this.currentViewYear++;
+    }
+    this.renderData();
+  },
+
   renderData() {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    const currentMonth = this.currentViewMonth;
+    const currentYear = this.currentViewYear;
 
     const monthTx = this.transactions.filter(t => {
       const d = new Date(t.date);
@@ -108,6 +201,59 @@ const FinancesPage = {
     });
 
     const balance = income - expense;
+
+    // Calculate Account Balances up to the end of selected month
+    const accountBalances = {};
+    this.config.accounts.forEach(a => accountBalances[a.id] = 0);
+    
+    // We want to calculate balance accurately up to the very last second of the selected month
+    const endOfViewMonth = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+    
+    this.transactions.forEach(t => {
+      const txDate = new Date(t.date);
+      if (txDate > endOfViewMonth) return; // Do not count transactions from the future relative to the selected month
+
+      try {
+        const descData = JSON.parse(t.description || '{}');
+        const amt = Number(t.amount);
+        if (t.type === 'income' && descData.account && accountBalances[descData.account] !== undefined) {
+          accountBalances[descData.account] += amt;
+        } else if (t.type === 'expense' && descData.account && accountBalances[descData.account] !== undefined) {
+          accountBalances[descData.account] -= amt;
+        } else if (t.type === 'transfer' && descData.fromAccount && descData.toAccount) {
+          if (accountBalances[descData.fromAccount] !== undefined) accountBalances[descData.fromAccount] -= amt;
+          if (accountBalances[descData.toAccount] !== undefined) accountBalances[descData.toAccount] += amt;
+        }
+      } catch(e) {}
+    });
+
+    // Render Carousel
+    const carouselEl = document.getElementById('finance-accounts-carousel');
+    if (carouselEl) {
+      carouselEl.innerHTML = this.config.accounts.map(acc => `
+        <div class="finance-account-card glass-panel" onclick="FinancesPage.openAccountModal('${acc.id}')" style="min-width: 180px; padding: 16px; border-radius: 16px; flex-shrink: 0; scroll-snap-align: start; box-shadow: 0 4px 12px rgba(0,0,0,0.05); position: relative; overflow: hidden; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+          <div style="position: absolute; top: -10px; right: -10px; opacity: 0.1; color: ${acc.color || 'var(--text-primary)'};">
+            <i data-lucide="${acc.icon || 'wallet'}" style="width: 80px; height: 80px;"></i>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; position: relative;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: ${acc.color}20; color: ${acc.color}; display: flex; align-items: center; justify-content: center;">
+              <i data-lucide="${acc.icon || 'wallet'}" style="width: 16px; height: 16px;"></i>
+            </div>
+            <div style="font-weight: 600; font-size: 14px; color: var(--text-primary);">${this.esc(acc.name)}</div>
+          </div>
+          <div style="font-size: 20px; font-weight: 800; color: var(--text-primary); position: relative;">
+            ${accountBalances[acc.id].toLocaleString('ru-RU')} ₴
+          </div>
+        </div>
+      `).join('') + `
+        <div class="finance-account-card glass-panel" onclick="FinancesPage.openAccountModal()" style="min-width: 180px; padding: 16px; border-radius: 16px; flex-shrink: 0; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; border: 1px dashed var(--border-light); background: transparent;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-hover); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; margin-bottom: 8px;">
+            <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+          </div>
+          <div style="font-weight: 500; font-size: 13px; color: var(--text-secondary);">Управление</div>
+        </div>
+      `;
+    }
 
     // Render Summary
     document.getElementById('finance-summary').innerHTML = `
@@ -138,7 +284,8 @@ const FinancesPage = {
 
     const subtitle = document.getElementById('finance-subtitle');
     if (subtitle) {
-      const monthName = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+      const d = new Date(currentYear, currentMonth, 1);
+      const monthName = d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
       subtitle.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1);
     }
 
@@ -151,20 +298,42 @@ const FinancesPage = {
     });
 
     const analyticsEl = document.getElementById('finance-analytics');
-    if (expense === 0) {
-      analyticsEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px 0;">Нет расходов в этом месяце</div>';
+    if (expense === 0 && Object.keys(this.config.budgets).length === 0) {
+      analyticsEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px 0;">Нет данных в этом месяце</div>';
     } else {
-      const sortedCategories = Object.entries(expensesByCategory).sort((a, b) => b[1] - a[1]);
-      analyticsEl.innerHTML = sortedCategories.map(([cat, amount]) => {
-        const percent = Math.round((amount / expense) * 100);
+      const allCats = new Set([...Object.keys(expensesByCategory), ...Object.keys(this.config.budgets)]);
+      
+      const items = Array.from(allCats).map(cat => {
+        const spent = expensesByCategory[cat] || 0;
+        const limit = this.config.budgets[cat] || 0;
+        return { cat, spent, limit };
+      }).sort((a, b) => b.spent - a.spent);
+
+      analyticsEl.innerHTML = items.map(({cat, spent, limit}) => {
+        let percent = 0;
+        if (limit > 0) percent = Math.min(100, Math.round((spent / limit) * 100));
+        else if (expense > 0) percent = Math.round((spent / expense) * 100);
+
+        let color = 'linear-gradient(90deg, var(--accent), var(--accent-vibrant))';
+        if (limit > 0) {
+           if (percent >= 100) color = 'var(--danger)';
+           else if (percent > 80) color = 'var(--warning)';
+        }
+
         return `
-          <div style="display: flex; flex-direction: column; gap: 4px;">
-            <div style="display: flex; justify-content: space-between; font-size: 13px;">
-              <span style="color: var(--text-primary); font-weight: 500;">${this.esc(cat)}</span>
-              <span style="color: var(--text-secondary);">${amount.toLocaleString('ru-RU')} ₴ <span style="opacity:0.5;font-size:11px;margin-left:4px;">${percent}%</span></span>
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px;">
+            <div style="display: flex; justify-content: space-between; font-size: 13px; align-items:flex-end;">
+              <span style="color: var(--text-primary); font-weight: 500; display:flex; align-items:center; gap:6px;">
+                 <i data-lucide="${this.ICONS[cat] || 'circle-dollar-sign'}" style="width:14px;height:14px;color:var(--text-muted)"></i>
+                 ${this.esc(cat)}
+              </span>
+              <div style="text-align:right">
+                 <span style="color: var(--text-primary); font-weight:600;">${spent.toLocaleString('ru-RU')} ₴</span>
+                 ${limit > 0 ? `<span style="color: var(--text-muted); font-size:11px;"> из ${limit.toLocaleString('ru-RU')}</span>` : ''}
+              </div>
             </div>
             <div style="width: 100%; height: 6px; background: var(--bg-hover); border-radius: 4px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);">
-              <div style="width: ${percent}%; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-vibrant)); border-radius: 4px;"></div>
+              <div style="width: ${percent}%; height: 100%; background: ${color}; border-radius: 4px; transition: width 0.3s ease;"></div>
             </div>
           </div>
         `;
@@ -173,14 +342,14 @@ const FinancesPage = {
 
     // Render List
     const list = document.getElementById('transaction-list');
-    if (this.transactions.length === 0) {
+    if (monthTx.length === 0) {
       list.innerHTML = `
         <div class="empty-state" style="text-align:center;padding:var(--space-3xl) 0;display:flex;flex-direction:column;align-items:center;gap:var(--space-md);">
           <div style="width:64px;height:64px;border-radius:50%;background:var(--bg-surface);display:flex;align-items:center;justify-content:center;border:1px solid var(--border-light);">
             <i data-lucide="credit-card" style="width:32px;height:32px;color:var(--text-muted);"></i>
           </div>
           <div style="font-size:18px;font-weight:600;color:var(--text-primary)">Нет транзакций</div>
-          <div style="font-size:14px;color:var(--text-secondary);">Добавьте свои первые доходы или расходы сверху</div>
+          <div style="font-size:14px;color:var(--text-secondary);">В этом месяце нет операций.</div>
         </div>
       `;
       if (window.lucide) window.lucide.createIcons();
@@ -189,7 +358,7 @@ const FinancesPage = {
 
     // Group by date
     const grouped = {};
-    this.transactions.forEach(t => {
+    monthTx.forEach(t => {
       // Calculate friendly date label
       const d = new Date(t.date);
       const today = new Date();
@@ -209,23 +378,35 @@ const FinancesPage = {
       html += `<div class="transaction-date-group">${dateLabel}</div>`;
       html += txs.map(t => {
         const isIncome = t.type === 'income';
-        const iconName = this.ICONS[t.category] || 'circle-dollar-sign';
-        const wrapperClass = isIncome ? 'icon-income' : 'icon-expense';
+        const isTransfer = t.type === 'transfer';
+        const iconName = isTransfer ? 'arrow-right-left' : (this.ICONS[t.category] || 'circle-dollar-sign');
+        const wrapperClass = isTransfer ? 'icon-transfer' : (isIncome ? 'icon-income' : 'icon-expense');
         
+        let displayDesc = t.description;
+        try {
+          const parsed = JSON.parse(t.description);
+          displayDesc = parsed.text || '';
+        } catch(e) {}
+        
+        let sign = isIncome ? '+' : '-';
+        if (isTransfer) sign = '';
+        let amountClass = isTransfer ? 'transfer' : (isIncome ? 'income' : 'expense');
+        if (isTransfer) amountClass = 'text-primary'; // override color
+
         return `
           <div class="transaction-item" onclick="FinancesPage.editModal('${t.id}')">
             <div class="transaction-left">
-              <div class="transaction-icon-wrapper ${wrapperClass}">
+              <div class="transaction-icon-wrapper ${wrapperClass}" style="${isTransfer ? 'background:var(--bg-hover);color:var(--text-secondary);' : ''}">
                 <i data-lucide="${iconName}" style="width:20px;height:20px;"></i>
               </div>
               <div class="transaction-details">
                 <div class="transaction-title">${this.esc(t.category)}</div>
-                ${t.description ? `<div class="transaction-desc">${this.esc(t.description)}</div>` : ''}
+                ${displayDesc ? `<div class="transaction-desc">${this.esc(displayDesc)}</div>` : ''}
               </div>
             </div>
             <div class="transaction-right">
-              <div class="transaction-sum ${isIncome ? 'income' : 'expense'}">
-                ${isIncome ? '+' : '-'}${Number(t.amount).toLocaleString('ru-RU')} ₴
+              <div class="transaction-sum ${amountClass}" style="${isTransfer ? 'color:var(--text-primary)' : ''}">
+                ${sign}${Number(t.amount).toLocaleString('ru-RU')} ₴
               </div>
               <div class="transaction-time">
                 ${new Date(t.date).toLocaleDateString('ru-RU', {day:'numeric', month:'short'})}
@@ -237,6 +418,84 @@ const FinancesPage = {
     }
 
     list.innerHTML = html;
+
+    // Render Monthly Archive
+    const archiveEl = document.getElementById('finance-monthly-archive');
+    if (archiveEl) {
+      const monthlyTotals = {};
+      this.transactions.forEach(t => {
+        const d = new Date(t.date);
+        const year = d.getFullYear();
+        const month = d.getMonth();
+        const key = `${year}-${month}`;
+        
+        if (!monthlyTotals[key]) {
+          monthlyTotals[key] = {
+            year,
+            month,
+            income: 0,
+            expense: 0
+          };
+        }
+        
+        const amt = Number(t.amount);
+        if (t.type === 'income') monthlyTotals[key].income += amt;
+        if (t.type === 'expense') monthlyTotals[key].expense += amt;
+      });
+      
+      const sortedKeys = Object.keys(monthlyTotals).sort((a, b) => {
+        const [yA, mA] = a.split('-').map(Number);
+        const [yB, mB] = b.split('-').map(Number);
+        return new Date(yB, mB, 1) - new Date(yA, mA, 1);
+      });
+      
+      if (sortedKeys.length === 0) {
+        archiveEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;grid-column:1/-1;padding:20px 0;">Нет данных для отображения архива</div>';
+      } else {
+        archiveEl.innerHTML = sortedKeys.map(key => {
+          const item = monthlyTotals[key];
+          const dateObj = new Date(item.year, item.month, 1);
+          const monthName = dateObj.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+          const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+          
+          const delta = item.income - item.expense;
+          const savingsRate = item.income > 0 ? Math.max(0, Math.round((delta / item.income) * 100)) : 0;
+          
+          const isActive = this.currentViewYear === item.year && this.currentViewMonth === item.month;
+          const activeStyle = isActive 
+            ? 'border: 1.5px solid var(--accent); box-shadow: 0 0 16px var(--accent-glow); background: var(--bg-hover);' 
+            : 'border: 1px solid var(--border-light);';
+            
+          return `
+            <div class="glass-panel" onclick="FinancesPage.selectMonth(${item.year}, ${item.month})" style="padding: 16px; border-radius: var(--radius-md); cursor: pointer; transition: var(--transition); display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-surface); min-height: 120px; ${activeStyle}" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: var(--space-xs);">
+                <div style="font-weight: 600; font-size: 13.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${capitalizedMonth}</div>
+                <div style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: ${delta >= 0 && savingsRate > 0 ? 'var(--success-dim)' : 'var(--bg-hover)'}; color: ${delta >= 0 && savingsRate > 0 ? 'var(--success)' : 'var(--text-secondary)'}; font-weight: 700; white-space: nowrap;">
+                  ${savingsRate}% сбер.
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-secondary);">
+                  <span>Доходы:</span>
+                  <span style="color: var(--success); font-weight: 600;">+${item.income.toLocaleString('ru-RU')} ₴</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-secondary);">
+                  <span>Расходы:</span>
+                  <span style="color: var(--danger); font-weight: 600;">-${item.expense.toLocaleString('ru-RU')} ₴</span>
+                </div>
+              </div>
+              <div style="border-top: 1px solid var(--border-light); padding-top: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+                <span style="color: var(--text-muted); font-size: 11px;">Копится:</span>
+                <span style="font-weight: 700; color: ${delta >= 0 ? 'var(--success)' : 'var(--danger)'};">
+                  ${delta >= 0 ? '+' : ''}${delta.toLocaleString('ru-RU')} ₴
+                </span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
     if (window.lucide) window.lucide.createIcons();
   },
 
@@ -251,9 +510,8 @@ const FinancesPage = {
     if (window.lucide) window.lucide.createIcons();
 
     try {
-      const now = new Date();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
+      const currentMonth = this.currentViewMonth;
+      const currentYear = this.currentViewYear;
       
       const monthTx = this.transactions.filter(t => {
         const d = new Date(t.date);
@@ -289,7 +547,114 @@ const FinancesPage = {
       content.innerHTML = '<span style="color:var(--danger)">Ошибка при обращении к ИИ. Попробуйте позже.</span>';
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '<i data-lucide="brain" style="width:16px;height:16px;"></i> Обновить анализ';
+      btn.innerHTML = '<i data-lucide="brain" style="width:14px;height:14px;"></i> Анализ месяца';
+      if (window.lucide) window.lucide.createIcons();
+    }
+  },
+
+  selectMonth(year, month) {
+    this.currentViewMonth = month;
+    this.currentViewYear = year;
+    this.renderData();
+    const container = document.querySelector('.finances-page');
+    if (container) {
+      container.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  },
+
+  async runAITrendAnalysis() {
+    const btn = document.getElementById('finance-ai-trend-btn');
+    const content = document.getElementById('finance-ai-content');
+    
+    if (!btn || !content) return;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px;"></i> Анализирую...';
+    if (window.lucide) window.lucide.createIcons();
+
+    try {
+      const monthlyData = {};
+      
+      this.transactions.forEach(t => {
+        const d = new Date(t.date);
+        const year = d.getFullYear();
+        const month = d.getMonth();
+        const key = `${year}-${month}`;
+        
+        if (!monthlyData[key]) {
+          monthlyData[key] = {
+            year,
+            month,
+            income: 0,
+            expense: 0,
+            categories: {}
+          };
+        }
+        
+        const amt = Number(t.amount);
+        if (t.type === 'income') {
+          monthlyData[key].income += amt;
+        } else if (t.type === 'expense') {
+          monthlyData[key].expense += amt;
+          monthlyData[key].categories[t.category] = (monthlyData[key].categories[t.category] || 0) + amt;
+        }
+      });
+      
+      const sortedKeys = Object.keys(monthlyData).sort((a, b) => {
+        const [yA, mA] = a.split('-').map(Number);
+        const [yB, mB] = b.split('-').map(Number);
+        return new Date(yA, mA, 1) - new Date(yB, mB, 1);
+      });
+      
+      const lastMonthsKeys = sortedKeys.slice(-6);
+      if (lastMonthsKeys.length === 0) {
+        content.innerHTML = '<span style="color:var(--text-secondary)">Недостаточно данных для анализа трендов. Добавьте транзакции за несколько месяцев.</span>';
+        return;
+      }
+      
+      const historySummary = lastMonthsKeys.map(key => {
+        const m = monthlyData[key];
+        const dateObj = new Date(m.year, m.month, 1);
+        const monthName = dateObj.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+        
+        let topCat = 'Нет трат';
+        let topAmt = 0;
+        Object.entries(m.categories).forEach(([cat, val]) => {
+          if (val > topAmt) {
+            topAmt = val;
+            topCat = cat;
+          }
+        });
+        
+        return {
+          month: monthName,
+          income: m.income,
+          expense: m.expense,
+          savings: m.income - m.expense,
+          savingsRate: m.income > 0 ? Math.round(((m.income - m.expense) / m.income) * 100) : 0,
+          topCategory: topCat === 'Нет трат' ? 'Нет трат' : `${topCat} (${topAmt} ₴)`
+        };
+      });
+      
+      const prompt = `Проанализируй финансовые тренды моих доходов, расходов и сбережений за последние несколько месяцев:
+${JSON.stringify(historySummary, null, 2)}
+
+Как профессиональный финансовый ассистент, проведи глубокий анализ:
+1. **Динамика сбережений**: увеличивается ли сумма, которую я откладываю (накапливаю), стабилен ли процент сбережений?
+2. **Анализ трат**: обрати внимание на то, как ведут себя расходы по сравнению с доходами и какие топ-категории трат преобладают.
+3. **Рекомендации**: дай 1-2 конкретных, не банальных совета по улучшению финансовой дисциплины и росту накоплений на основе этих трендов.
+
+Будь краток, пиши ёмко, используй форматирование Markdown (жирный шрифт, списки, цитаты). Обращайся на "ты". Никакой лишней "воды".`;
+      
+      const response = await Gemini.chat(prompt);
+      content.innerHTML = window.marked ? marked.parse(response) : response;
+      
+    } catch (e) {
+      console.error('AI Trend Finance Error:', e);
+      content.innerHTML = '<span style="color:var(--danger)">Ошибка при обращении к ИИ. Попробуйте позже.</span>';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="trending-up" style="width:14px;height:14px;"></i> Анализ трендов';
       if (window.lucide) window.lucide.createIcons();
     }
   },
@@ -298,19 +663,66 @@ const FinancesPage = {
     const tx = id ? this.transactions.find(t => t.id === id) : null;
     const txType = tx ? tx.type : type;
     const isNew = !tx;
-    
-    const cats = this.categories[txType];
+
+    let displayDesc = '';
+    let accountId = '';
+    let fromAccountId = '';
+    let toAccountId = '';
+
+    if (tx) {
+      displayDesc = tx.description;
+      try {
+        const parsed = JSON.parse(tx.description);
+        displayDesc = parsed.text || '';
+        accountId = parsed.account || '';
+        fromAccountId = parsed.fromAccount || '';
+        toAccountId = parsed.toAccount || '';
+      } catch(e) {}
+    }
+
+    const cats = this.categories[txType] || [];
     const catOptions = cats.map(c => `<option value="${c}" ${tx?.category === c ? 'selected' : ''}>${c}</option>`).join('');
 
+    const accountOptions = this.config.accounts.map(a => `<option value="${a.id}" ${accountId === a.id ? 'selected' : ''}>${a.name}</option>`).join('');
+    const fromAccountOptions = this.config.accounts.map(a => `<option value="${a.id}" ${fromAccountId === a.id ? 'selected' : ''}>${a.name}</option>`).join('');
+    const toAccountOptions = this.config.accounts.map(a => `<option value="${a.id}" ${toAccountId === a.id ? 'selected' : ''}>${a.name}</option>`).join('');
+
     const todayStr = new Date().toISOString().split('T')[0];
-    const modalTitle = isNew 
-      ? (txType === 'income' ? '<i data-lucide="arrow-down-left" style="color:var(--success);"></i> Новый доход' : '<i data-lucide="arrow-up-right" style="color:var(--danger);"></i> Новый расход') 
-      : '<i data-lucide="edit-2"></i> Редактировать';
+    
+    let modalTitle = '<i data-lucide="edit-2"></i> Редактировать';
+    if (isNew) {
+      if (txType === 'income') modalTitle = '<i data-lucide="arrow-down-left" style="color:var(--success);"></i> Новый доход';
+      else if (txType === 'expense') modalTitle = '<i data-lucide="arrow-up-right" style="color:var(--danger);"></i> Новый расход';
+      else if (txType === 'transfer') modalTitle = '<i data-lucide="arrow-right-left" style="color:var(--text-primary);"></i> Новый перевод';
+    }
+
+    let accountFields = '';
+    if (txType === 'transfer') {
+      accountFields = `
+        <div class="form-row" style="margin-top:var(--space-md)">
+          <div class="form-group">
+            <label class="form-label">Со счета</label>
+            <select id="tx-from-account" class="form-input">${fromAccountOptions}</select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">На счет</label>
+            <select id="tx-to-account" class="form-input">${toAccountOptions}</select>
+          </div>
+        </div>
+      `;
+    } else {
+      accountFields = `
+        <div class="form-group" style="margin-top:var(--space-md)">
+          <label class="form-label">Счет</label>
+          <select id="tx-account" class="form-input">${accountOptions}</select>
+        </div>
+      `;
+    }
 
     const content = `
       <div class="form-group" style="text-align:center;margin-bottom:var(--space-xl);">
         <label class="form-label" style="text-align:center;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Сумма (₴)</label>
-        <input type="number" id="tx-amount" style="font-size:48px;font-weight:800;text-align:center;border:none;background:transparent;outline:none;width:100%;color:${txType === 'income' ? 'var(--success)' : 'var(--text-primary)'};padding:0;" placeholder="0" min="0" step="1" value="${tx ? tx.amount : ''}" autofocus required>
+        <input type="number" id="tx-amount" style="font-size:48px;font-weight:800;text-align:center;border:none;background:transparent;outline:none;width:100%;color:${txType === 'income' ? 'var(--success)' : (txType === 'transfer' ? 'var(--text-primary)' : 'var(--danger)')};padding:0;" placeholder="0" min="0" step="1" value="${tx ? tx.amount : ''}" autofocus required>
       </div>
       
       <div class="form-row">
@@ -318,17 +730,23 @@ const FinancesPage = {
           <label class="form-label">Дата</label>
           <input type="date" id="tx-date" class="form-input" value="${tx ? tx.date : todayStr}" required>
         </div>
+        ${txType === 'transfer' ? `
+          <input type="hidden" id="tx-category" value="Перевод">
+        ` : `
         <div class="form-group">
           <label class="form-label">Категория</label>
           <select id="tx-category" class="form-input">
             ${catOptions}
           </select>
         </div>
+        `}
       </div>
+
+      ${accountFields}
       
       <div class="form-group" style="margin-top:var(--space-md)">
         <label class="form-label">Описание / Комментарий</label>
-        <input type="text" id="tx-desc" class="form-input" placeholder="Например: Супермаркет Сильпо" value="${tx ? this.esc(tx.description) : ''}">
+        <input type="text" id="tx-desc" class="form-input" placeholder="Например: Перевод за обед" value="${this.esc(displayDesc)}">
       </div>
       <input type="hidden" id="tx-type" value="${txType}">
     `;
@@ -366,12 +784,159 @@ const FinancesPage = {
     this.openModal(null, id);
   },
 
+  openAccountModal(id = null) {
+    const acc = id ? this.config.accounts.find(a => a.id === id) : null;
+    const isNew = !acc;
+
+    const content = `
+      <div class="form-group">
+        <label class="form-label">Название счета</label>
+        <input type="text" id="acc-name" class="form-input" placeholder="Например: Карта Tinkoff" value="${acc ? this.esc(acc.name) : ''}" required autofocus>
+      </div>
+      <div class="form-row" style="margin-top:var(--space-md)">
+        <div class="form-group">
+          <label class="form-label">Иконка</label>
+          <select id="acc-icon" class="form-input">
+            <option value="wallet" ${acc?.icon === 'wallet' ? 'selected' : ''}>Кошелек</option>
+            <option value="credit-card" ${acc?.icon === 'credit-card' ? 'selected' : ''}>Карта</option>
+            <option value="banknote" ${acc?.icon === 'banknote' ? 'selected' : ''}>Наличные</option>
+            <option value="bitcoin" ${acc?.icon === 'bitcoin' ? 'selected' : ''}>Крипта</option>
+            <option value="piggy-bank" ${acc?.icon === 'piggy-bank' ? 'selected' : ''}>Копилка</option>
+            <option value="building-2" ${acc?.icon === 'building-2' ? 'selected' : ''}>Вклад / Банк</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Цвет</label>
+          <input type="color" id="acc-color" class="form-input" value="${acc ? acc.color : '#5f27cd'}" style="height:42px;padding:4px;">
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      ${!isNew ? `<button class="btn btn-danger" onclick="FinancesPage.deleteAccount('${id}')" style="display:flex;align-items:center;gap:6px;"><i data-lucide="trash-2"></i> Удалить</button>` : '<div></div>'}
+      <div style="display:flex;gap:var(--space-sm);margin-left:auto">
+        <button class="btn btn-secondary" onclick="UI.closeModal()">Отмена</button>
+        <button class="btn btn-primary" onclick="FinancesPage.saveAccount('${id || ''}')" style="display:flex;align-items:center;gap:6px;"><i data-lucide="save"></i> Сохранить</button>
+      </div>
+    `;
+
+    UI.openModal(isNew ? 'Новый счет' : 'Редактировать счет', content, footer);
+    if (window.lucide) window.lucide.createIcons();
+    
+    setTimeout(() => {
+      const nameInput = document.getElementById('acc-name');
+      if (nameInput) nameInput.focus();
+    }, 100);
+  },
+
+  async saveAccount(id) {
+    const name = document.getElementById('acc-name').value.trim();
+    const icon = document.getElementById('acc-icon').value;
+    const color = document.getElementById('acc-color').value;
+
+    if (!name) { UI.toast('Введите название', 'error'); return; }
+
+    if (id) {
+      const acc = this.config.accounts.find(a => a.id === id);
+      if (acc) { acc.name = name; acc.icon = icon; acc.color = color; }
+    } else {
+      const newId = 'acc_' + Date.now();
+      this.config.accounts.push({ id: newId, name, icon, color });
+    }
+
+    await this.saveConfig();
+    UI.closeModal();
+    this.renderData();
+  },
+
+  async deleteAccount(id) {
+    if (!confirm('Удалить этот счет? Операции, привязанные к нему, останутся в истории, но потеряют привязку.')) return;
+    this.config.accounts = this.config.accounts.filter(a => a.id !== id);
+    await this.saveConfig();
+    UI.closeModal();
+    this.renderData();
+  },
+
+  openBudgetModal() {
+    let inputs = this.categories.expense.map(cat => {
+      const currentVal = this.config.budgets[cat] || '';
+      return `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid var(--border-light);">
+          <div style="font-size:14px; font-weight:500; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+            <i data-lucide="${this.ICONS[cat] || 'circle-dollar-sign'}" style="width:18px;height:18px;color:var(--text-muted)"></i>
+            ${this.esc(cat)}
+          </div>
+          <input type="number" id="budget-${btoa(unescape(encodeURIComponent(cat))).replace(/=/g, '')}" value="${currentVal}" placeholder="Без лимита" class="form-input" style="width:120px; text-align:right;">
+        </div>
+      `;
+    }).join('');
+
+    const content = `
+      <div style="margin-bottom:var(--space-md); font-size:13px; color:var(--text-secondary); line-height:1.5;">Установите лимиты трат на месяц. Если оставить поле пустым, лимит не установлен. Приложение будет предупреждать о перерасходе.</div>
+      <div style="max-height:55vh; overflow-y:auto; padding-right:8px;">
+        ${inputs}
+      </div>
+    `;
+
+    const footer = `
+      <div style="display:flex;gap:var(--space-sm);margin-left:auto">
+        <button class="btn btn-secondary" onclick="UI.closeModal()">Отмена</button>
+        <button class="btn btn-primary" onclick="FinancesPage.saveBudgets()"><i data-lucide="save"></i> Сохранить</button>
+      </div>
+    `;
+    
+    UI.openModal('<i data-lucide="pie-chart"></i> Настройка бюджетов', content, footer);
+    
+    const titleEl = document.querySelector('.modal-title');
+    if (titleEl) {
+      titleEl.innerHTML = '<i data-lucide="pie-chart"></i> Настройка бюджетов';
+      titleEl.style.display = 'flex';
+      titleEl.style.alignItems = 'center';
+      titleEl.style.gap = '8px';
+    }
+    
+    if (window.lucide) window.lucide.createIcons();
+  },
+
+  async saveBudgets() {
+    this.categories.expense.forEach(cat => {
+      const id = 'budget-' + btoa(unescape(encodeURIComponent(cat))).replace(/=/g, '');
+      const input = document.getElementById(id);
+      if (input) {
+        const val = Number(input.value);
+        if (val > 0) this.config.budgets[cat] = val;
+        else delete this.config.budgets[cat];
+      }
+    });
+    await this.saveConfig();
+    UI.closeModal();
+    this.renderData();
+  },
+
   async saveTransaction(id) {
     const amount = document.getElementById('tx-amount').value;
     const date = document.getElementById('tx-date').value;
     const category = document.getElementById('tx-category').value;
-    const description = document.getElementById('tx-desc').value.trim();
+    const textDesc = document.getElementById('tx-desc').value.trim();
     const type = document.getElementById('tx-type').value;
+    
+    let descriptionObj = { text: textDesc };
+    
+    if (type === 'transfer') {
+      const fromAcc = document.getElementById('tx-from-account').value;
+      const toAcc = document.getElementById('tx-to-account').value;
+      if (fromAcc === toAcc) {
+        UI.toast('Счета должны быть разными', 'error');
+        return;
+      }
+      descriptionObj.fromAccount = fromAcc;
+      descriptionObj.toAccount = toAcc;
+    } else {
+      const acc = document.getElementById('tx-account');
+      if (acc) descriptionObj.account = acc.value;
+    }
+    
+    const description = JSON.stringify(descriptionObj);
 
     if (!amount || amount <= 0 || !date) {
       UI.toast('Укажите корректную сумму', 'error');

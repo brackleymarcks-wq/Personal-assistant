@@ -76,7 +76,8 @@ const NotesPage = {
 
   async load() {
     try {
-      this.notes = await DB.getNotes();
+      const allNotes = await DB.getNotes();
+      this.notes = allNotes.filter(n => !n.title.startsWith('SYSTEM_CONFIG'));
       // Sort by updated_at descending
       this.notes.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
       this.renderSidebar();
@@ -249,7 +250,7 @@ const NotesPage = {
             </div>
           </div>
           
-          <textarea id="editor-content" class="note-content-textarea" placeholder="Начните писать здесь... Нажмите Сохранить для записи." style="flex:1; border:none; background:transparent; resize:none; font-size:16px; line-height:1.6; color:var(--text-primary); outline:none; min-height: 200px;">${this.esc(textContent)}</textarea>
+          <div id="editor-content-container" style="flex:1; border:none; min-height: 400px;"></div>
         </div>
         
         <!-- Right Pane: AI Chat -->
@@ -284,23 +285,49 @@ const NotesPage = {
     
     if (window.lucide) window.lucide.createIcons();
     
-    // Auto-resize textarea
-    const textarea = document.getElementById('editor-content');
-    if (textarea) {
-      // Optional: you can add an input listener for auto-save here
-      // For now, using manual save button to avoid too many DB calls
-    }
+    
+    // Initialize Toast UI Editor
+    setTimeout(() => {
+      const container = document.getElementById('editor-content-container');
+      if (container) {
+        // Destroy previous instance if exists
+        if (this.toastEditor) {
+          try { this.toastEditor.destroy(); } catch(e) {}
+        }
+        
+        this.toastEditor = new toastui.Editor({
+          el: container,
+          height: '100%',
+          initialEditType: 'wysiwyg',
+          previewStyle: 'vertical',
+          initialValue: textContent,
+          language: 'ru-RU', // Might need i18n file, but it defaults gracefully
+          toolbarItems: [
+            ['heading', 'bold', 'italic', 'strike'],
+            ['hr', 'quote'],
+            ['ul', 'ol', 'task', 'indent', 'outdent'],
+            ['table', 'image', 'link'],
+            ['code', 'codeblock']
+          ]
+        });
+        
+        // Hide standard border to blend with our UI
+        const editorWrapper = container.querySelector('.toastui-editor-defaultUI');
+        if (editorWrapper) {
+          editorWrapper.style.border = 'none';
+        }
+      }
+    }, 50);
   },
 
   async saveActiveNote(silent = false) {
     if (!this.activeNoteId) return;
     
     const titleEl = document.getElementById('editor-title');
-    const contentEl = document.getElementById('editor-content');
-    if (!titleEl || !contentEl) return;
+    if (!titleEl) return;
 
     const title = titleEl.value.trim() || 'Без заголовка';
-    const textContent = contentEl.value.trim();
+    const textContent = this.toastEditor ? this.toastEditor.getMarkdown() : '';
     const content = textContent + (this.currentChatHistory && this.currentChatHistory.length > 0 ? '\\n\\n===AI_CHAT_START===\\n' + JSON.stringify(this.currentChatHistory) : '');
     
     const mood = document.getElementById('editor-mood').value;
@@ -334,10 +361,9 @@ const NotesPage = {
   },
 
   async handleAIRewrite() {
-    const contentEl = document.getElementById('editor-content');
-    if (!contentEl) return;
-    const content = contentEl.value.trim();
-    if (!content) {
+    if (!this.toastEditor) return;
+    const content = this.toastEditor.getMarkdown();
+    if (!content.trim()) {
       UI.toast('Напишите что-нибудь, чтобы ИИ мог улучшить текст', 'warning');
       return;
     }
@@ -347,7 +373,7 @@ const NotesPage = {
 
     try {
       const rewritten = await Gemini.assistWithNote(content, '', 'rewrite');
-      contentEl.value = rewritten;
+      this.toastEditor.setMarkdown(rewritten);
       await this.saveActiveNote(true);
       UI.toast('Текст успешно улучшен!', 'success');
     } catch (e) {
@@ -360,11 +386,10 @@ const NotesPage = {
 
   async handleAIAdvice() {
     const promptEl = document.getElementById('ai-prompt-input');
-    const contentEl = document.getElementById('editor-content');
-    if (!promptEl || !contentEl) return;
+    if (!promptEl || !this.toastEditor) return;
 
     const prompt = promptEl.value.trim();
-    const content = contentEl.value.trim();
+    const content = this.toastEditor.getMarkdown();
     if (!prompt) return;
 
     const loader = document.getElementById('ai-loading');

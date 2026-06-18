@@ -7,7 +7,7 @@ const TasksPage = {
   projects: [],
   knowledge: [],
   view: 'list', // list | kanban
-  filters: { status: '', direction: '', priority: '', search: '' },
+  filters: { status: [], direction: [], priority: [], search: '' },
 
   DIRECTIONS: ['Митап AI-Connect', 'ТГ AI-Connect', 'Учись и применяй', 'ИИ Дайджест', 'Задача от руководителя', 'Банк промтов', 'Smart-запрос/ответ', 'Операционная задача', 'Английский', 'Личное'],
   STATUSES: ['Идея', 'Ждёт меня', 'В работе', 'Ждёт других', 'Делегирована', 'Готово', 'Отменена'],
@@ -23,6 +23,26 @@ const TasksPage = {
     'Делегирована': '#8b5cf6',
     'Готово': '#10b981',
     'Отменена': '#475569'
+  },
+
+  renderMultiSelect(id, options, selected, placeholder) {
+    const text = selected.length === 0 ? placeholder : selected.join(', ');
+    return `
+      <div class="custom-multi-select" id="${id}-wrapper" data-id="${id}">
+        <div class="custom-select-trigger" id="${id}-trigger">
+          <span id="${id}-text">${text}</span>
+          <i data-lucide="chevron-down" style="width:16px;height:16px;color:var(--text-muted);flex-shrink:0;"></i>
+        </div>
+        <div class="custom-select-dropdown" id="${id}-dropdown">
+          ${options.map(opt => `
+            <label class="custom-select-option">
+              <input type="checkbox" value="${opt}" class="${id}-checkbox" ${selected.includes(opt) ? 'checked' : ''} />
+              ${opt}
+            </label>
+          `).join('')}
+        </div>
+      </div>
+    `;
   },
 
   render() {
@@ -44,20 +64,11 @@ const TasksPage = {
         <div class="tasks-toolbar">
           <div class="search-input-wrapper">
             <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input id="tasks-search" type="text" class="form-input search-input" placeholder="Поиск задач…" />
+            <input id="tasks-search" type="text" class="form-input search-input" placeholder="Поиск задач…" value="${this.filters.search}" />
           </div>
-          <select id="filter-direction" class="form-input filter-select">
-            <option value="">Все направления</option>
-            ${this.DIRECTIONS.map(d => `<option value="${d}">${d}</option>`).join('')}
-          </select>
-          <select id="filter-status" class="form-input filter-select">
-            <option value="">Все статусы</option>
-            ${this.STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}
-          </select>
-          <select id="filter-priority" class="form-input filter-select">
-            <option value="">Все приоритеты</option>
-            ${this.PRIORITIES.map(p => `<option value="${p}">${p}</option>`).join('')}
-          </select>
+          ${this.renderMultiSelect('filter-direction', this.DIRECTIONS, this.filters.direction, 'Все направления')}
+          ${this.renderMultiSelect('filter-status', this.STATUSES, this.filters.status, 'Все статусы')}
+          ${this.renderMultiSelect('filter-priority', this.PRIORITIES, this.filters.priority, 'Все приоритеты')}
           <div class="view-toggle">
             <button class="view-toggle-btn ${this.view === 'list' ? 'active' : ''}" data-view="list">
               <i data-lucide="list" style="width:14px;height:14px;margin-right:4px;vertical-align:middle;"></i>
@@ -93,19 +104,45 @@ const TasksPage = {
       }, 300);
     });
 
-    document.getElementById('filter-direction').addEventListener('change', (e) => {
-      this.filters.direction = e.target.value;
-      this.renderContent();
-    });
-    document.getElementById('filter-status').addEventListener('change', (e) => {
-      this.filters.status = e.target.value;
-      this.renderContent();
-    });
-    document.getElementById('filter-priority').addEventListener('change', (e) => {
-      this.filters.priority = e.target.value;
-      this.renderContent();
-    });
+    const setupMultiSelect = (id, fieldName, placeholder) => {
+      const wrapper = document.getElementById(`${id}-wrapper`);
+      if (!wrapper) return;
+      const trigger = document.getElementById(`${id}-trigger`);
+      const dropdown = document.getElementById(`${id}-dropdown`);
+      const textEl = document.getElementById(`${id}-text`);
+      
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = dropdown.classList.contains('show');
+        document.querySelectorAll('.custom-select-dropdown').forEach(d => d.classList.remove('show'));
+        document.querySelectorAll('.custom-select-trigger').forEach(t => t.classList.remove('active'));
+        if (!isOpen) {
+          dropdown.classList.add('show');
+          trigger.classList.add('active');
+        }
+      });
+      
+      dropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (e.target.tagName.toLowerCase() === 'input') {
+          // Checkbox changed
+          const checkboxes = dropdown.querySelectorAll(`.${id}-checkbox`);
+          const selected = Array.from(checkboxes).filter(c => c.checked).map(c => c.value);
+          this.filters[fieldName] = selected;
+          textEl.textContent = selected.length === 0 ? placeholder : selected.join(', ');
+          this.renderContent();
+        }
+      });
+    };
 
+    setupMultiSelect('filter-direction', 'direction', 'Все направления');
+    setupMultiSelect('filter-status', 'status', 'Все статусы');
+    setupMultiSelect('filter-priority', 'priority', 'Все приоритеты');
+
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.custom-select-dropdown').forEach(d => d.classList.remove('show'));
+      document.querySelectorAll('.custom-select-trigger').forEach(t => t.classList.remove('active'));
+    });
     document.querySelectorAll('.view-toggle-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         this.view = btn.dataset.view;
@@ -128,11 +165,14 @@ const TasksPage = {
 
   getFilteredTasks() {
     return this.tasks.filter(t => {
-      if (this.filters.status && t.status !== this.filters.status) return false;
-      if (this.filters.direction) {
-        if (!t.direction || !t.direction.includes(this.filters.direction)) return false;
+      if (this.filters.status.length > 0 && !this.filters.status.includes(t.status)) return false;
+      if (this.filters.direction.length > 0) {
+        if (!t.direction) return false;
+        const taskDirs = t.direction.split(',').map(d => d.trim());
+        const hasOverlap = this.filters.direction.some(d => taskDirs.includes(d));
+        if (!hasOverlap) return false;
       }
-      if (this.filters.priority && t.priority !== this.filters.priority) return false;
+      if (this.filters.priority.length > 0 && !this.filters.priority.includes(t.priority)) return false;
       if (this.filters.search) {
         const s = this.filters.search.toLowerCase();
         if (!t.title.toLowerCase().includes(s) && !(t.next_step || '').toLowerCase().includes(s)) return false;
@@ -180,19 +220,56 @@ const TasksPage = {
     }
 
     const now = new Date();
+    now.setHours(0,0,0,0);
+    const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const dow = now.getDay();
+    const diffToSunday = dow === 0 ? 0 : 7 - dow;
+    const endOfWeek = new Date(now);
+    endOfWeek.setDate(now.getDate() + diffToSunday);
+    endOfWeek.setHours(23,59,59,999);
 
-    // Group by priority
     const groups = {
-      'Высокий': tasks.filter(t => t.priority === 'Высокий' && !['Готово', 'Отменена'].includes(t.status)),
-      'Средний': tasks.filter(t => t.priority === 'Средний' && !['Готово', 'Отменена'].includes(t.status)),
-      'Низкий': tasks.filter(t => t.priority === 'Низкий' && !['Готово', 'Отменена'].includes(t.status)),
-      'Завершённые': tasks.filter(t => ['Готово', 'Отменена'].includes(t.status))
+      'Просроченные': [],
+      'Сегодня': [],
+      'Завтра': [],
+      'На этой неделе': [],
+      'Позже': [],
+      'Без даты': [],
+      'Завершённые': []
     };
 
-    const PRIORITY_ICONS = { 
-      'Высокий': '<i data-lucide="arrow-up-circle" style="color:var(--danger);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>', 
-      'Средний': '<i data-lucide="minus-circle" style="color:var(--warning);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>', 
-      'Низкий': '<i data-lucide="arrow-down-circle" style="color:var(--success);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>', 
+    tasks.forEach(t => {
+      if (['Готово', 'Отменена'].includes(t.status)) {
+        groups['Завершённые'].push(t);
+        return;
+      }
+      if (!t.deadline) {
+        groups['Без даты'].push(t);
+        return;
+      }
+      const d = new Date(t.deadline);
+      d.setHours(0,0,0,0);
+      if (d < now) {
+        groups['Просроченные'].push(t);
+      } else if (d.getTime() === now.getTime()) {
+        groups['Сегодня'].push(t);
+      } else if (d.getTime() === tomorrow.getTime()) {
+        groups['Завтра'].push(t);
+      } else if (d <= endOfWeek) {
+        groups['На этой неделе'].push(t);
+      } else {
+        groups['Позже'].push(t);
+      }
+    });
+
+    const GROUP_ICONS = { 
+      'Просроченные': '<i data-lucide="alert-circle" style="color:var(--danger);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>', 
+      'Сегодня': '<i data-lucide="sun" style="color:var(--accent-vibrant);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>', 
+      'Завтра': '<i data-lucide="sunrise" style="color:var(--warning);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>', 
+      'На этой неделе': '<i data-lucide="calendar" style="color:var(--text-secondary);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>',
+      'Позже': '<i data-lucide="calendar-days" style="color:var(--text-muted);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>',
+      'Без даты': '<i data-lucide="inbox" style="color:var(--text-muted);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>',
       'Завершённые': '<i data-lucide="check-circle-2" style="color:var(--text-muted);width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>' 
     };
 
@@ -201,8 +278,8 @@ const TasksPage = {
       if (items.length === 0) continue;
       html += `
         <div class="tasks-group">
-          <div class="tasks-group-header" style="display:flex;align-items:center;">${PRIORITY_ICONS[group]} ${group} <span style="color:var(--text-muted);margin-left:8px;">(${items.length})</span></div>
-          ${items.map(t => this.renderTaskCard(t, now)).join('')}
+          <div class="tasks-group-header" style="display:flex;align-items:center;">${GROUP_ICONS[group]} <span style="font-weight:600">${group}</span> <span style="color:var(--text-muted);margin-left:8px;">(${items.length})</span></div>
+          ${items.map(t => this.renderTaskCard(t, new Date())).join('')}
         </div>
       `;
     }
@@ -210,8 +287,8 @@ const TasksPage = {
     container.innerHTML = html;
     container.querySelectorAll('.task-card').forEach(card => {
       card.addEventListener('click', (e) => {
-        // Prevent opening task if clicked on project badge or pomodoro btn
-        if(e.target.closest('.task-project-badge') || e.target.closest('.start-pomodoro-btn')) return;
+        // Prevent opening task if clicked on project badge, pomodoro btn, or link
+        if(e.target.closest('.task-project-badge') || e.target.closest('.start-pomodoro-btn') || e.target.closest('.obsidian-link')) return;
         this.openTaskModal(card.dataset.id);
       });
     });
@@ -277,9 +354,10 @@ const TasksPage = {
           <i data-lucide="check" style="width: 14px; height: 14px; opacity: ${isDone ? 1 : 0}"></i>
         </div>
         <div class="task-content">
-          <div class="task-title" style="${isDone ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${this.escHtml(task.title)}</div>
-          ${task.next_step ? `<div class="task-next-step" style="${isDone ? 'color: var(--text-muted);' : ''}"><i data-lucide="corner-down-right" style="width: 12px; height: 12px;"></i> ${this.escHtml(task.next_step)}</div>` : ''}
+          <div class="task-title" style="${isDone ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${window.PeekView ? window.PeekView.parseLinks(task.title) : this.escHtml(task.title)}</div>
+          ${task.next_step ? `<div class="task-next-step" style="${isDone ? 'color: var(--text-muted);' : ''}"><i data-lucide="corner-down-right" style="width: 12px; height: 12px;"></i> ${window.PeekView ? window.PeekView.parseLinks(task.next_step) : this.escHtml(task.next_step)}</div>` : ''}
           <div class="task-meta">
+            ${deadline ? `<span style="display:inline-flex;align-items:center;gap:4px;color:${deadline < new Date() && !isDone ? 'var(--danger)' : 'var(--text-muted)'};font-weight:500;margin-right:4px;"><i data-lucide="calendar" style="width:12px;height:12px;"></i> ${deadline.toLocaleDateString('ru-RU', {day:'numeric', month:'short'})}</span>` : ''}
             ${projectBadge}
             ${directionBadge}
             <span>${prioIcons[task.priority] || ''} ${task.priority || ''}</span>
@@ -326,7 +404,7 @@ const TasksPage = {
     // Setup click handlers
     container.querySelectorAll('.kanban-card').forEach(card => {
       card.addEventListener('click', (e) => {
-        if(e.target.closest('.task-project-badge') || e.target.closest('.start-pomodoro-btn')) return;
+        if(e.target.closest('.task-project-badge') || e.target.closest('.start-pomodoro-btn') || e.target.closest('.obsidian-link')) return;
         this.openTaskModal(card.dataset.id);
       });
       
@@ -412,24 +490,26 @@ const TasksPage = {
     if (task.project_id) {
       const project = this.projects.find(p => p.id === task.project_id);
       if (project) {
-        projectBadge = `<span style="display:inline-block;background:var(--glass-highlight);border:1px solid var(--glass-border);padding:2px 6px;border-radius:var(--radius-full);font-size:10px;margin-bottom:6px;color:var(--text-secondary);"><i data-lucide="folder" style="width:10px;height:10px;vertical-align:middle;"></i> ${this.escHtml(project.name)}</span>`;
+        projectBadge = `<span style="display:inline-flex;align-items:center;background:var(--glass-highlight);border:1px solid var(--glass-border);padding:2px 6px;border-radius:var(--radius-full);font-size:10px;color:var(--text-secondary);"><i data-lucide="folder" style="width:10px;height:10px;margin-right:2px;"></i> ${this.escHtml(project.name)}</span>`;
       }
     }
 
     let directionBadge = '';
     if (task.direction) {
       const dirs = task.direction.split(',').map(d => d.trim()).filter(Boolean);
-      directionBadge = dirs.map(d => `<span style="display:inline-block;background:var(--bg-hover);border:1px solid var(--border-color);padding:2px 6px;border-radius:var(--radius-full);font-size:10px;margin-bottom:6px;margin-right:4px;color:var(--text-secondary);"><i data-lucide="tag" style="width:10px;height:10px;vertical-align:middle;"></i> ${this.escHtml(d)}</span>`).join('');
+      directionBadge = dirs.map(d => `<span style="display:inline-flex;align-items:center;background:var(--bg-hover);border:1px solid var(--border-color);padding:2px 6px;border-radius:var(--radius-full);font-size:10px;color:var(--text-secondary);"><i data-lucide="tag" style="width:10px;height:10px;margin-right:2px;"></i> ${this.escHtml(d)}</span>`).join('');
     }
 
     const statusColor = this.STATUS_COLORS[task.status] || '#64748b';
     const borderStyle = `border: 1px solid ${statusColor}80; box-shadow: 0 2px 8px ${statusColor}26;`;
 
     return `
-      <div class="kanban-card task-card" data-id="${task.id}" style="position:relative; ${borderStyle}" draggable="true">
-        ${projectBadge}
-        ${directionBadge}
-        <div class="kanban-card-title">${this.escHtml(task.title)}</div>
+      <div class="kanban-card task-card" data-id="${task.id}" style="position:relative; display:flex; flex-direction:column; ${borderStyle}" draggable="true">
+        <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px;">
+          ${projectBadge}
+          ${directionBadge}
+        </div>
+        <div class="kanban-card-title" style="font-weight:600; font-size:13.5px; margin-bottom:8px; line-height:1.4;">${this.escHtml(task.title)}</div>
         ${task.next_step ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><i data-lucide="corner-down-right" style="width:12px;height:12px;vertical-align:middle;"></i> ${this.escHtml(task.next_step)}</div>` : ''}
         <div class="kanban-card-meta" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
           <div style="display:flex;align-items:center;gap:6px;">

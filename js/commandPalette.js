@@ -168,27 +168,12 @@ window.CommandPalette = {
   openItem(type, id) {
     this.close();
     
-    // Switch to appropriate tab
-    const tabs = {
-      'task': 'tasks',
-      'knowledge': 'knowledge',
-      'goal': 'goals'
-    };
-    
-    if (tabs[type] && typeof window.switchTab === 'function') {
-      window.switchTab(tabs[type]);
+    // Instead of switching tab, we open the PeekView modal!
+    if (window.PeekView) {
+      PeekView.open(type, id);
+    } else {
+      console.warn('PeekView is not initialized');
     }
-    
-    // Wait for tab to switch then open item
-    setTimeout(() => {
-      if (type === 'task' && window.TasksPage) {
-        TasksPage.editTask(id);
-      } else if (type === 'knowledge' && window.KnowledgePage) {
-        KnowledgePage.openItem(id);
-      } else if (type === 'goal' && window.GoalsPage) {
-        // Assume GoalsPage has a method to open or highlight
-      }
-    }, 100);
   },
 
   esc(str) {

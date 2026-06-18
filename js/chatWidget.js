@@ -116,13 +116,30 @@ window.ChatWidget = {
   getContext() {
     let contextStr = '';
     
-    // Check if we are on the Knowledge page and a note is open
-    if (typeof App !== 'undefined' && App.currentModule && typeof KnowledgePage !== 'undefined' && App.currentModule === KnowledgePage) {
+    // 1. Check if PeekView is open (topmost modal)
+    if (typeof window.PeekView !== 'undefined' && window.PeekView.isOpen) {
+      // Find title and text inside peek modal
+      const body = document.getElementById('peek-modal-body');
+      const text = body ? body.innerText : '';
+      if (text) {
+        contextStr += `[КОНТЕКСТ: Пользователь сейчас читает карточку во всплывающем окне.\nТекст карточки:\n${text.substring(0, 4000)}\n]\n\n`;
+      }
+    }
+    // 2. Check if NotesPage is open and a note is being edited
+    else if (typeof window.NotesPage !== 'undefined' && window.NotesPage.activeNoteId && window.NotesPage.toastEditor) {
+      const title = document.getElementById('editor-title')?.value || 'Без названия';
+      const content = window.NotesPage.toastEditor.getMarkdown().trim();
+      if (content) {
+        contextStr += `[КОНТЕКСТ: Пользователь сейчас редактирует Заметку "${title}". Текст заметки:\n${content.substring(0, 4000)}\n]\n\n`;
+      }
+    }
+    // 3. Fallback to old KnowledgePage logic just in case
+    else if (typeof App !== 'undefined' && App.currentModule && typeof KnowledgePage !== 'undefined' && App.currentModule === KnowledgePage) {
       if (KnowledgePage.activeItemId && KnowledgePage.editorInstance) {
         const title = document.getElementById('kb-editor-title')?.value || 'Без названия';
         const content = KnowledgePage.editorInstance.getMarkdown().trim();
         if (content) {
-          contextStr = `[КОНТЕКСТ ПРИЛОЖЕНИЯ: Пользователь сейчас читает заметку из Базы Знаний с заголовком "${title}". Вот текст заметки:\n${content.substring(0, 4000)}\n]\n\n`;
+          contextStr += `[КОНТЕКСТ: Пользователь читает Базу Знаний "${title}". Текст:\n${content.substring(0, 4000)}\n]\n\n`;
         }
       }
     }

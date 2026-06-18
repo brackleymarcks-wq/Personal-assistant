@@ -170,6 +170,33 @@ async function createTask(title, opts = {}) {
   return data;
 }
 
+async function createNote(title, content, tags = []) {
+  const user = await getUser();
+  const { data, error } = await db.from('notes').insert({
+    user_id: user?.id,
+    title,
+    content,
+    tags,
+    mood: '💡'
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+async function createTransaction(amount, type, category, comment = '') {
+  const user = await getUser();
+  const { data, error } = await db.from('finances').insert({
+    user_id: user?.id,
+    amount,
+    type,
+    category,
+    comment,
+    date: new Date().toISOString()
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
 async function getSettings() {
   const { data } = await db.from('settings').select('*').limit(1).single();
   return data || {};
@@ -273,6 +300,39 @@ const TOOLS = [
         required: ['content']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_note',
+      description: 'Создать полноценную Заметку (Дневник, База знаний, Идеи)',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Заголовок заметки' },
+          content: { type: 'string', description: 'Текст заметки (поддерживается Markdown)' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Список тегов' }
+        },
+        required: ['title', 'content']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_transaction',
+      description: 'Записать финансы (доходы или расходы)',
+      parameters: {
+        type: 'object',
+        properties: {
+          amount: { type: 'number', description: 'Сумма операции' },
+          type: { type: 'string', description: 'Тип: income (доход) или expense (расход)' },
+          category: { type: 'string', description: 'Категория (например: Еда, Транспорт, Зарплата)' },
+          comment: { type: 'string', description: 'Комментарий к операции' }
+        },
+        required: ['amount', 'type', 'category']
+      }
+    }
   }
 ];
 
@@ -312,6 +372,15 @@ async function executeFunctionCall(name, args) {
         if(error) return { success: false, error: error.message };
         return { success: true, item: data, message: 'Мысль записана во входящие' };
       }
+      case 'create_note': {
+        const note = await createNote(args.title, args.content, args.tags || []);
+        return { success: true, note, message: `Заметка "${note.title}" создана` };
+      }
+      case 'create_transaction': {
+        const tx = await createTransaction(args.amount, args.type, args.category, args.comment || '');
+        const verb = args.type === 'income' ? 'Записан доход' : 'Записан расход';
+        return { success: true, transaction: tx, message: `${verb}: ${args.amount} (${args.category})` };
+      }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
     }
@@ -320,7 +389,7 @@ async function executeFunctionCall(name, args) {
   }
 }
 
-async function askAI(userMessage, context = '') {
+async function askAI(userMessage, context = '', imageUrl = null) {
   if (!AI_API_KEY) return 'API ключ для нейросети не настроен (AI_API_KEY).';
 
   const settings = await getSettings();
@@ -344,12 +413,23 @@ async function askAI(userMessage, context = '') {
 
   const history = await getRecentMessages(20);
   const messages = history.map(m => ({ role: m.role, content: m.content }));
-  messages.push({ role: 'user', content: userMessage });
+  
+  if (imageUrl) {
+    messages.push({ 
+      role: 'user', 
+      content: [
+        { type: 'text', text: userMessage },
+        { type: 'image_url', image_url: { url: imageUrl } }
+      ] 
+    });
+  } else {
+    messages.push({ role: 'user', content: userMessage });
+  }
 
   // Сразу отправляем статус "Печатает...", чтобы не казалось, что бот завис
   bot.sendChatAction(CHAT_ID, 'typing').catch(() => {});
 
-  let response = await callAPI(systemInstruction, messages);
+  let response = await callAPI(systemInstruction, messages, 0, !!imageUrl);
   let maxIter = 5;
 
   while (maxIter-- > 0) {
@@ -375,13 +455,19 @@ async function askAI(userMessage, context = '') {
       });
     }
 
-    response = await callAPI(systemInstruction, messages);
+    response = await callAPI(systemInstruction, messages, 0, !!imageUrl);
   }
 
   return response.choices?.[0]?.message?.content || 'Не удалось получить ответ';
 }
 
-async function callAPI(systemInstruction, messages, retryCount = 0) {
+async function callAPI(systemInstruction, messages, retryCount = 0, isVision = false) {
+  let modelToUse = AI_MODEL;
+  if (isVision) {
+    if (AI_API_URL.includes('groq')) modelToUse = 'llama-3.2-90b-vision-preview';
+    else if (AI_API_URL.includes('openai')) modelToUse = 'gpt-4o-mini';
+  }
+
   const res = await fetch(AI_API_URL, {
     method: 'POST',
     headers: {
@@ -389,7 +475,7 @@ async function callAPI(systemInstruction, messages, retryCount = 0) {
       'Authorization': `Bearer ${AI_API_KEY}`
     },
     body: JSON.stringify({
-      model: AI_MODEL,
+      model: modelToUse,
       messages: [
         { role: 'system', content: systemInstruction },
         ...messages
@@ -429,19 +515,43 @@ async function callAPI(systemInstruction, messages, retryCount = 0) {
 bot.onText(/\/start/, (msg) => {
   CHAT_ID = msg.chat.id.toString();
   console.log(`📍 Chat ID: ${CHAT_ID}`);
-  bot.sendMessage(msg.chat.id,
-    `👋 Привет, Игорь! Я твой персональный ассистент.\n\n` +
-    `Твой Chat ID: \`${CHAT_ID}\`\n` +
-    `Скопируй его в файл \`.env\` → \`TELEGRAM_CHAT_ID=${CHAT_ID}\`\n\n` +
-    `Теперь можешь:\n` +
-    `• Просто написать мне что угодно — я отвечу с учетом твоего контекста\n` +
-    `• Кинуть задачу: \"Завтра позвонить Горшкову\"\n` +
-    `• Попросить запомнить: \"Запомни: по пятницам я играю в футбол\"\n` +
-    `• /tasks — мои активные задачи\n` +
-    `• /today — план на сегодня\n` +
-    `• /briefing — утренний брифинг прямо сейчас`,
-    { parse_mode: 'Markdown' }
-  );
+  bot.sendMessage(CHAT_ID, 'Привет! Я твой антигравити-ассистент. Можешь писать текстом, скидывать голосовые (я их расшифрую) или присылать фотографии чеков для учета финансов!');
+});
+
+// Обработка фотографий (сканер чеков)
+bot.on('photo', async (msg) => {
+  if (CHAT_ID && msg.chat.id.toString() !== CHAT_ID) return;
+  
+  try {
+    const sentMsg = await bot.sendMessage(msg.chat.id, '👀 Изучаю чек...');
+    
+    // Получаем фото в максимальном разрешении
+    const fileId = msg.photo[msg.photo.length - 1].file_id;
+    const fileLink = await bot.getFileLink(fileId);
+    
+    // Скачиваем фото и конвертируем в base64
+    const response = await fetch(fileLink);
+    const buffer = await response.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    const imageUrl = `data:image/jpeg;base64,${base64}`;
+    
+    let text = msg.caption || 'Распознай этот чек и занеси его в мои расходы с помощью create_transaction. Разбей на логичную категорию, а в комментарий напиши, откуда чек и кратко что купил. В качестве ответа просто скажи, что записал.';
+    
+    const aiResponse = await askAI(text, '', imageUrl);
+    
+    // Сохраняем в историю (без base64 чтобы не засорять базу)
+    await saveMessage('user', text + ' [Фотография чека]');
+    await saveMessage('assistant', aiResponse);
+    
+    bot.editMessageText(aiResponse, {
+      chat_id: msg.chat.id,
+      message_id: sentMsg.message_id,
+      parse_mode: 'Markdown'
+    });
+  } catch (e) {
+    console.error('Photo error:', e);
+    bot.sendMessage(msg.chat.id, '❌ Произошла ошибка при распознавании фото: ' + e.message);
+  }
 });
 
 // /tasks — список задач
