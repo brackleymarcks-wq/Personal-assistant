@@ -1,4 +1,4 @@
-﻿// ============================================
+// ============================================
 // FINANCES PAGE
 // ============================================
 
@@ -204,7 +204,7 @@ const FinancesPage = {
 
     // Calculate Account Balances up to the end of selected month
     const accountBalances = {};
-    this.config.accounts.forEach(a => accountBalances[a.id] = 0);
+    this.config.accounts.forEach(a => accountBalances[a.id] = Number(a.initialBalance) || 0);
     
     // We want to calculate balance accurately up to the very last second of the selected month
     const endOfViewMonth = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
@@ -810,6 +810,10 @@ ${JSON.stringify(historySummary, null, 2)}
           <input type="color" id="acc-color" class="form-input" value="${acc ? acc.color : '#5f27cd'}" style="height:42px;padding:4px;">
         </div>
       </div>
+      <div class="form-group" style="margin-top:var(--space-md)">
+        <label class="form-label">Начальный баланс (BYN)</label>
+        <input type="number" step="0.01" id="acc-initial-balance" class="form-input" value="${acc ? (acc.initialBalance || 0) : 0}">
+      </div>
     `;
 
     const footer = `
@@ -833,15 +837,16 @@ ${JSON.stringify(historySummary, null, 2)}
     const name = document.getElementById('acc-name').value.trim();
     const icon = document.getElementById('acc-icon').value;
     const color = document.getElementById('acc-color').value;
+    const initialBalance = parseFloat(document.getElementById('acc-initial-balance').value) || 0;
 
     if (!name) { UI.toast('Введите название', 'error'); return; }
 
     if (id) {
       const acc = this.config.accounts.find(a => a.id === id);
-      if (acc) { acc.name = name; acc.icon = icon; acc.color = color; }
+      if (acc) { acc.name = name; acc.icon = icon; acc.color = color; acc.initialBalance = initialBalance; }
     } else {
       const newId = 'acc_' + Date.now();
-      this.config.accounts.push({ id: newId, name, icon, color });
+      this.config.accounts.push({ id: newId, name, icon, color, initialBalance });
     }
 
     await this.saveConfig();
