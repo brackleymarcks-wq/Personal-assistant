@@ -398,8 +398,9 @@ async function executeFunctionCall(name, args) {
         return { success: true, note, message: `Заметка "${note.title}" создана` };
       }
       case 'create_transaction': {
-        const tx = await createTransaction(args.amount, args.type, args.category, args.comment || '', args.account_name || '');
-        const verb = args.type === 'income' ? 'Записан доход' : 'Записан расход';
+        const txType = args.type || 'expense'; // По умолчанию считаем расходом (чек)
+        const tx = await createTransaction(args.amount, txType, args.category, args.comment || '', args.account_name || '');
+        const verb = txType === 'income' ? 'Записан доход' : 'Записан расход';
         return { success: true, transaction: tx, message: `${verb}: ${args.amount} (${args.category})` };
       }
       default:
