@@ -557,12 +557,65 @@ bot.on('photo', async (msg) => {
     const base64 = Buffer.from(buffer).toString('base64');
     const imageUrl = `data:image/jpeg;base64,${base64}`;
     
-    let text = msg.caption || 'Распознай этот чек и занеси его в мои расходы с помощью create_transaction. Разбей на логичную категорию, а в комментарий напиши, откуда чек и кратко что купил. Постарайся также извлечь account_name, если я указал "с карты" или "наличные" или название счета. В качестве ответа просто скажи, что записал.';
+    let userCaption = msg.caption ? `Комментарий пользователя: ${msg.caption}\n` : '';
     
-    const aiResponse = await askAI(text, '', imageUrl);
+    // Шаг 1: Просим Vision-модель (которая может не уметь вызывать инструменты) просто подробно описать чек
+    const visionPrompt = `Ты профессиональный бухгалтер. Внимательно изучи этот чек. 
+Извлеки: 
+1. Итоговую сумму (только число).
+2. Способ оплаты (наличные, карта и т.д.).
+3. Краткий список покупок (откуда чек и основные товары).
+Напиши это просто текстом. Никаких функций не вызывай.`;
+
+    // Вызываем API только для извлечения текста
+    let visionUrl = AI_API_URL;
+    let visionKey = AI_API_KEY;
+    let visionModel = AI_MODEL;
     
-    // Сохраняем в историю (без base64 чтобы не засорять базу)
-    await saveMessage('user', text + ' [Фотография чека]');
+    // Если есть ключ Groq, используем его супер-быструю Llama Vision
+    if (process.env.GROQ_API_KEY) {
+      visionUrl = 'https://api.groq.com/openai/v1/chat/completions';
+      visionKey = process.env.GROQ_API_KEY;
+      visionModel = 'llama-3.2-90b-vision-preview';
+    } else {
+      // Иначе пытаемся использовать OpenRouter free
+      visionModel = 'openrouter/free';
+    }
+
+    const visionRes = await fetch(visionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${visionKey}` },
+      body: JSON.stringify({
+        model: visionModel,
+        messages: [{ role: 'user', content: [{ type: 'text', text: visionPrompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
+        max_tokens: 500
+      })
+    });
+    
+    const visionData = await visionRes.json();
+    const receiptDescription = visionData.choices?.[0]?.message?.content;
+    
+    if (!receiptDescription) {
+      throw new Error('Не удалось прочитать фотографию чека.');
+    }
+
+    // Шаг 2: Передаем извлеченный текст ОБЫЧНОЙ текстовой модели, которая идеально умеет вызывать инструменты
+    const actionPrompt = `Пользователь прислал чек. Вот расшифровка этого чека от нейросети-визуализатора:
+---
+${receiptDescription}
+---
+${userCaption}
+ОБЯЗАТЕЛЬНО занеси этот расход в базу с помощью функции create_transaction. 
+Сумму возьми из расшифровки. 
+Категорию выбери логичную (например Продукты, Транспорт, Кафе). 
+В поле comment напиши откуда чек и что купили (по расшифровке). 
+В поле accountName передай способ оплаты из расшифровки или из комментария пользователя (если указан).
+В ответ просто коротко напиши, что занесено в базу.`;
+
+    const aiResponse = await askAI(actionPrompt);
+    
+    // Сохраняем в историю
+    await saveMessage('user', userCaption + ' [Фотография чека]');
     await saveMessage('assistant', aiResponse);
     
     bot.editMessageText(aiResponse, {
