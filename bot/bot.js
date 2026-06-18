@@ -487,6 +487,7 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
   if (isVision) {
     if (AI_API_URL.includes('groq')) modelToUse = 'llama-3.2-90b-vision-preview';
     else if (AI_API_URL.includes('openai')) modelToUse = 'gpt-4o-mini';
+    else if (AI_API_URL.includes('openrouter')) modelToUse = 'meta-llama/llama-3.2-90b-vision-instruct:free'; // Бесплатная модель с Vision на OpenRouter
   }
 
   const res = await fetch(AI_API_URL, {
