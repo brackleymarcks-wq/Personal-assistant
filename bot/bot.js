@@ -570,7 +570,7 @@ bot.on('photo', async (msg) => {
     // Вызываем API только для извлечения текста
     let visionUrl = AI_API_URL;
     let visionKey = AI_API_KEY;
-    let visionModel = 'openrouter/free';
+    let visionModel = 'nvidia/nemotron-nano-12b-v2-vl:free';
     
     const visionRes = await fetch(visionUrl, {
       method: 'POST',
