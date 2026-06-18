@@ -187,13 +187,13 @@ async function createTransaction(amount, type, category, comment = '', accountNa
   const user = await getUser();
   
   let descriptionObj = { rawComment: comment };
-  if (accountName) {
-    const settings = await getSettings();
-    if (settings && settings.finances_config && settings.finances_config.accounts) {
-      const acc = settings.finances_config.accounts.find(a => a.name.toLowerCase().includes(accountName.toLowerCase()));
-      if (acc) {
-        descriptionObj.account = acc.id;
-      }
+  let searchName = accountName || 'карта'; // По умолчанию всё пишем на карту
+  
+  const settings = await getSettings();
+  if (settings && settings.finances_config && settings.finances_config.accounts) {
+    const acc = settings.finances_config.accounts.find(a => a.name.toLowerCase().includes(searchName.toLowerCase()));
+    if (acc) {
+      descriptionObj.account = acc.id;
     }
   }
 
