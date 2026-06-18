@@ -15,7 +15,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Bypass SSL issues
 
 // ---- Config ----
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-let CHAT_ID = process.env.TELEGRAM_CHAT_ID || null;
+let CHAT_ID = process.env.TELEGRAM_CHAT_ID || '521675050'; // Hardcoded for guaranteed delivery
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const AI_API_KEY = process.env.AI_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY;
@@ -49,6 +49,11 @@ try {
 console.log('🤖 Бот запущен! Ожидаю сообщения...');
 if (CHAT_ID) {
   bot.sendMessage(CHAT_ID, '🤖 Я обновился на сервере и успешно перезапущен! Таймеры работают в штатном режиме.').catch(e => console.error(e));
+  
+  // Test proactive message 1 minute after startup
+  setTimeout(() => {
+    bot.sendMessage(CHAT_ID, '🚨 ПИИП-ПИИП! А вот и обещанное тестовое сообщение!\n\nЯ написал тебе сам, без твоей команды. Значит, расписание и проактивность работают на 100%! 😎').catch(e => console.error(e));
+  }, 60 * 1000);
 }
 
 // ============================================
