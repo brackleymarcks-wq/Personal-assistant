@@ -183,14 +183,27 @@ async function createNote(title, content, tags = []) {
   return data;
 }
 
-async function createTransaction(amount, type, category, comment = '') {
+async function createTransaction(amount, type, category, comment = '', accountName = '') {
   const user = await getUser();
+  
+  let descriptionObj = { rawComment: comment };
+  if (accountName) {
+    const settings = await getSettings();
+    if (settings && settings.finances_config && settings.finances_config.accounts) {
+      const acc = settings.finances_config.accounts.find(a => a.name.toLowerCase().includes(accountName.toLowerCase()));
+      if (acc) {
+        descriptionObj.account = acc.id;
+      }
+    }
+  }
+
   const { data, error } = await db.from('finances').insert({
     user_id: user?.id,
     amount,
     type,
     category,
     comment,
+    description: JSON.stringify(descriptionObj),
     date: new Date().toISOString()
   }).select().single();
   if (error) throw error;
@@ -328,7 +341,8 @@ const TOOLS = [
           amount: { type: 'number', description: 'Сумма операции' },
           type: { type: 'string', description: 'Тип: income (доход) или expense (расход)' },
           category: { type: 'string', description: 'Категория (например: Еда, Транспорт, Зарплата)' },
-          comment: { type: 'string', description: 'Комментарий к операции' }
+          comment: { type: 'string', description: 'Комментарий к операции' },
+          account_name: { type: 'string', description: 'Название счета/карты, с которого оплачено (Наличные, Карта и т.д.)' }
         },
         required: ['amount', 'type', 'category']
       }
@@ -377,7 +391,7 @@ async function executeFunctionCall(name, args) {
         return { success: true, note, message: `Заметка "${note.title}" создана` };
       }
       case 'create_transaction': {
-        const tx = await createTransaction(args.amount, args.type, args.category, args.comment || '');
+        const tx = await createTransaction(args.amount, args.type, args.category, args.comment || '', args.account_name || '');
         const verb = args.type === 'income' ? 'Записан доход' : 'Записан расход';
         return { success: true, transaction: tx, message: `${verb}: ${args.amount} (${args.category})` };
       }
@@ -535,7 +549,7 @@ bot.on('photo', async (msg) => {
     const base64 = Buffer.from(buffer).toString('base64');
     const imageUrl = `data:image/jpeg;base64,${base64}`;
     
-    let text = msg.caption || 'Распознай этот чек и занеси его в мои расходы с помощью create_transaction. Разбей на логичную категорию, а в комментарий напиши, откуда чек и кратко что купил. В качестве ответа просто скажи, что записал.';
+    let text = msg.caption || 'Распознай этот чек и занеси его в мои расходы с помощью create_transaction. Разбей на логичную категорию, а в комментарий напиши, откуда чек и кратко что купил. Постарайся также извлечь account_name, если я указал "с карты" или "наличные" или название счета. В качестве ответа просто скажи, что записал.';
     
     const aiResponse = await askAI(text, '', imageUrl);
     
