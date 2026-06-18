@@ -15,7 +15,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Bypass SSL issues
 
 // ---- Config ----
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-let CHAT_ID = '521675058'; // Жестко вшит правильный ID Игоря
+let CHAT_ID = process.env.TELEGRAM_CHAT_ID || '521675050';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const AI_API_KEY = process.env.AI_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY;
