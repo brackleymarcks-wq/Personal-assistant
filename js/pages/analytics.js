@@ -1,4 +1,4 @@
-// ============================================
+﻿// ============================================
 // ANALYTICS PAGE — Productivity Reports
 // ============================================
 
@@ -111,7 +111,7 @@ const AnalyticsPage = {
         <div class="stat-grid" style="margin-top:var(--space-sm);">
           <div class="stat-item" style="grid-column:1/-1;">
             <div class="stat-label" style="margin-top:0;">Остаток</div>
-            <div class="stat-val" style="font-size:36px;color:${(income-expense) < 0 ? 'var(--danger)' : 'var(--text-primary)'}">${(income - expense).toLocaleString('ru-RU')} ₴</div>
+            <div class="stat-val" style="font-size:36px;color:${(income-expense) < 0 ? 'var(--danger)' : 'var(--text-primary)'}">${(income - expense).toLocaleString('ru-RU')} BYN</div>
           </div>
           <div class="stat-item">
             <div class="stat-val" style="font-size:20px;color:var(--success)">+${income.toLocaleString('ru-RU')}</div>

@@ -1,4 +1,4 @@
-// ============================================
+﻿// ============================================
 // FINANCES PAGE
 // ============================================
 
@@ -242,7 +242,7 @@ const FinancesPage = {
             <div style="font-weight: 600; font-size: 14px; color: var(--text-primary);">${this.esc(acc.name)}</div>
           </div>
           <div style="font-size: 20px; font-weight: 800; color: var(--text-primary); position: relative;">
-            ${accountBalances[acc.id].toLocaleString('ru-RU')} ₴
+            ${accountBalances[acc.id].toLocaleString('ru-RU')} BYN
           </div>
         </div>
       `).join('') + `
@@ -262,14 +262,14 @@ const FinancesPage = {
           <i data-lucide="trending-up" style="width:14px;height:14px;color:var(--success);"></i>
           Доходы (Этот месяц)
         </div>
-        <div class="finance-amount income">+${income.toLocaleString('ru-RU')} ₴</div>
+        <div class="finance-amount income">+${income.toLocaleString('ru-RU')} BYN</div>
       </div>
       <div class="finance-summary-card glass-panel" style="box-shadow: var(--shadow-sm);">
         <div class="finance-label">
           <i data-lucide="trending-down" style="width:14px;height:14px;color:var(--danger);"></i>
           Расходы (Этот месяц)
         </div>
-        <div class="finance-amount expense">-${expense.toLocaleString('ru-RU')} ₴</div>
+        <div class="finance-amount expense">-${expense.toLocaleString('ru-RU')} BYN</div>
       </div>
       <div class="finance-summary-card card-balance glass-panel" style="box-shadow: 0 0 24px var(--shadow-glow);">
         <div class="finance-label" style="color:var(--accent);">
@@ -277,7 +277,7 @@ const FinancesPage = {
           Остаток
         </div>
         <div class="finance-amount" style="color:${balance < 0 ? 'var(--danger)' : 'var(--text-primary)'}">
-          ${balance > 0 ? '+' : ''}${balance.toLocaleString('ru-RU')} ₴
+          ${balance > 0 ? '+' : ''}${balance.toLocaleString('ru-RU')} BYN
         </div>
       </div>
     `;
@@ -328,7 +328,7 @@ const FinancesPage = {
                  ${this.esc(cat)}
               </span>
               <div style="text-align:right">
-                 <span style="color: var(--text-primary); font-weight:600;">${spent.toLocaleString('ru-RU')} ₴</span>
+                 <span style="color: var(--text-primary); font-weight:600;">${spent.toLocaleString('ru-RU')} BYN</span>
                  ${limit > 0 ? `<span style="color: var(--text-muted); font-size:11px;"> из ${limit.toLocaleString('ru-RU')}</span>` : ''}
               </div>
             </div>
@@ -406,7 +406,7 @@ const FinancesPage = {
             </div>
             <div class="transaction-right">
               <div class="transaction-sum ${amountClass}" style="${isTransfer ? 'color:var(--text-primary)' : ''}">
-                ${sign}${Number(t.amount).toLocaleString('ru-RU')} ₴
+                ${sign}${Number(t.amount).toLocaleString('ru-RU')} BYN
               </div>
               <div class="transaction-time">
                 ${new Date(t.date).toLocaleDateString('ru-RU', {day:'numeric', month:'short'})}
@@ -477,17 +477,17 @@ const FinancesPage = {
               <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
                 <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-secondary);">
                   <span>Доходы:</span>
-                  <span style="color: var(--success); font-weight: 600;">+${item.income.toLocaleString('ru-RU')} ₴</span>
+                  <span style="color: var(--success); font-weight: 600;">+${item.income.toLocaleString('ru-RU')} BYN</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-secondary);">
                   <span>Расходы:</span>
-                  <span style="color: var(--danger); font-weight: 600;">-${item.expense.toLocaleString('ru-RU')} ₴</span>
+                  <span style="color: var(--danger); font-weight: 600;">-${item.expense.toLocaleString('ru-RU')} BYN</span>
                 </div>
               </div>
               <div style="border-top: 1px solid var(--border-light); padding-top: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
                 <span style="color: var(--text-muted); font-size: 11px;">Копится:</span>
                 <span style="font-weight: 700; color: ${delta >= 0 ? 'var(--success)' : 'var(--danger)'};">
-                  ${delta >= 0 ? '+' : ''}${delta.toLocaleString('ru-RU')} ₴
+                  ${delta >= 0 ? '+' : ''}${delta.toLocaleString('ru-RU')} BYN
                 </span>
               </div>
             </div>
@@ -532,8 +532,8 @@ const FinancesPage = {
       });
 
       const prompt = `Проанализируй мои финансы за текущий месяц. 
-Доход: ${income} ₴. 
-Расход: ${expense} ₴. 
+Доход: ${income} BYN. 
+Расход: ${expense} BYN. 
 Траты по категориям: ${JSON.stringify(categories)}. 
 
 Сделай 2-3 коротких и емких вывода (например, почему ушло много денег, где норма, что можно оптимизировать) и дай 1 конкретный финансовый совет. 
@@ -632,7 +632,7 @@ const FinancesPage = {
           expense: m.expense,
           savings: m.income - m.expense,
           savingsRate: m.income > 0 ? Math.round(((m.income - m.expense) / m.income) * 100) : 0,
-          topCategory: topCat === 'Нет трат' ? 'Нет трат' : `${topCat} (${topAmt} ₴)`
+          topCategory: topCat === 'Нет трат' ? 'Нет трат' : `${topCat} (${topAmt} BYN)`
         };
       });
       
@@ -721,7 +721,7 @@ ${JSON.stringify(historySummary, null, 2)}
 
     const content = `
       <div class="form-group" style="text-align:center;margin-bottom:var(--space-xl);">
-        <label class="form-label" style="text-align:center;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Сумма (₴)</label>
+        <label class="form-label" style="text-align:center;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Сумма (BYN)</label>
         <input type="number" id="tx-amount" style="font-size:48px;font-weight:800;text-align:center;border:none;background:transparent;outline:none;width:100%;color:${txType === 'income' ? 'var(--success)' : (txType === 'transfer' ? 'var(--text-primary)' : 'var(--danger)')};padding:0;" placeholder="0" min="0" step="1" value="${tx ? tx.amount : ''}" autofocus required>
       </div>
       
