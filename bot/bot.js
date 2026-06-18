@@ -570,18 +570,8 @@ bot.on('photo', async (msg) => {
     // Вызываем API только для извлечения текста
     let visionUrl = AI_API_URL;
     let visionKey = AI_API_KEY;
-    let visionModel = AI_MODEL;
+    let visionModel = 'openrouter/free';
     
-    // Если есть ключ Groq, используем его супер-быструю Llama Vision
-    if (process.env.GROQ_API_KEY) {
-      visionUrl = 'https://api.groq.com/openai/v1/chat/completions';
-      visionKey = process.env.GROQ_API_KEY;
-      visionModel = 'llama-3.2-90b-vision-preview';
-    } else {
-      // Иначе пытаемся использовать OpenRouter free
-      visionModel = 'openrouter/free';
-    }
-
     const visionRes = await fetch(visionUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${visionKey}` },
@@ -596,7 +586,7 @@ bot.on('photo', async (msg) => {
     const receiptDescription = visionData.choices?.[0]?.message?.content;
     
     if (!receiptDescription) {
-      throw new Error('Не удалось прочитать фотографию чека.');
+      throw new Error(`Не удалось прочитать фотографию чека: ${JSON.stringify(visionData.error || visionData)}`);
     }
 
     // Шаг 2: Передаем извлеченный текст ОБЫЧНОЙ текстовой модели, которая идеально умеет вызывать инструменты
