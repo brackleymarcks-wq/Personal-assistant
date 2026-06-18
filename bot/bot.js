@@ -21,7 +21,7 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const AI_API_KEY = process.env.AI_API_KEY || process.env.OPENROUTER_API_KEY || process.env.GROQ_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY; // Для транскрибации Whisper
 const AI_API_URL = process.env.AI_API_URL || 'https://api.groq.com/openai/v1/chat/completions';
-const AI_MODEL = process.env.AI_MODEL || 'llama-3.3-70b-versatile';
+const AI_MODEL = process.env.AI_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
 
 if (!BOT_TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN не задан в .env'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
@@ -595,12 +595,14 @@ bot.on('photo', async (msg) => {
 ${receiptDescription}
 ---
 ${userCaption}
-ОБЯЗАТЕЛЬНО занеси этот расход в базу с помощью функции create_transaction. 
-Сумму возьми из расшифровки. 
-Категорию выбери логичную (например Продукты, Транспорт, Кафе). 
-В поле comment напиши откуда чек и что купили (по расшифровке). 
-В поле accountName передай способ оплаты из расшифровки или из комментария пользователя (если указан).
-В ответ просто коротко напиши, что занесено в базу.`;
+
+ВНИМАНИЕ! КРИТИЧЕСКОЕ ЗАДАНИЕ:
+ТЫ ОБЯЗАН вызвать встроенный инструмент (функцию) create_transaction! 
+Не отвечай просто текстом! Только вызов функции!
+- amount: возьми сумму из расшифровки
+- category: логичная категория (Продукты, Транспорт и т.д.)
+- comment: откуда чек и что купили (по расшифровке)
+- accountName: способ оплаты из расшифровки (например "наличные" или "карта")`;
 
     const aiResponse = await askAI(actionPrompt);
     
