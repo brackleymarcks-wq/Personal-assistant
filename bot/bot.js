@@ -210,7 +210,6 @@ async function createTransaction(amount, type, category, comment = '', accountNa
     amount,
     type,
     category,
-    comment,
     description: JSON.stringify(descriptionObj),
     date: new Date().toISOString()
   }).select().single();
