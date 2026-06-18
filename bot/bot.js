@@ -348,9 +348,9 @@ const TOOLS = [
         properties: {
           amount: { type: 'number', description: 'Сумма операции' },
           type: { type: 'string', description: 'Тип: income (доход) или expense (расход)' },
-          category: { type: 'string', description: 'Категория (например: Еда, Транспорт, Зарплата)' },
-          comment: { type: 'string', description: 'Комментарий к операции' },
-          account_name: { type: 'string', description: 'Название счета/карты, с которого оплачено (Наличные, Карта и т.д.)' }
+          category: { type: 'string', description: 'Категория. ОБЯЗАТЕЛЬНО придумай сам на основе текста (Транспорт, Продукты, Кафе, Зарплата, Коммуналка, Развлечения и т.д.)' },
+          comment: { type: 'string', description: 'Оригинальный комментарий (например "на метро" или "за кофе")' },
+          account_name: { type: 'string', description: 'Счет оплаты. Если не указано, пиши "Карта"' }
         },
         required: ['amount', 'type', 'category']
       }
