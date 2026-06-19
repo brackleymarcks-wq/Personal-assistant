@@ -536,7 +536,7 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
         ...messages
       ],
       tools: TOOLS,
-      temperature: 0.7,
+      temperature: 0.1,
       max_tokens: 1024
     })
   });
