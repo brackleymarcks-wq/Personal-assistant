@@ -222,6 +222,28 @@ async function getSettings() {
   return data || {};
 }
 
+async function getHabits() {
+  const user = await getUser();
+  const { data } = await db.from('habits').select('*').eq('user_id', user.id).eq('active', true);
+  return data || [];
+}
+
+async function logHabit(habitId, dateStr, status = 'done') {
+  const user = await getUser();
+  const { data: existing } = await db.from('habit_logs')
+    .select('*').eq('habit_id', habitId).eq('date', dateStr).single();
+    
+  if (existing) {
+    const { data } = await db.from('habit_logs').update({ status }).eq('id', existing.id).select().single();
+    return data;
+  } else {
+    const { data } = await db.from('habit_logs').insert({
+      user_id: user.id, habit_id: habitId, date: dateStr, status
+    }).select().single();
+    return data;
+  }
+}
+
 async function updateContext(newInstruction) {
   const settings = await getSettings();
   const context = settings.context || {};
@@ -374,6 +396,28 @@ const TOOLS = [
         required: ['minutes']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_habits',
+      description: 'Получить список активных привычек пользователя',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'log_habit',
+      description: 'Отметить привычку выполненной на сегодня',
+      parameters: {
+        type: 'object',
+        properties: {
+          habit_id: { type: 'string', description: 'ID привычки' }
+        },
+        required: ['habit_id']
+      }
+    }
   }
 ];
 
@@ -434,6 +478,15 @@ async function executeFunctionCall(name, args) {
         }, mins * 60 * 1000);
 
         return { success: true, message: `Режим Deep Work активирован на ${mins} минут.` };
+      }
+      case 'get_habits': {
+        const habitsList = await getHabits();
+        return { success: true, habits: habitsList, count: habitsList.length };
+      }
+      case 'log_habit': {
+        const d = new Date().toISOString().split('T')[0];
+        const log = await logHabit(args.habit_id, d, 'done');
+        return { success: true, log, message: `Привычка отмечена выполненной на ${d}` };
       }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
@@ -631,19 +684,28 @@ bot.on('photo', async (msg) => {
     }
 
     // Шаг 2: Передаем извлеченный текст ОБЫЧНОЙ текстовой модели, которая идеально умеет вызывать инструменты
-    const actionPrompt = `Пользователь прислал чек. Вот расшифровка этого чека от нейросети-визуализатора:
+    const actionPrompt = `Пользователь прислал фотографию. Вот детальное описание того, что на ней (от ИИ-визуализатора):
 ---
 ${receiptDescription}
 ---
-${userCaption}
+Комментарий пользователя к фото: ${userCaption}
 
-ВНИМАНИЕ! КРИТИЧЕСКОЕ ЗАДАНИЕ:
-СНАЧАЛА ТЫ ОБЯЗАН вызвать встроенный инструмент (функцию) create_transaction для сохранения расхода!
-ПОСЛЕ успешного вызова функции, обязательно напиши пользователю короткий текстовый ответ (например: "Чек успешно записан в базу!").
-- amount: возьми сумму из расшифровки
-- category: логичная категория (Продукты, Транспорт и т.д.)
-- comment: откуда чек и что купили (по расшифровке)
-- accountName: способ оплаты из расшифровки (например "наличные" или "карта")`;
+ВНИМАНИЕ! КРИТИЧЕСКОЕ ЗАДАНИЕ ПО ОБРАБОТКЕ ФОТО:
+Проанализируй описание фото и выбери ОДНО из действий:
+
+1. Если на фото кассовый чек, счет из ресторана или квитанция об оплате:
+   ОБЯЗАН вызвать встроенный инструмент create_transaction для сохранения расхода!
+   - amount: возьми сумму из чека
+   - category: логичная категория
+   - comment: откуда чек
+
+2. Если на фото изображено что-то, подтверждающее полезную привычку пользователя (например: беговые кроссовки на улице, еда для здорового питания, коврик для фитнеса, раскрытая книга, гантели, витамины):
+   СНАЧАЛА вызови инструмент get_habits, чтобы узнать список привычек. ЗАТЕМ вызови инструмент log_habit для нужной привычки (чтобы поставить галочку "Выполнено" на сегодня). ОЧЕНЬ ВАЖНО: Если видишь кроссовки или улицу - это бег!
+
+3. Во всех остальных случаях (мемы, коты, рандомные фото без явной связи с финансами или привычками):
+   Ничего не вызывай, просто коротко и дружелюбно прокомментируй фото текстом.
+
+ПОСЛЕ успешного вызова функции, обязательно напиши пользователю короткий текстовый ответ (например: "Чек записан!" или "✅ Пробежка засчитана, молодец!").`;
 
     const aiResponse = await askAI(actionPrompt);
     
