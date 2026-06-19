@@ -247,6 +247,12 @@ async function getRecentMessages(limit = 10) {
 }
 
 // ============================================
+// STATE AND TIMERS
+// ============================================
+let globalDeepWorkUntil = null;
+let deepWorkTimeout = null;
+
+// ============================================
 // AI HELPER
 // ============================================
 
@@ -354,6 +360,20 @@ const TOOLS = [
         required: ['amount', 'type', 'category']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'start_deep_work',
+      description: 'Запустить режим Deep Work (фокус/работа) на указанное количество минут. Во время этого режима все сообщения пользователя будут молча сохраняться в Inbox.',
+      parameters: {
+        type: 'object',
+        properties: {
+          minutes: { type: 'number', description: 'Длительность в минутах (обычно 60 или 90)' }
+        },
+        required: ['minutes']
+      }
+    }
   }
 ];
 
@@ -402,6 +422,18 @@ async function executeFunctionCall(name, args) {
         const tx = await createTransaction(args.amount, txType, args.category, args.comment || '', args.account_name || '');
         const verb = txType === 'income' ? 'Записан доход' : 'Записан расход';
         return { success: true, transaction: tx, message: `${verb}: ${args.amount} (${args.category})` };
+      }
+      case 'start_deep_work': {
+        const mins = args.minutes || 60;
+        globalDeepWorkUntil = Date.now() + mins * 60 * 1000;
+        
+        if (deepWorkTimeout) clearTimeout(deepWorkTimeout);
+        deepWorkTimeout = setTimeout(() => {
+          globalDeepWorkUntil = null;
+          bot.sendMessage(CHAT_ID, '⏳ Режим Deep Work завершен! Как успехи? Напоминаю, что во время работы ты мог присылать мне сообщения — они все ждут тебя во вкладке Инбокс в веб-интерфейсе.').catch(e => console.error(e));
+        }, mins * 60 * 1000);
+
+        return { success: true, message: `Режим Deep Work активирован на ${mins} минут.` };
       }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
@@ -543,8 +575,16 @@ bot.onText(/\/start/, (msg) => {
 
 // Обработка фотографий (сканер чеков)
 bot.on('photo', async (msg) => {
-  if (CHAT_ID && msg.chat.id.toString() !== CHAT_ID) return;
+  const chatId = msg.chat.id;
+  const user = await getUser();
   
+  // --- ПЕРЕХВАТ DEEP WORK ---
+  if (globalDeepWorkUntil && Date.now() < globalDeepWorkUntil) {
+    await db.from('inbox').insert({ user_id: user.id, content: 'Фотография от ' + new Date().toLocaleTimeString() });
+    return bot.sendMessage(chatId, '🤫 Фото сохранено (помечено в Инбоксе). Возвращайся к работе!');
+  }
+  // --------------------------
+
   try {
     const sentMsg = await bot.sendMessage(msg.chat.id, '👀 Изучаю чек...');
     
@@ -758,6 +798,19 @@ bot.on('message', async (msg) => {
     }
 
     if (!textToProcess) return; // Игнорируем фото/стикеры без текста
+
+    // --- ПЕРЕХВАТ DEEP WORK ---
+    if (globalDeepWorkUntil && Date.now() < globalDeepWorkUntil) {
+      if (textToProcess.toLowerCase().includes('стоп') || textToProcess.toLowerCase().includes('отмени')) {
+        globalDeepWorkUntil = null;
+        if (deepWorkTimeout) clearTimeout(deepWorkTimeout);
+        return bot.sendMessage(chatId, 'Режим Deep Work досрочно отменен.');
+      }
+      const user = await getUser();
+      await db.from('inbox').insert({ user_id: user?.id, content: textToProcess });
+      return bot.sendMessage(chatId, '🤫 Сохранено в Инбокс. Возвращайся к работе!');
+    }
+    // --------------------------
 
     // Сохраняем сообщение пользователя
     await saveMessage('user', textToProcess);
