@@ -301,10 +301,15 @@ async function saveMessage(role, content) {
   });
 }
 
-async function getRecentMessages(limit = 10) {
+async function getRecentMessages(limit = 6) {
   const { data } = await db.from('messages').select('role, content')
     .order('created_at', { ascending: false }).limit(limit);
-  return (data || []).reverse();
+  return (data || []).reverse().map(m => {
+    if (m.content && m.content.length > 500) {
+      m.content = m.content.substring(0, 500) + '...';
+    }
+    return m;
+  });
 }
 
 // ============================================
@@ -675,7 +680,26 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
       }
       console.warn(`Rate limit hit. Waiting ${waitTime}s...`);
       await new Promise(r => setTimeout(r, waitTime * 1000));
-      return callAPI(systemInstruction, messages, retryCount + 1);
+      return callAPI(systemInstruction, messages, retryCount + 1, isVision);
+    }
+    
+    // Fallback if model fails to generate valid tool call JSON
+    if (errMsg.includes('failed_generation') && retryCount < 1) {
+      console.warn('Groq failed_generation. Retrying without tools...');
+      const fallbackRes = await fetch(AI_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AI_API_KEY}` },
+        body: JSON.stringify({
+          model: modelToUse,
+          messages: [
+            { role: 'system', content: systemInstruction + '\nОТВЕЧАЙ ТОЛЬКО ТЕКСТОМ, НЕ ВЫЗЫВАЙ ФУНКЦИИ.' },
+            ...messages
+          ],
+          temperature: 0.1,
+          max_tokens: 1024
+        })
+      });
+      if (fallbackRes.ok) return fallbackRes.json();
     }
     
     throw new Error(errMsg);
