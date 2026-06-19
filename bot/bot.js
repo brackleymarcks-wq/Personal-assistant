@@ -217,6 +217,17 @@ async function createTransaction(amount, type, category, comment = '', accountNa
   return data;
 }
 
+async function searchKnowledgeBase(query) {
+  const user = await getUser();
+  const { data } = await db.from('knowledge_base')
+    .select('title, type, content')
+    .eq('user_id', user.id)
+    .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
+    .order('created_at', { ascending: false })
+    .limit(3);
+  return data || [];
+}
+
 async function getSettings() {
   const { data } = await db.from('settings').select('*').limit(1).single();
   return data || {};
@@ -418,6 +429,20 @@ const TOOLS = [
         required: ['habit_id']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_knowledge_base',
+      description: 'Поиск информации в Базе Знаний пользователя. Используй этот инструмент, когда нужно найти сохраненные промпты, инструкции, заметки, статьи или документы.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Поисковый запрос (1-2 ключевых слова)' }
+        },
+        required: ['query']
+      }
+    }
   }
 ];
 
@@ -487,6 +512,10 @@ async function executeFunctionCall(name, args) {
         const d = new Date().toISOString().split('T')[0];
         const log = await logHabit(args.habit_id, d, 'done');
         return { success: true, log, message: `Привычка отмечена выполненной на ${d}` };
+      }
+      case 'search_knowledge_base': {
+        const results = await searchKnowledgeBase(args.query);
+        return { success: true, count: results.length, items: results, message: `Найдено записей: ${results.length}` };
       }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
