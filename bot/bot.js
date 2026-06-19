@@ -228,6 +228,34 @@ async function searchKnowledgeBase(query) {
   return data || [];
 }
 
+async function getMonthlyFinances() {
+  const user = await getUser();
+  const date = new Date();
+  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1).toISOString();
+  
+  const { data } = await db.from('finances')
+    .select('amount, type, category')
+    .eq('user_id', user.id)
+    .gte('date', startOfMonth);
+    
+  if (!data) return { income: 0, expense: 0, categories: {} };
+
+  let income = 0;
+  let expense = 0;
+  const categories = {};
+
+  data.forEach(t => {
+    const amt = Number(t.amount);
+    if (t.type === 'income') income += amt;
+    if (t.type === 'expense') {
+      expense += amt;
+      categories[t.category] = (categories[t.category] || 0) + amt;
+    }
+  });
+
+  return { income, expense, categories };
+}
+
 async function getSettings() {
   const { data } = await db.from('settings').select('*').limit(1).single();
   return data || {};
@@ -443,6 +471,14 @@ const TOOLS = [
         required: ['query']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'analyze_finances',
+      description: 'Получить статистику по доходам и расходам за текущий месяц (сгруппировано по категориям). Вызывай этот инструмент, когда пользователь просит проанализировать его финансы, сделать "прожарку" или узнать сколько он потратил.',
+      parameters: { type: 'object', properties: {} }
+    }
   }
 ];
 
@@ -516,6 +552,10 @@ async function executeFunctionCall(name, args) {
       case 'search_knowledge_base': {
         const results = await searchKnowledgeBase(args.query);
         return { success: true, count: results.length, items: results, message: `Найдено записей: ${results.length}` };
+      }
+      case 'analyze_finances': {
+        const stats = await getMonthlyFinances();
+        return { success: true, stats, message: 'Статистика за текущий месяц получена. Проанализируй данные, найди категории с наибольшими тратами, дай жесткий, но полезный финансовый совет.' };
       }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
