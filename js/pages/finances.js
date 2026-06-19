@@ -216,10 +216,17 @@ const FinancesPage = {
       try {
         const descData = JSON.parse(t.description || '{}');
         const amt = Number(t.amount);
-        if (t.type === 'income' && descData.account && accountBalances[descData.account] !== undefined) {
-          accountBalances[descData.account] += amt;
-        } else if (t.type === 'expense' && descData.account && accountBalances[descData.account] !== undefined) {
-          accountBalances[descData.account] -= amt;
+        
+        let accId = descData.account;
+        if (!accId && this.config.accounts && this.config.accounts.length > 0) {
+          const defaultAcc = this.config.accounts.find(a => a.name.toLowerCase().includes('карта')) || this.config.accounts[0];
+          accId = defaultAcc.id;
+        }
+
+        if (t.type === 'income' && accId && accountBalances[accId] !== undefined) {
+          accountBalances[accId] += amt;
+        } else if (t.type === 'expense' && accId && accountBalances[accId] !== undefined) {
+          accountBalances[accId] -= amt;
         } else if (t.type === 'transfer' && descData.fromAccount && descData.toAccount) {
           if (accountBalances[descData.fromAccount] !== undefined) accountBalances[descData.fromAccount] -= amt;
           if (accountBalances[descData.toAccount] !== undefined) accountBalances[descData.toAccount] += amt;

@@ -197,11 +197,13 @@ async function createTransaction(amount, type, category, comment = '', accountNa
   let descriptionObj = { text: comment };
   let searchName = accountName || 'карта'; // По умолчанию всё пишем на карту
   
-  const settings = await getSettings();
-  if (settings && settings.finances_config && settings.finances_config.accounts) {
-    const acc = settings.finances_config.accounts.find(a => a.name.toLowerCase().includes(searchName.toLowerCase()));
+  const settings = await getSettings(); // This now returns parsed SYSTEM_CONFIG_FINANCES
+  if (settings && settings.accounts) {
+    const acc = settings.accounts.find(a => a.name.toLowerCase().includes(searchName.toLowerCase()));
     if (acc) {
       descriptionObj.account = acc.id;
+    } else if (settings.accounts.length > 0) {
+      descriptionObj.account = settings.accounts.find(a => a.name.toLowerCase().includes('карта'))?.id || settings.accounts[0].id;
     }
   }
 
@@ -257,8 +259,12 @@ async function getMonthlyFinances() {
 }
 
 async function getSettings() {
-  const { data } = await db.from('settings').select('*').limit(1).single();
-  return data || {};
+  const user = await getUser();
+  const { data } = await db.from('notes').select('content').eq('user_id', user.id).eq('title', 'SYSTEM_CONFIG_FINANCES').limit(1).single();
+  if (data && data.content) {
+    try { return JSON.parse(data.content); } catch(e) { return {}; }
+  }
+  return {};
 }
 
 async function getHabits() {
