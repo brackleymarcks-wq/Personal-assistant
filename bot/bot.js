@@ -642,8 +642,8 @@ async function askAI(userMessage, context = '', imageUrl = null) {
   return response.choices?.[0]?.message?.content || 'Не удалось получить ответ';
 }
 
-async function callAPI(systemInstruction, messages, retryCount = 0, isVision = false) {
-  let modelToUse = AI_MODEL;
+async function callAPI(systemInstruction, messages, retryCount = 0, isVision = false, forceModel = null) {
+  let modelToUse = forceModel || AI_MODEL;
   if (isVision) {
     if (AI_API_URL.includes('groq')) modelToUse = 'llama-3.2-90b-vision-preview';
     else if (AI_API_URL.includes('openai')) modelToUse = 'gpt-4o-mini';
@@ -673,14 +673,25 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
     const errMsg = err.error?.message || `API error ${res.status}`;
     
     if (res.status === 429 && retryCount < 2) {
-      let waitTime = 20;
-      const match = errMsg.match(/try again in ([\d\.]+)s/);
-      if (match && match[1]) {
-        waitTime = parseFloat(match[1]) + 1;
+      if (errMsg.includes('tokens per day') || errMsg.includes('TPD')) {
+        console.warn('Groq TPD limit reached! Falling back to smaller model...');
+        return callAPI(systemInstruction, messages, retryCount + 1, isVision, 'llama-3.1-8b-instant');
       }
+
+      let waitTime = 20;
+      const matchM = errMsg.match(/try again in ([\d\.]+)m/);
+      const matchS = errMsg.match(/try again in ([\d\.]+)s/);
+      if (matchM && matchM[1]) waitTime = parseFloat(matchM[1]) * 60 + 1;
+      else if (matchS && matchS[1]) waitTime = parseFloat(matchS[1]) + 1;
+      
+      if (waitTime > 30 && AI_API_URL.includes('groq')) {
+         console.warn(`Wait time ${waitTime}s is too long, falling back to smaller model...`);
+         return callAPI(systemInstruction, messages, retryCount + 1, isVision, 'llama-3.1-8b-instant');
+      }
+
       console.warn(`Rate limit hit. Waiting ${waitTime}s...`);
       await new Promise(r => setTimeout(r, waitTime * 1000));
-      return callAPI(systemInstruction, messages, retryCount + 1, isVision);
+      return callAPI(systemInstruction, messages, retryCount + 1, isVision, forceModel);
     }
     
     // Fallback if model fails to generate valid tool call JSON
