@@ -557,5 +557,53 @@ const DB = {
     const start = new Date(minskDateStr + 'T00:00:00.000+03:00').toISOString();
     const end = new Date(minskDateStr + 'T23:59:59.999+03:00').toISOString();
     return this.getEvents(start, end);
+  },
+
+  // ---- TUTORING (STUDENTS) ----
+  async getStudents() {
+    const userId = Config.userId;
+    const { data } = await _supabase.from('students').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    return data || [];
+  },
+
+  async createStudent(student) {
+    const userId = Config.userId;
+    const { data, error } = await _supabase.from('students').insert({ user_id: userId, ...student }).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async updateStudent(id, updates) {
+    const { data, error } = await _supabase.from('students').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteStudent(id) {
+    await _supabase.from('students').delete().eq('id', id);
+  },
+
+  // ---- TUTORING (LESSONS) ----
+  async getLessons(studentId = null) {
+    let q = _supabase.from('lessons').select('*, students(name)').order('date', { ascending: false });
+    if (studentId) q = q.eq('student_id', studentId);
+    const { data } = await q;
+    return data || [];
+  },
+
+  async createLesson(lesson) {
+    const { data, error } = await _supabase.from('lessons').insert(lesson).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async updateLesson(id, updates) {
+    const { data, error } = await _supabase.from('lessons').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteLesson(id) {
+    await _supabase.from('lessons').delete().eq('id', id);
   }
 };

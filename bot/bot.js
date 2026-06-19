@@ -450,6 +450,37 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'add_lesson',
+      description: 'Добавить/отметить проведенный урок по английскому языку',
+      parameters: {
+        type: 'object',
+        properties: {
+          student_name: { type: 'string', description: 'Имя ученика (например, Нелли, Соня)' },
+          topic: { type: 'string', description: 'Тема урока' },
+          homework: { type: 'string', description: 'Домашнее задание' },
+          paid: { type: 'boolean', description: 'Оплачен ли урок' }
+        },
+        required: ['student_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_lesson_plan',
+      description: 'Сгенерировать план урока, вопросы или учебный материал для ученика',
+      parameters: {
+        type: 'object',
+        properties: {
+          prompt: { type: 'string', description: 'Текст запроса для ИИ' }
+        },
+        required: ['prompt']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_habits',
       description: 'Получить список активных привычек пользователя',
       parameters: { type: 'object', properties: {} }
@@ -567,6 +598,47 @@ async function executeFunctionCall(name, args) {
       case 'analyze_finances': {
         const stats = await getMonthlyFinances();
         return { success: true, stats, message: 'Статистика за текущий месяц получена. Проанализируй данные, найди категории с наибольшими тратами, дай жесткий, но полезный финансовый совет.' };
+      }
+      case 'add_lesson': {
+        const user = await getUser();
+        // 1. Найти или создать ученика
+        let { data: st } = await db.from('students').select('*').eq('user_id', user.id).ilike('name', `%${args.student_name}%`).limit(1).single();
+        if (!st) {
+          const { data: newSt } = await db.from('students').insert({ user_id: user.id, name: args.student_name, price: 0 }).select().single();
+          st = newSt;
+        }
+        
+        // 2. Создать урок
+        const dateStr = new Date().toISOString();
+        const { data: lesson } = await db.from('lessons').insert({
+          student_id: st.id,
+          date: dateStr,
+          topic: args.topic || '',
+          homework: args.homework || '',
+          status: 'Проведен',
+          paid: !!args.paid
+        }).select().single();
+        
+        // 3. Авто-оплата в финансы
+        if (args.paid && st.price > 0) {
+          await createTransaction(st.price, 'income', 'Уроки (Английский)', `Оплата урока: ${st.name}`, 'Карта');
+        }
+        
+        return { success: true, lesson, message: `Урок с ${st.name} успешно добавлен!` + (args.paid && st.price > 0 ? ` Записан доход ${st.price} BYN.` : '') };
+      }
+      case 'generate_lesson_plan': {
+        // Мы используем Groq для генерации ответа на промпт, затем возвращаем его в цепочку
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [{ role: 'system', content: 'Ты опытный и креативный преподаватель английского. Помоги составить учебный материал, план урока или вопросы по запросу.' }, { role: 'user', content: args.prompt }]
+          })
+        });
+        const json = await response.json();
+        const result = json.choices[0].message.content;
+        return { success: true, generated_plan: result, message: 'План сгенерирован успешно. Выведи его пользователю красиво и структурированно.' };
       }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };

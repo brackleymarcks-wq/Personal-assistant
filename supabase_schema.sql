@@ -306,3 +306,37 @@ create table if not exists finances (
 );
 alter table finances enable row level security;
 create policy "Allow all for finances" on finances for all using (true) with check (true);
+
+-- ============================================
+-- TUTORING: STUDENTS (NEW)
+-- ============================================
+create table if not exists students (
+  id         uuid primary key default uuid_generate_v4(),
+  user_id    uuid references users(id) on delete cascade,
+  name       text not null,
+  grade      text,
+  schedule   text,
+  price      decimal(10, 2) default 0,
+  active     boolean default true,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+alter table students enable row level security;
+create policy "Allow all for students" on students for all using (true) with check (true);
+
+-- ============================================
+-- TUTORING: LESSONS (NEW)
+-- ============================================
+create table if not exists lessons (
+  id          uuid primary key default uuid_generate_v4(),
+  student_id  uuid references students(id) on delete cascade,
+  date        timestamp with time zone not null,
+  topic       text,
+  homework    text,
+  status      text default 'Запланирован' check (status in ('Запланирован', 'Проведен', 'Отменен')),
+  paid        boolean default false,
+  created_at  timestamp with time zone default now(),
+  updated_at  timestamp with time zone default now()
+);
+alter table lessons enable row level security;
+create policy "Allow all for lessons" on lessons for all using (true) with check (true);
