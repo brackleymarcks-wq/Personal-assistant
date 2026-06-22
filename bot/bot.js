@@ -333,19 +333,28 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'create_task',
-      description: 'Создать новую задачу',
+      name: 'create_tasks',
+      description: 'Создать одну или несколько новых задач',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'Название задачи' },
-          direction: { type: 'string', description: 'Направления (можно несколько через запятую): Митап AI-Connect/ТГ AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Операционная задача/Английский/Личное' },
-          status: { type: 'string', description: 'Статус (по умолч. "Ждёт меня")' },
-          priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
-          deadline: { type: 'string', description: 'Дедлайн YYYY-MM-DD' },
-          next_step: { type: 'string', description: 'Следующее действие' }
+          tasks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string', description: 'Название задачи' },
+                direction: { type: 'string', description: 'Направления (можно несколько через запятую): Митап AI-Connect/ТГ AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Операционная задача/Английский/Личное' },
+                status: { type: 'string', description: 'Статус (по умолч. "Ждёт меня")' },
+                priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
+                deadline: { type: 'string', description: 'Дедлайн YYYY-MM-DD (обязательно вычисляй дату, если просят сделать "на этой неделе", "завтра" и т.д.)' },
+                next_step: { type: 'string', description: 'Следующее действие' }
+              },
+              required: ['title']
+            }
+          }
         },
-        required: ['title']
+        required: ['tasks']
       }
     }
   },
@@ -541,9 +550,17 @@ const TOOLS = [
 async function executeFunctionCall(name, args) {
   try {
     switch (name) {
-      case 'create_task': {
-        const task = await createTask(args.title, args);
-        return { success: true, task, message: `Задача "${task.title}" создана` };
+      case 'create_tasks': {
+        if (!args.tasks || !Array.isArray(args.tasks)) {
+          return { success: false, error: 'Параметр tasks должен быть массивом' };
+        }
+        const created = [];
+        for (const t of args.tasks) {
+          const task = await createTask(t.title, t);
+          created.push(task);
+        }
+        const titles = created.map(t => t.title).join('", "');
+        return { success: true, count: created.length, message: `Успешно создано задач: ${created.length}. ("${titles}")` };
       }
       case 'get_tasks': {
         const tasks = await getTasks(args);
