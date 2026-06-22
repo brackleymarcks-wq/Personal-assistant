@@ -750,7 +750,7 @@ async function executeFunctionCall(name, args) {
   }
 }
 
-async function askAI(userMessage, context = '', imageUrl = null, disableTools = false) {
+async function askAI(userMessage, context = '', imageUrl = null, disableTools = false, disableHistory = false) {
   if (!AI_API_KEY) return 'API ключ для нейросети не настроен (AI_API_KEY).';
 
   const settings = await getSettings();
@@ -772,8 +772,11 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
 
   const systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr}${extraCtx}${context ? '\n\n' + context : ''}`;
 
-  const history = await getRecentMessages(20);
-  const messages = history.map(m => ({ role: m.role, content: m.content }));
+  let messages = [];
+  if (!disableHistory) {
+    const history = await getRecentMessages(20);
+    messages = history.map(m => ({ role: m.role, content: m.content }));
+  }
   
   if (imageUrl) {
     messages.push({ 
@@ -1237,7 +1240,7 @@ async function generateMorningBriefing() {
 6. Мотивация (коротко)
 `;
 
-  return await askAI('Сгенерируй утренний брифинг', contextData, null, true);
+  return await askAI('Сгенерируй утренний брифинг', contextData, null, true, true);
 }
 
 async function generateEveningReview() {
@@ -1264,7 +1267,7 @@ async function generateEveningReview() {
 Отвечай ярко, с эмодзи, как строгий коуч. Не будь банальным ботом.
 `;
 
-  return await askAI('Сгенерируй вечерний обзор-прожарку', contextData, null, true);
+  return await askAI('Сгенерируй вечерний обзор-прожарку', contextData, null, true, true);
 }
 
 async function generateWeeklyReview() {
@@ -1280,7 +1283,7 @@ async function generateWeeklyReview() {
 Сгенерируй еженедельный обзор. Похвали за достижения, обрати внимание на проблемы, спроси про цели на следующую неделю.
 `;
 
-  return await askAI('Еженедельный обзор', contextData, null, true);
+  return await askAI('Еженедельный обзор', contextData, null, true, true);
 }
 
 function sendProactiveMessage(text) {
