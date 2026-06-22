@@ -294,6 +294,16 @@ async function getHabits() {
   return data || [];
 }
 
+async function getHabitLogs(startDate, endDate) {
+  const user = await getUser();
+  const { data } = await db.from('habit_logs')
+    .select('*')
+    .eq('user_id', user.id)
+    .gte('date', startDate)
+    .lte('date', endDate);
+  return data || [];
+}
+
 async function logHabit(habitId, dateStr, status = 'done') {
   const user = await getUser();
   const { data: existing } = await db.from('habit_logs')
@@ -1102,6 +1112,49 @@ bot.onText(/\/roast/, async (msg) => {
     });
   } catch(e) {
     bot.sendMessage(chatId, '❌ Ошибка генерации прожарки: ' + e.message);
+  }
+});
+
+// /health — индекс формы
+bot.onText(/\/health/, async (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, '🏃‍♂️ Анализирую индекс формы...');
+  try {
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000);
+    const startIso = thirtyDaysAgo.toISOString().split('T')[0];
+    const endIso = today.toISOString().split('T')[0];
+
+    const habits = await getHabits();
+    const logs = await getHabitLogs(startIso, endIso);
+
+    const healthKeywords = ['сон', 'спать', 'бег', 'пробежк', 'спорт', 'тренир', 'пресс', 'зарядк', 'вод', 'health', 'отжиман'];
+    const healthHabits = habits.filter(h => healthKeywords.some(kw => h.name.toLowerCase().includes(kw)));
+
+    if (healthHabits.length === 0) {
+      return bot.sendMessage(chatId, 'У тебя пока нет привычек для здоровья! Добавь "Сон" или "Зарядка" в веб-интерфейсе.');
+    }
+
+    let doneCount = 0;
+    const todayStr = today.toISOString().split('T')[0];
+    healthHabits.forEach(h => {
+      if (logs.some(l => l.habit_id === h.id && l.date === todayStr && l.status === 'done')) {
+        doneCount++;
+      }
+    });
+
+    const score = Math.round((doneCount / healthHabits.length) * 100);
+    let emoji = score >= 80 ? '🔥' : (score >= 50 ? '⚡' : '💀');
+    
+    let text = \`*Твой Индекс Формы на сегодня:* \${score}% \${emoji}\\n\\n\`;
+    text += \`Выполнено: \${doneCount} из \${healthHabits.length} здоровых привычек.\\n\`;
+    text += \`\\nЗайди в веб-приложение (вкладка Здоровье), чтобы посмотреть график активности!\`;
+
+    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(() => {
+      bot.sendMessage(chatId, text);
+    });
+  } catch(e) {
+    bot.sendMessage(chatId, '❌ Ошибка генерации индекса: ' + e.message);
   }
 });
 

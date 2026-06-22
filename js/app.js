@@ -57,6 +57,7 @@ const PAGES = {
   calendar: { module: () => CalendarPage, label: 'Календарь' },
   habits: { module: () => HabitsPage, label: 'Привычки' },
   goals: { module: () => GoalsPage, label: 'Цели' },
+  health: { module: () => HealthPage, label: 'Здоровье' },
   tutoring: { module: () => TutoringPage, label: 'Репетиторство' },
   knowledge: { module: () => KnowledgePage, label: 'База знаний' },
   graph: { module: () => GraphPage, label: 'Граф связей' },
