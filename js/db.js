@@ -605,5 +605,28 @@ const DB = {
 
   async deleteLesson(id) {
     await _supabase.from('lessons').delete().eq('id', id);
+  },
+
+  // ---- GAMIFICATION (RPG) ----
+  async getGamificationStats() {
+    const userId = Config.userId;
+    if (!userId) return { tasksDone: 0, habitsDone: 0, totalXp: 0 };
+
+    // 1. Считаем выполненные задачи
+    const { count: tasksDone } = await _supabase
+      .from('tasks')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('status', 'Готово');
+
+    // 2. Считаем выполненные привычки
+    const { count: habitsDone } = await _supabase
+      .from('habit_logs')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('status', 'done');
+
+    const xp = (tasksDone || 0) * 10 + (habitsDone || 0) * 15;
+    return { tasksDone: tasksDone || 0, habitsDone: habitsDone || 0, totalXp: xp };
   }
 };

@@ -190,12 +190,49 @@ const App = {
     this.updateUserUI();
   },
 
-  updateUserUI() {
+  async updateUserUI() {
     const name = Config.userName;
     const el = document.getElementById('user-name-display');
     const av = document.getElementById('user-avatar');
     if (el) el.textContent = name;
     if (av) av.textContent = name.charAt(0).toUpperCase();
+
+    // RPG Gamification Logic
+    try {
+      const stats = await DB.getGamificationStats();
+      const xp = stats.totalXp;
+      
+      // Формула уровня: Уровень = √ (Опыт / 50) + 1
+      const level = Math.floor(Math.sqrt(xp / 50)) + 1;
+      
+      // Ранги
+      let rank = 'Новичок';
+      if (level >= 20) rank = 'Босс Жизни 👑';
+      else if (level >= 13) rank = 'Сеньор-Достигатор 💎';
+      else if (level >= 8) rank = 'Мастер Времени ⏳';
+      else if (level >= 4) rank = 'Джуниор 🚀';
+      else if (level >= 2) rank = 'Ученик 🌱';
+
+      // Опыт до следующего уровня
+      const currentLevelBaseXp = Math.pow(level - 1, 2) * 50;
+      const nextLevelBaseXp = Math.pow(level, 2) * 50;
+      const xpInCurrentLevel = xp - currentLevelBaseXp;
+      const xpNeededForNextLevel = nextLevelBaseXp - currentLevelBaseXp;
+      const progressPercent = Math.min(100, Math.max(0, (xpInCurrentLevel / xpNeededForNextLevel) * 100));
+
+      const rankEl = document.getElementById('user-rank-display');
+      const levelEl = document.getElementById('user-level-display');
+      const xpEl = document.getElementById('user-xp-display');
+      const progressEl = document.getElementById('user-xp-progress');
+
+      if (rankEl) rankEl.textContent = `Ранг: ${rank}`;
+      if (levelEl) levelEl.textContent = `Ур. ${level}`;
+      if (xpEl) xpEl.textContent = `${xp} / ${nextLevelBaseXp} XP`;
+      if (progressEl) progressEl.style.width = `${progressPercent}%`;
+
+    } catch (e) {
+      console.error('Gamification UI error:', e);
+    }
   },
 
   initThemeToggle() {

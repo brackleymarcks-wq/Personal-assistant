@@ -184,6 +184,15 @@ async function getWeekStats() {
   };
 }
 
+async function getGamificationStats() {
+  const user = await getUser();
+  if (!user) return { tasksDone: 0, habitsDone: 0, totalXp: 0 };
+  const { count: tasksDone } = await db.from('tasks').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'Готово');
+  const { count: habitsDone } = await db.from('habit_logs').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'done');
+  const xp = (tasksDone || 0) * 10 + (habitsDone || 0) * 15;
+  return { tasksDone: tasksDone || 0, habitsDone: habitsDone || 0, totalXp: xp };
+}
+
 async function createTask(title, opts = {}) {
   const user = await getUser();
   const { data, error } = await db.from('tasks').insert({
@@ -1041,6 +1050,38 @@ bot.onText(/\/tasks/, async (msg) => {
     bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
   } catch(e) {
     bot.sendMessage(chatId, '❌ Ошибка загрузки задач: ' + e.message);
+  }
+});
+
+// /level — RPG Статистика
+bot.onText(/\/level/, async (msg) => {
+  const chatId = msg.chat.id;
+  try {
+    const stats = await getGamificationStats();
+    const xp = stats.totalXp;
+    const level = Math.floor(Math.sqrt(xp / 50)) + 1;
+    
+    let rank = 'Новичок';
+    if (level >= 20) rank = 'Босс Жизни 👑';
+    else if (level >= 13) rank = 'Сеньор-Достигатор 💎';
+    else if (level >= 8) rank = 'Мастер Времени ⏳';
+    else if (level >= 4) rank = 'Джуниор 🚀';
+    else if (level >= 2) rank = 'Ученик 🌱';
+
+    const currentLevelBaseXp = Math.pow(level - 1, 2) * 50;
+    const nextLevelBaseXp = Math.pow(level, 2) * 50;
+
+    let text = `🎮 *Твоя RPG-Статистика*\n\n`;
+    text += `👑 *Ранг:* ${rank}\n`;
+    text += `📈 *Уровень:* ${level}\n`;
+    text += `⚡ *Опыт (XP):* ${xp} / ${nextLevelBaseXp}\n\n`;
+    text += `_До следующего уровня: ${nextLevelBaseXp - xp} XP_\n\n`;
+    text += `✅ *Задач выполнено:* ${stats.tasksDone}\n`;
+    text += `🔥 *Привычек закрыто:* ${stats.habitsDone}`;
+
+    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+  } catch(e) {
+    bot.sendMessage(chatId, '❌ Ошибка загрузки статистики: ' + e.message);
   }
 });
 
