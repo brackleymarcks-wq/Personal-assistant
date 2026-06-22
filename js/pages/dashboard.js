@@ -85,8 +85,8 @@ const DashboardPage = {
     grid.className = 'bento-grid';
 
     grid.innerHTML = `
-      <!-- Hero Bento Box (8 cols) -->
-      <div class="bento-item bento-col-8" style="display:flex;flex-direction:column;justify-content:center;min-height:180px;background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));">
+      <!-- Hero Bento Box (12 cols) -->
+      <div class="bento-item bento-col-12" style="display:flex;flex-direction:column;justify-content:center;min-height:160px;background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));">
         <div style="font-size:14px;color:var(--accent-vibrant);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
           <i data-lucide="${rhythm.icon}" style="width:16px;height:16px;"></i> ${rhythm.label}
         </div>
@@ -98,21 +98,31 @@ const DashboardPage = {
         </div>
       </div>
 
-      <!-- Tasks Progress Bento Box (4 cols) -->
-      <div class="bento-item bento-col-4" style="display:flex;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;" onclick="App.navigateTo('tasks')">
-        <div style="position:relative;width:80px;height:80px;margin-bottom:12px;">
-          <svg class="progress-ring" width="80" height="80" viewBox="0 0 60 60">
-            <circle class="progress-ring-bg" cx="30" cy="30" r="24" />
-            <circle class="progress-ring-fill" cx="30" cy="30" r="24" stroke-dasharray="150" stroke-dashoffset="${taskDashOffset}" style="stroke:var(--accent-vibrant);" />
-          </svg>
-          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--text-primary);">${taskProgress}%</div>
+      <!-- Tasks List Bento Box (6 cols) -->
+      <div class="bento-item bento-col-6" style="display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+            <i data-lucide="check-square" style="color:var(--accent-vibrant);"></i> Задачи на сегодня
+          </div>
+          <div style="font-size:13px;color:var(--text-muted);">${todayTasksDone} из ${todayTasksTotal}</div>
         </div>
-        <div style="font-size:15px;font-weight:600;color:var(--text-primary);">Задачи на сегодня</div>
-        <div style="font-size:13px;color:var(--text-muted);">${todayTasksDone} из ${todayTasksTotal} выполнено</div>
+        ${todayTasks.length === 0 && overdueTasks.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Всё выполнено! 🎉</div>` : `
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${[...overdueTasks.slice(0, 2), ...todayTasks.filter(t => !overdueTasks.includes(t)).slice(0, 4)].map(t => {
+              const sc = (typeof TasksPage !== 'undefined' ? TasksPage.STATUS_COLORS[t.status] : null) || '#64748b';
+              return `
+              <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:8px;background:${sc}0a;border:1px solid ${sc}80;cursor:pointer" onclick="App.navigateTo('tasks')">
+                <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'}"></div>
+                <span style="font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);">${this.esc(t.title)}</span>
+              </div>
+              `;
+            }).join('')}
+          </div>
+        `}
       </div>
 
-      <!-- Calendar Events Bento Box (8 cols) -->
-      <div class="bento-item bento-col-8" style="display:flex;flex-direction:column;">
+      <!-- Calendar Events Bento Box (6 cols) -->
+      <div class="bento-item bento-col-6" style="display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
             <i data-lucide="calendar" style="color:var(--info);"></i> Расписание
@@ -137,20 +147,33 @@ const DashboardPage = {
       </div>
 
       <!-- Habits Progress Bento Box (4 cols) -->
-      <div class="bento-item bento-col-4" style="display:flex;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;" onclick="App.navigateTo('habits')">
-        <div style="position:relative;width:80px;height:80px;margin-bottom:12px;">
-          <svg class="progress-ring" width="80" height="80" viewBox="0 0 60 60">
-            <circle class="progress-ring-bg" cx="30" cy="30" r="24" />
-            <circle class="progress-ring-fill" cx="30" cy="30" r="24" stroke-dasharray="150" stroke-dashoffset="${habitDashOffset}" style="stroke:var(--success);" />
-          </svg>
-          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--text-primary);">${habitProgress}%</div>
+      <!-- Habits List Bento Box (4 cols) -->
+      <div class="bento-item bento-col-4" style="cursor:pointer;" onclick="App.navigateTo('habits')">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+            <i data-lucide="star" style="color:var(--success);"></i> Привычки
+          </div>
+          <div style="font-size:13px;color:var(--text-muted);">${todayHabitsDone} / ${totalHabits}</div>
         </div>
-        <div style="font-size:15px;font-weight:600;color:var(--text-primary);">Привычки</div>
-        <div style="font-size:13px;color:var(--text-muted);">${todayHabitsDone} из ${totalHabits} сделано</div>
+        ${habits.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Добавь привычки в трекере.</div>` : `
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${habits.slice(0, 4).map(h => {
+              const done = habitLogs.some(l => l.habit_id === h.id && l.date === today && l.status === 'done');
+              return `
+                <div style="display:flex;align-items:center;gap:12px;padding:6px 0;">
+                  <div style="width:20px;height:20px;border-radius:6px;border:2px solid ${done ? 'var(--success)' : 'var(--glass-border-light)'};background:${done ? 'var(--success)' : 'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    ${done ? `<i data-lucide="check" style="color:white;width:12px;height:12px;"></i>` : ''}
+                  </div>
+                  <span style="font-size:14px;color:${done ? 'var(--text-muted)' : 'var(--text-primary)'};${done ? 'text-decoration:line-through' : ''}">${this.esc(h.name)}</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
       </div>
 
-      <!-- Inbox Bento Box (6 cols) -->
-      <div class="bento-item bento-col-6" style="cursor:pointer;" onclick="App.navigateTo('inbox')">
+      <!-- Inbox Bento Box (4 cols) -->
+      <div class="bento-item bento-col-4" style="cursor:pointer;" onclick="App.navigateTo('inbox')">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
             <i data-lucide="inbox" style="color:var(--warning);"></i> Входящие
@@ -168,8 +191,8 @@ const DashboardPage = {
         `}
       </div>
 
-      <!-- Goals Bento Box (6 cols) -->
-      <div class="bento-item bento-col-6" style="cursor:pointer;" onclick="App.navigateTo('goals')">
+      <!-- Goals Bento Box (4 cols) -->
+      <div class="bento-item bento-col-4" style="cursor:pointer;" onclick="App.navigateTo('goals')">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
             <i data-lucide="target" style="color:var(--danger);"></i> Активные цели
