@@ -584,6 +584,20 @@ const TOOLS = [
         }
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'save_link_to_knowledge_base',
+      description: 'Автоматически прочитать статью по ссылке, сделать выжимку и сохранить в Базу знаний.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Ссылка на статью или видео' }
+        },
+        required: ['url']
+      }
+    }
   }
 ];
 
@@ -760,6 +774,70 @@ async function executeFunctionCall(name, args) {
         const postText = json.choices[0].message.content;
         
         return { success: true, post: postText, message: 'Пост сгенерирован успешно. Выведи его пользователю.' };
+      }
+      case 'save_link_to_knowledge_base': {
+        const { url } = args;
+        if (!url) return { success: false, error: 'URL не передан' };
+
+        const cheerio = require('cheerio');
+        let content = '';
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+          const html = await res.text();
+          const $ = cheerio.load(html);
+          $('script, style, nav, footer, iframe, noscript').remove();
+          content = $('body').text().replace(/\s+/g, ' ').trim();
+        } catch(e) {
+          return { success: false, error: 'Ошибка при скачивании ссылки: ' + e.message };
+        }
+        
+        if (!content) return { success: false, error: 'Не удалось извлечь текст по ссылке' };
+        content = content.substring(0, 15000); // Ограничиваем длину
+
+        const systemPrompt = `Ты ИИ-аналитик. Твоя задача — сделать полезную выжимку из текста статьи/новости/видео.
+Формат ответа СТРОГО JSON:
+{
+  "title": "Информативный заголовок",
+  "content": "Выжимка в формате Markdown: краткая суть, основные тезисы списком, выводы. Используй жирный шрифт для выделения главного.",
+  "type": "Выбери одно из: Статья, Кейс, Инструмент, Заметка",
+  "tags": ["тег1", "тег2"]
+}
+Не пиши ничего кроме JSON!`;
+
+        try {
+          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'llama-3.3-70b-versatile',
+              response_format: { type: "json_object" },
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Сделай выжимку этого текста:\n\n${content}` }
+              ]
+            })
+          });
+          const json = await response.json();
+          const parsed = JSON.parse(json.choices[0].message.content);
+          
+          const user = await getUser();
+          if (!user) throw new Error("Пользователь не найден");
+
+          const { data, error } = await db.from('knowledge_base').insert({
+            user_id: user.id,
+            title: parsed.title || 'Сохраненная ссылка',
+            content: parsed.content || content.substring(0, 500) + '...',
+            type: parsed.type || 'Заметка',
+            tags: parsed.tags || [],
+            source_url: url
+          }).select().single();
+
+          if (error) throw error;
+          return { success: true, message: `Успешно сохранено: ${parsed.title}`, id: data.id };
+        } catch (e) {
+          return { success: false, error: 'Ошибка генерации выжимки или сохранения: ' + e.message };
+        }
       }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
