@@ -850,7 +850,7 @@ const Gemini = {
 
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.error?.message || \`API error \${res.status}\`);
+      throw new Error(err.error?.message || `API error ${res.status}`);
     }
 
     const data = await res.json();

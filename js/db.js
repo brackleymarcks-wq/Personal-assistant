@@ -307,12 +307,13 @@ const DB = {
   async getActiveReminders() {
     const userId = Config.userId;
     const now = new Date().toISOString();
-    const { data } = await _supabase
+    const { data, error } = await _supabase
       .from('reminders')
       .select('*')
       .eq('user_id', userId)
       .eq('sent', false)
       .lte('remind_at', now);
+    if (error) throw error;
     return data || [];
   },
 

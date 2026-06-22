@@ -341,13 +341,17 @@ const App = {
   },
 
   async checkReminders() {
+    if (this.remindersDisabled) return;
     try {
       const reminders = await DB.getActiveReminders();
       for (const r of reminders) {
         UI.toast(`⏰ ${r.message}`, 'warning', 8000);
         await DB.markReminderSent(r.id);
       }
-    } catch { }
+    } catch (e) {
+      console.warn('Reminders table not found or error, disabling polling to prevent console spam.');
+      this.remindersDisabled = true;
+    }
   },
 
   updateIcons() {
