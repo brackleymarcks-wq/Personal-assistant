@@ -1080,7 +1080,9 @@ bot.onText(/\/briefing/, async (msg) => {
   bot.sendMessage(chatId, '⏳ Готовлю утренний брифинг...');
   try {
     const text = await generateMorningBriefing();
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(() => {
+      bot.sendMessage(chatId, text); // Без markdown в случае ошибки
+    });
   } catch(e) {
     bot.sendMessage(chatId, '❌ Ошибка генерации брифинга: ' + e.message);
   }
@@ -1092,7 +1094,9 @@ bot.onText(/\/roast/, async (msg) => {
   bot.sendMessage(chatId, '🔥 Готовлю прожарку дня...');
   try {
     const text = await generateEveningReview();
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(() => {
+      bot.sendMessage(chatId, text);
+    });
   } catch(e) {
     bot.sendMessage(chatId, '❌ Ошибка генерации прожарки: ' + e.message);
   }
