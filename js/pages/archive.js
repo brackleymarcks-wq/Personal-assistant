@@ -8,13 +8,15 @@ const ArchivePage = {
   
   render() {
     return `
-      <div class="page-header">
-        <div>
-          <div class="page-title">Архив задач</div>
-          <div class="page-subtitle" id="archive-count-label">Загрузка…</div>
+      <div class="archive-page" style="height:100%; overflow-y:auto; padding-bottom: 32px;">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Архив задач</div>
+            <div class="page-subtitle" id="archive-count-label">Загрузка…</div>
+          </div>
         </div>
+        <div id="archive-content" style="margin-top: 24px; padding: 0 var(--space-xl);"></div>
       </div>
-      <div id="archive-content" style="margin-top: 24px;"></div>
     `;
   },
 
