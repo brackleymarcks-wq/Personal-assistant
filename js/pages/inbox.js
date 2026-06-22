@@ -126,17 +126,14 @@ const InboxPage = {
 
     const allAreas = Array.from(new Set(this.items.map(item => item.area || 'Работа')));
     
-    let filterHtml = '';
-    if (allAreas.length > 1 || Config.currentArea === 'Все') {
-      filterHtml = `
-        <div style="display:flex;gap:8px;margin-bottom:var(--space-md);flex-wrap:wrap;">
-          <button class="btn btn-sm inbox-filter-pill ${this.currentFilter === 'Все' ? 'btn-primary' : 'btn-ghost'}" data-area="Все" style="border-radius:100px;">Все</button>
-          ${allAreas.map(area => `
-            <button class="btn btn-sm inbox-filter-pill ${this.currentFilter === area ? 'btn-primary' : 'btn-ghost'}" data-area="${this.escapeHtml(area)}" style="border-radius:100px;">${this.escapeHtml(area)}</button>
-          `).join('')}
-        </div>
-      `;
-    }
+    let filterHtml = `
+      <div style="display:flex;gap:8px;margin-bottom:var(--space-md);flex-wrap:wrap;">
+        <button class="btn btn-sm inbox-filter-pill ${this.currentFilter === 'Все' ? 'btn-primary' : 'btn-ghost'}" data-area="Все" style="border-radius:100px;">Все</button>
+        ${allAreas.map(area => `
+          <button class="btn btn-sm inbox-filter-pill ${this.currentFilter === area ? 'btn-primary' : 'btn-ghost'}" data-area="${this.escapeHtml(area)}" style="border-radius:100px;">${this.escapeHtml(area)}</button>
+        `).join('')}
+      </div>
+    `;
 
     const groupedItems = {};
     this.items.forEach(item => {
