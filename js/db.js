@@ -405,12 +405,22 @@ const DB = {
     if (onlyUnprocessed) q = q.eq('processed', false);
     q = q.order('created_at', { ascending: false });
     const { data } = await q;
-    return data || [];
+    const items = data || [];
+    
+    return items.map(item => {
+      const match = item.content.match(/^\[\[AREA:(.*?)\]\](.*)$/s);
+      if (match) {
+        return { ...item, area: match[1], content: match[2] };
+      }
+      return { ...item, area: 'Работа' }; // Default for legacy items
+    }).filter(item => Config.currentArea === 'Все' || item.area === Config.currentArea);
   },
 
   async addToInbox(content) {
     const userId = Config.userId;
-    const { data, error } = await _supabase.from('inbox').insert({ user_id: userId, content }).select().single();
+    const area = Config.currentArea !== 'Все' ? Config.currentArea : 'Работа';
+    const textWithArea = `[[AREA:${area}]]${content}`;
+    const { data, error } = await _supabase.from('inbox').insert({ user_id: userId, content: textWithArea }).select().single();
     if (error) throw error;
     return data;
   },
