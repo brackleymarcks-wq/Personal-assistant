@@ -9,36 +9,60 @@ const TutoringPage = {
   render() {
     return `
       <div class="tutoring-page" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
-        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:10;">
           <div>
-            <div class="page-title" style="font-size:20px;font-weight:700;">Репетиторство 🇬🇧</div>
-            <div class="page-subtitle" id="tutoring-count-label" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Загрузка данных…</div>
+            <div class="page-title" style="font-size:24px;font-weight:800;background:linear-gradient(90deg, var(--accent), var(--accent-vibrant));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Репетиторство 🇬🇧</div>
+            <div class="page-subtitle" id="tutoring-subtitle" style="font-size:13px;color:var(--text-secondary);margin-top:4px;">Управление учениками и финансами</div>
           </div>
-          <div class="page-actions" style="display:flex;gap:8px;">
-            <button class="btn btn-secondary" id="add-student-btn" style="display:flex;align-items:center;gap:6px;">
-              <i data-lucide="user-plus"></i>
-              Ученик
+          <div class="page-actions" style="display:flex;gap:12px;">
+            <button class="btn btn-secondary" id="add-student-btn" style="display:flex;align-items:center;gap:6px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+              <i data-lucide="user-plus" style="width:16px;height:16px;"></i>
+              Добавить ученика
             </button>
-            <button class="btn btn-primary" id="add-lesson-btn" style="display:flex;align-items:center;gap:6px;">
-              <i data-lucide="plus"></i>
-              Урок
+            <button class="btn btn-primary" id="add-lesson-btn" style="display:flex;align-items:center;gap:6px;border-radius:12px;box-shadow:0 4px 12px var(--accent-alpha);">
+              <i data-lucide="plus" style="width:16px;height:16px;"></i>
+              Новый урок
             </button>
           </div>
         </div>
 
-        <div style="padding:var(--space-xl);display:flex;flex-direction:column;gap:var(--space-xl);flex:1;overflow-y:auto;align-content:start;">
+        <div style="padding:var(--space-xl);display:flex;flex-direction:column;gap:var(--space-xl);flex:1;overflow-y:auto;">
           
-          <h3 style="font-size: 15px; margin-bottom: -10px; display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text-primary);">
-            <i data-lucide="users" style="color: var(--accent); width: 18px; height: 18px;"></i>
-            Мои ученики
-          </h3>
-          <div id="students-list-container" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:var(--space-lg);"></div>
+          <!-- Metrics Dashboard -->
+          <div id="tutoring-metrics-container" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:var(--space-lg);">
+            <!-- Metrics will be injected here -->
+          </div>
           
-          <h3 style="font-size: 15px; margin-top: 10px; margin-bottom: -10px; display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text-primary);">
-            <i data-lucide="calendar" style="color: var(--success); width: 18px; height: 18px;"></i>
-            История уроков
-          </h3>
-          <div id="lessons-list-container" style="display:flex;flex-direction:column;gap:12px;"></div>
+          <!-- 2 Column Layout -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-xl);align-items:start;">
+            
+            <!-- Left Column: Students -->
+            <div style="display:flex;flex-direction:column;gap:var(--space-md);">
+              <h3 style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+                <i data-lucide="users" style="color:var(--accent);width:18px;height:18px;"></i> Мои ученики
+              </h3>
+              <div id="students-list-container" style="display:flex;flex-direction:column;gap:var(--space-md);"></div>
+            </div>
+
+            <!-- Right Column: Lessons -->
+            <div style="display:flex;flex-direction:column;gap:var(--space-xl);">
+              
+              <div style="display:flex;flex-direction:column;gap:var(--space-md);">
+                <h3 style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+                  <i data-lucide="calendar-clock" style="color:var(--warning);width:18px;height:18px;"></i> Ближайшие уроки
+                </h3>
+                <div id="upcoming-lessons-container" style="display:flex;flex-direction:column;gap:12px;"></div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:var(--space-md);">
+                <h3 style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+                  <i data-lucide="history" style="color:var(--text-secondary);width:18px;height:18px;"></i> История уроков
+                </h3>
+                <div id="lessons-list-container" style="display:flex;flex-direction:column;gap:12px;"></div>
+              </div>
+
+            </div>
+          </div>
 
         </div>
 
@@ -160,82 +184,172 @@ const TutoringPage = {
 
   renderContent() {
     const sContainer = document.getElementById('students-list-container');
+    const uContainer = document.getElementById('upcoming-lessons-container');
     const lContainer = document.getElementById('lessons-list-container');
-    const countLabel = document.getElementById('tutoring-count-label');
+    const metricsContainer = document.getElementById('tutoring-metrics-container');
 
     const activeSt = this.students.filter(s => s.active).length;
-    countLabel.textContent = `${activeSt} активных учеников · ${this.lessons.length} уроков всего`;
+    
+    // Calculate Monthly Income & Stats
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    let monthlyIncome = 0;
+    let lessonsThisMonth = 0;
+    let unpaidLessonsAmount = 0;
+
+    this.lessons.forEach(ls => {
+      const d = new Date(ls.date);
+      if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+        lessonsThisMonth++;
+        if (ls.status === 'Проведен') {
+          // Find student price
+          const st = this.students.find(s => s.id === ls.student_id);
+          const price = st ? (st.price || 0) : 0;
+          monthlyIncome += price;
+          if (!ls.paid) {
+            unpaidLessonsAmount += price;
+          }
+        }
+      }
+    });
+
+    // Render Metrics
+    metricsContainer.innerHTML = `
+      <div class="glass-panel" style="padding:20px;border-radius:16px;display:flex;align-items:center;gap:16px;background:linear-gradient(145deg, var(--bg-surface), var(--bg-primary));border:1px solid var(--border-light);">
+        <div style="width:48px;height:48px;border-radius:12px;background:var(--accent-alpha);color:var(--accent);display:flex;align-items:center;justify-content:center;">
+          <i data-lucide="users" style="width:24px;height:24px;"></i>
+        </div>
+        <div>
+          <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Активных учеников</div>
+          <div style="font-size:24px;font-weight:800;color:var(--text-primary);">${activeSt}</div>
+        </div>
+      </div>
+      <div class="glass-panel" style="padding:20px;border-radius:16px;display:flex;align-items:center;gap:16px;background:linear-gradient(145deg, var(--bg-surface), var(--bg-primary));border:1px solid var(--border-light);">
+        <div style="width:48px;height:48px;border-radius:12px;background:rgba(16, 185, 129, 0.1);color:var(--success);display:flex;align-items:center;justify-content:center;">
+          <i data-lucide="wallet" style="width:24px;height:24px;"></i>
+        </div>
+        <div>
+          <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Заработано в ${now.toLocaleString('ru', {month:'long'})}</div>
+          <div style="font-size:24px;font-weight:800;color:var(--text-primary);">${monthlyIncome} <span style="font-size:14px;color:var(--text-muted);font-weight:600;">BYN</span></div>
+        </div>
+      </div>
+      <div class="glass-panel" style="padding:20px;border-radius:16px;display:flex;align-items:center;gap:16px;background:linear-gradient(145deg, var(--bg-surface), var(--bg-primary));border:1px solid var(--border-light);">
+        <div style="width:48px;height:48px;border-radius:12px;background:rgba(245, 158, 11, 0.1);color:var(--warning);display:flex;align-items:center;justify-content:center;">
+          <i data-lucide="book-open-check" style="width:24px;height:24px;"></i>
+        </div>
+        <div>
+          <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Уроков за месяц</div>
+          <div style="font-size:24px;font-weight:800;color:var(--text-primary);">${lessonsThisMonth}</div>
+        </div>
+      </div>
+    `;
 
     // Render Students
     if (this.students.length === 0) {
-      sContainer.innerHTML = `<div style="color:var(--text-muted);font-size:13px;grid-column:1/-1;">Нет добавленных учеников. Нажмите «Ученик», чтобы добавить.</div>`;
+      sContainer.innerHTML = `<div class="empty-state" style="padding:32px;background:var(--bg-surface);border-radius:16px;text-align:center;"><i data-lucide="user-plus" style="width:32px;height:32px;opacity:0.3;margin-bottom:12px;"></i><br><span style="color:var(--text-secondary);font-size:14px;">Нет добавленных учеников</span></div>`;
     } else {
       sContainer.innerHTML = this.students.map(st => {
         const opacity = st.active ? '1' : '0.5';
+        
+        // Find unpaid lessons for this student
+        const unpaidCount = this.lessons.filter(l => l.student_id === st.id && l.status === 'Проведен' && !l.paid).length;
+        const debtBadge = unpaidCount > 0 ? `<div style="background:rgba(239, 68, 68, 0.1);color:var(--danger);font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;border:1px solid rgba(239,68,68,0.2);">Не оплачено: ${unpaidCount}</div>` : '';
+
         return `
-          <div class="glass-panel" data-id="${st.id}" style="padding:16px;border-radius:12px;cursor:pointer;opacity:${opacity};transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
-            <div style="display:flex;justify-content:space-between;align-items:start;">
-              <div>
-                <div style="font-weight:600;font-size:15px;color:var(--text-primary);display:flex;align-items:center;gap:6px;">
-                  ${this.escapeHtml(st.name)}
-                  ${!st.active ? '<span style="font-size:10px;background:var(--bg-secondary);padding:2px 6px;border-radius:10px;">Архив</span>' : ''}
+          <div class="glass-panel" data-id="${st.id}" style="padding:20px;border-radius:16px;cursor:pointer;opacity:${opacity};transition:all 0.2s;background:var(--bg-surface);border:1px solid var(--border-light);position:relative;overflow:hidden;" onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='var(--accent)';" onmouseout="this.style.transform='none';this.style.borderColor='var(--border-light)';">
+            ${!st.active ? '<div style="position:absolute;top:12px;right:12px;font-size:10px;background:var(--bg-secondary);padding:2px 8px;border-radius:12px;font-weight:600;">АРХИВ</div>' : ''}
+            <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:16px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg, var(--accent), var(--accent-vibrant));color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;box-shadow:0 2px 8px var(--accent-alpha);">
+                  ${st.name.charAt(0).toUpperCase()}
                 </div>
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${this.escapeHtml(st.grade || '—')}</div>
+                <div>
+                  <div style="font-weight:700;font-size:16px;color:var(--text-primary);">${this.escapeHtml(st.name)}</div>
+                  <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${this.escapeHtml(st.grade || 'Уровень не указан')}</div>
+                </div>
               </div>
-              <div style="font-weight:700;color:var(--accent);font-size:14px;">${st.price} BYN</div>
+              <div style="text-align:right;">
+                <div style="font-weight:800;color:var(--accent);font-size:16px;">${st.price} <span style="font-size:12px;">BYN</span></div>
+              </div>
             </div>
-            <div style="margin-top:12px;font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
-              <i data-lucide="clock" style="width:12px;height:12px;"></i>
-              ${this.escapeHtml(st.schedule || 'Расписание не задано')}
+            
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);background:var(--bg-primary);padding:4px 8px;border-radius:8px;">
+                <i data-lucide="clock" style="width:14px;height:14px;color:var(--accent);"></i>
+                ${this.escapeHtml(st.schedule || 'Нет расписания')}
+              </div>
+              ${debtBadge}
             </div>
           </div>
         `;
       }).join('');
     }
 
-    // Render Lessons
-    if (this.lessons.length === 0) {
-      lContainer.innerHTML = `<div style="color:var(--text-muted);font-size:13px;padding:16px 0;">История уроков пуста.</div>`;
-    } else {
-      lContainer.innerHTML = this.lessons.map(ls => {
-        const d = new Date(ls.date);
-        const dateStr = d.toLocaleDateString('ru-RU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
-        
-        let statusColor = 'var(--accent)';
-        let statusIcon = 'calendar';
-        if (ls.status === 'Проведен') { statusColor = 'var(--success)'; statusIcon = 'check-circle'; }
-        if (ls.status === 'Отменен') { statusColor = 'var(--text-muted)'; statusIcon = 'x-circle'; }
-        
-        return `
-          <div class="glass-panel lesson-card" data-id="${ls.id}" style="padding:12px 16px;border-radius:12px;display:flex;align-items:center;gap:16px;cursor:pointer;border-left:4px solid ${statusColor};">
-            <div style="flex-shrink:0;width:90px;font-size:13px;font-weight:500;color:var(--text-secondary);">
-              ${dateStr}
-            </div>
-            <div style="flex:1;">
-              <div style="font-weight:600;font-size:14px;color:var(--text-primary);display:flex;align-items:center;gap:6px;">
-                ${this.escapeHtml(ls.students?.name || 'Неизвестно')}
-                ${ls.paid ? '<span style="font-size:10px;background:var(--success);color:white;padding:2px 6px;border-radius:10px;font-weight:600;">ОПЛАЧЕНО</span>' : ''}
+    // Split Lessons into Upcoming and History
+    const upcoming = [];
+    const history = [];
+    this.lessons.forEach(ls => {
+      if (ls.status === 'Запланирован') upcoming.push(ls);
+      else history.push(ls);
+    });
+
+    const renderLessonList = (list, containerId, emptyText) => {
+      const container = document.getElementById(containerId);
+      if (list.length === 0) {
+        container.innerHTML = `<div style="color:var(--text-muted);font-size:13px;padding:16px;background:var(--bg-surface);border-radius:12px;text-align:center;border:1px dashed var(--border-light);">${emptyText}</div>`;
+      } else {
+        container.innerHTML = list.map(ls => {
+          const d = new Date(ls.date);
+          const isToday = d.toDateString() === now.toDateString();
+          const dateStr = d.toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
+          const timeStr = d.toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+          
+          let statusColor = 'var(--accent)';
+          let statusIcon = 'calendar';
+          if (ls.status === 'Проведен') { statusColor = 'var(--success)'; statusIcon = 'check-circle'; }
+          if (ls.status === 'Отменен') { statusColor = 'var(--text-muted)'; statusIcon = 'x-circle'; }
+          
+          const studentName = ls.students?.name || 'Ученик';
+
+          return `
+            <div class="glass-panel lesson-card" data-id="${ls.id}" style="padding:14px;border-radius:12px;display:flex;align-items:center;gap:16px;cursor:pointer;border-left:4px solid ${statusColor};background:var(--bg-surface);transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+              <div style="flex-shrink:0;width:56px;text-align:center;">
+                <div style="font-size:12px;color:${isToday ? 'var(--accent)' : 'var(--text-secondary)'};font-weight:700;text-transform:uppercase;">${isToday ? 'СЕГОДНЯ' : dateStr}</div>
+                <div style="font-size:16px;font-weight:800;color:var(--text-primary);">${timeStr}</div>
               </div>
-              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
-                <span style="color:var(--text-primary);font-weight:500;">Тема:</span> ${this.escapeHtml(ls.topic || '—')} 
-                <span style="margin:0 4px;color:var(--border);">|</span>
-                <span style="color:var(--text-primary);font-weight:500;">ДЗ:</span> ${this.escapeHtml(ls.homework || '—')}
+              <div style="flex:1;border-left:1px solid var(--border-light);padding-left:16px;">
+                <div style="font-weight:700;font-size:15px;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+                  ${this.escapeHtml(studentName)}
+                  ${ls.status === 'Проведен' ? (ls.paid ? '<span style="font-size:10px;background:rgba(16,185,129,0.1);color:var(--success);padding:2px 6px;border-radius:8px;font-weight:700;">ОПЛАЧЕНО</span>' : '<span style="font-size:10px;background:rgba(239,68,68,0.1);color:var(--danger);padding:2px 6px;border-radius:8px;font-weight:700;">НЕ ОПЛАЧЕНО</span>') : ''}
+                </div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;display:flex;flex-direction:column;gap:2px;">
+                  ${ls.topic ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="book" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(ls.topic)}</span></div>` : ''} 
+                  ${ls.homework ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(ls.homework)}</span></div>` : ''}
+                </div>
               </div>
             </div>
-            <div style="color:${statusColor};display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;">
-              <i data-lucide="${statusIcon}" style="width:14px;height:14px;"></i>
-              ${ls.status}
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
+          `;
+        }).join('');
+      }
+    };
+
+    // Sort upcoming ascending (nearest first), history descending (newest first)
+    upcoming.sort((a,b) => new Date(a.date) - new Date(b.date));
+    history.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+    renderLessonList(upcoming, 'upcoming-lessons-container', 'Нет запланированных уроков');
+    renderLessonList(history, 'lessons-list-container', 'История пуста');
 
     if (window.lucide) window.lucide.createIcons();
 
     // Bind card clicks
     sContainer.querySelectorAll('.glass-panel').forEach(card => {
       card.addEventListener('click', () => this.openStudentModal(card.dataset.id));
+    });
+    uContainer.querySelectorAll('.lesson-card').forEach(card => {
+      card.addEventListener('click', () => this.openLessonModal(card.dataset.id));
     });
     lContainer.querySelectorAll('.lesson-card').forEach(card => {
       card.addEventListener('click', () => this.openLessonModal(card.dataset.id));

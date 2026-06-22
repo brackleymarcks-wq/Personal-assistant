@@ -96,10 +96,11 @@ const CalendarPage = {
     const month = this.currentDate.getMonth();
     const start = new Date(year, month - 1, 1).toISOString();
     const end = new Date(year, month + 2, 0).toISOString();
-    [this.events, this.tasks, this.projects] = await Promise.all([
+    [this.events, this.tasks, this.projects, this.lessons] = await Promise.all([
       DB.getEvents(start, end),
       DB.getTasks({ }),
-      DB.getProjects()
+      DB.getProjects(),
+      DB.getLessons()
     ]);
     this.renderCalendar();
   },
@@ -198,12 +199,11 @@ const CalendarPage = {
              // Optimistic update optional, but we can just reload
              await DB.updateTask(data.id, { deadline: newDateStr });
              UI.toast('Дедлайн задачи перенесен', 'success');
-          } else if (data.type === 'event') {
+           } else if (data.type === 'event') {
              const ev = this.events.find(x => x.id === data.id);
              if (ev && ev.start_at) {
                 const oldStart = new Date(ev.start_at);
                 const newStart = new Date(newDateStr);
-                // Preserve time
                 newStart.setHours(oldStart.getHours(), oldStart.getMinutes(), oldStart.getSeconds());
                 
                 let updates = { start_at: newStart.toISOString() };
@@ -218,13 +218,23 @@ const CalendarPage = {
                 await DB.updateEvent(data.id, updates);
                 UI.toast('Событие перенесено', 'success');
              }
-          }
-          await this.load(); // Refresh data and re-render
-        } catch (err) {
-          console.error('Drop error:', err);
-          UI.toast('Ошибка при переносе', 'error');
-        }
-      });
+           } else if (data.type === 'lesson') {
+             const ls = this.lessons.find(x => x.id === data.id);
+             if (ls && ls.date) {
+                const oldStart = new Date(ls.date);
+                const newStart = new Date(newDateStr);
+                newStart.setHours(oldStart.getHours(), oldStart.getMinutes(), oldStart.getSeconds());
+                
+                await DB.updateLesson(data.id, { date: newStart.toISOString() });
+                UI.toast('Урок перенесен', 'success');
+             }
+           }
+           await this.load(); // Refresh data and re-render
+         } catch (err) {
+           console.error('Drop error:', err);
+           UI.toast('Ошибка при переносе', 'error');
+         }
+       });
 
       dayEl.addEventListener('click', () => {
         const dateStr = dayEl.dataset.date;
@@ -286,6 +296,12 @@ const CalendarPage = {
             `;
             UI.openModal(titleHtml, bodyHtml, footerHtml);
           }
+        } else if (type === 'lesson') {
+          App.navigateTo('tutoring').then(() => {
+            if (window.TutoringPage) {
+              TutoringPage.openLessonModal(id);
+            }
+          });
         } else if (id) {
           this.openEventModal(id);
         }
@@ -313,6 +329,15 @@ const CalendarPage = {
 
     const dayTaskDeadlines = this.tasks.filter(t => t.deadline === dateStr && t.status !== 'Отменена');
 
+    const dayLessons = (this.lessons || []).filter(ls => {
+      if (!ls.date) return false;
+      const lsDate = new Date(ls.date);
+      const lsY = lsDate.getFullYear();
+      const lsM = String(lsDate.getMonth() + 1).padStart(2, '0');
+      const lsD = String(lsDate.getDate()).padStart(2, '0');
+      return `${lsY}-${lsM}-${lsD}` === dateStr;
+    });
+
     const eventsHtml = [];
     
     if (this.currentTab === 'events') {
@@ -322,6 +347,16 @@ const CalendarPage = {
           ${this.esc(ev.title)}
         </div>
       `));
+      
+      eventsHtml.push(...dayLessons.map(ls => {
+        const studentName = ls.students?.name || 'Ученик';
+        const lsTime = new Date(ls.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        return `
+        <div class="calendar-event event-lesson" data-id="${ls.id}" data-type="lesson" title="Урок: ${this.esc(studentName)}" draggable="true" style="background:var(--bg-hover);border:1px solid var(--accent);color:var(--accent);">
+          <i data-lucide="book-open" style="width:12px;height:12px;min-width:12px;"></i>
+          ${lsTime} ${this.esc(studentName)}
+        </div>
+      `}));
     }
     
     if (this.currentTab === 'tasks') {
