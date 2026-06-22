@@ -350,18 +350,23 @@ async function executeFunctionCall(name, args) {
         }
         const created = [];
         for (const t of args.tasks) {
+          // Sanitize deadline
+          let d = t.deadline || null;
+          if (d && !d.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            try { d = new Date(d).toISOString().split('T')[0]; } catch(e) { d = null; }
+          }
           const task = await DB.createTask({
             title: t.title,
             direction: t.direction || 'Личное',
             status: t.status || 'Ждёт меня',
             priority: t.priority || 'Средний',
-            deadline: t.deadline || null,
+            deadline: d,
             next_step: t.next_step || ''
           });
           created.push(task);
         }
         window.App && App.refreshTasksBadge();
-        return { success: true, count: created.length, message: `Успешно создано ${created.length} задач` };
+        return { success: true, count: created.length, message: `Успешно создано задач: ${created.length}` };
       }
       case 'update_task': {
         const { id, ...updates } = args;
@@ -563,6 +568,13 @@ const Gemini = {
 
       const message = choice.message;
       if (!message.tool_calls || message.tool_calls.length === 0) {
+        if (!message.content && messages.some(m => m.role === 'tool')) {
+          const lastTool = messages[messages.length - 1];
+          try {
+            const res = JSON.parse(lastTool.content);
+            return res.message || res.error || 'Готово!';
+          } catch(e) { return 'Готово!'; }
+        }
         return message.content || 'Не удалось получить ответ';
       }
 

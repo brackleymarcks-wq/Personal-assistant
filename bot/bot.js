@@ -649,6 +649,11 @@ async function executeFunctionCall(name, args) {
         const created = [];
         for (const t of args.tasks) {
           t.area = t.area || 'Работа';
+          let d = t.deadline || null;
+          if (d && !d.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            try { d = new Date(d).toISOString().split('T')[0]; } catch(e) { d = null; }
+          }
+          t.deadline = d;
           const task = await createTask(t.title, t);
           created.push(task);
         }
