@@ -46,6 +46,35 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'create_tasks',
+      description: 'Массовое создание нескольких задач (используй для генерации расписания, декомпозиции и т.д.)',
+      parameters: {
+        type: 'object',
+        properties: {
+          tasks: {
+            type: 'array',
+            description: 'Список задач',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string', description: 'Название задачи' },
+                direction: { type: 'string', description: 'Направления (можно несколько через запятую)' },
+                status: { type: 'string', description: 'Статус задачи (по умолч. "Ждёт меня")' },
+                priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
+                deadline: { type: 'string', description: 'Дедлайн в формате YYYY-MM-DD' },
+                next_step: { type: 'string', description: 'Следующее конкретное действие' }
+              },
+              required: ['title']
+            }
+          }
+        },
+        required: ['tasks']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'update_task',
       description: 'Обновить задачу по ID',
       parameters: {
@@ -314,6 +343,25 @@ async function executeFunctionCall(name, args) {
         });
         window.App && App.refreshTasksBadge();
         return { success: true, task, message: `Задача "${task.title}" создана` };
+      }
+      case 'create_tasks': {
+        if (!args.tasks || !Array.isArray(args.tasks)) {
+          return { success: false, error: 'Параметр tasks должен быть массивом' };
+        }
+        const created = [];
+        for (const t of args.tasks) {
+          const task = await DB.createTask({
+            title: t.title,
+            direction: t.direction || 'Личное',
+            status: t.status || 'Ждёт меня',
+            priority: t.priority || 'Средний',
+            deadline: t.deadline || null,
+            next_step: t.next_step || ''
+          });
+          created.push(task);
+        }
+        window.App && App.refreshTasksBadge();
+        return { success: true, count: created.length, message: `Успешно создано ${created.length} задач` };
       }
       case 'update_task': {
         const { id, ...updates } = args;
