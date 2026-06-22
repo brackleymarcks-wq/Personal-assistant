@@ -127,7 +127,7 @@ const InboxPage = {
       return;
     }
 
-    const allAreas = ['Работа', 'Репетиторство', 'Личное', 'Английский'];
+    const allAreas = ['Работа', 'Репетиторство', 'Личное'];
     
     let filterHtml = `
       <div style="display:flex;gap:8px;margin-bottom:var(--space-md);flex-wrap:wrap;">
