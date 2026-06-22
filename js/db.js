@@ -100,6 +100,11 @@ const DB = {
   async getTasks(filters = {}) {
     const userId = Config.userId;
     let q = _supabase.from('tasks').select('*, projects(name)').eq('user_id', userId);
+    
+    if (Config.currentArea && Config.currentArea !== 'Все') {
+      q = q.eq('area', Config.currentArea);
+    }
+
     if (filters.status) q = q.eq('status', filters.status);
     if (filters.direction) q = q.eq('direction', filters.direction);
     if (filters.priority) q = q.eq('priority', filters.priority);
@@ -113,9 +118,10 @@ const DB = {
 
   async createTask(task) {
     const userId = Config.userId;
+    const area = task.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
     const { data, error } = await _supabase
       .from('tasks')
-      .insert({ user_id: userId, ...task })
+      .insert({ user_id: userId, area, ...task })
       .select()
       .single();
     if (error) throw error;
@@ -178,6 +184,11 @@ const DB = {
   async getEvents(startDate, endDate) {
     const userId = Config.userId;
     let q = _supabase.from('events').select('*').eq('user_id', userId);
+    
+    if (Config.currentArea && Config.currentArea !== 'Все') {
+      q = q.eq('area', Config.currentArea);
+    }
+
     if (startDate) q = q.gte('start_at', startDate);
     if (endDate) q = q.lte('start_at', endDate);
     q = q.order('start_at', { ascending: true });
@@ -187,9 +198,10 @@ const DB = {
 
   async createEvent(event) {
     const userId = Config.userId;
+    const area = event.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
     const { data, error } = await _supabase
       .from('events')
-      .insert({ user_id: userId, ...event })
+      .insert({ user_id: userId, area, ...event })
       .select()
       .single();
     if (error) throw error;
@@ -215,6 +227,11 @@ const DB = {
   async getKnowledge(filters = {}) {
     const userId = Config.userId;
     let q = _supabase.from('knowledge_base').select('*').eq('user_id', userId);
+
+    if (Config.currentArea && Config.currentArea !== 'Все') {
+      q = q.eq('area', Config.currentArea);
+    }
+
     if (filters.type) q = q.eq('type', filters.type);
     if (filters.search) q = q.or(`title.ilike.%${filters.search}%,content.ilike.%${filters.search}%`);
     if (filters.tag) q = q.contains('tags', [filters.tag]);
@@ -225,9 +242,10 @@ const DB = {
 
   async createKnowledge(item) {
     const userId = Config.userId;
+    const area = item.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
     const { data, error } = await _supabase
       .from('knowledge_base')
-      .insert({ user_id: userId, ...item })
+      .insert({ user_id: userId, area, ...item })
       .select()
       .single();
     if (error) throw error;
@@ -436,13 +454,18 @@ const DB = {
   // ---- NOTES ----
   async getNotes() {
     const userId = Config.userId;
-    const { data } = await _supabase.from('notes').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    let q = _supabase.from('notes').select('*').eq('user_id', userId);
+    if (Config.currentArea && Config.currentArea !== 'Все') {
+      q = q.eq('area', Config.currentArea);
+    }
+    const { data } = await q.order('created_at', { ascending: false });
     return data || [];
   },
 
   async createNote(note) {
     const userId = Config.userId;
-    const { data, error } = await _supabase.from('notes').insert({ user_id: userId, ...note }).select().single();
+    const area = note.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
+    const { data, error } = await _supabase.from('notes').insert({ user_id: userId, area, ...note }).select().single();
     if (error) throw error;
     return data;
   },

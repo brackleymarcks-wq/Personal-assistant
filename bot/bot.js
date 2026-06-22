@@ -202,20 +202,21 @@ async function createTask(title, opts = {}) {
     status: opts.status || 'Ждёт меня',
     priority: opts.priority || 'Средний',
     deadline: opts.deadline || null,
-    next_step: opts.next_step || ''
+    next_step: opts.next_step || '',
+    area: opts.area || 'Работа'
   }).select().single();
   if (error) throw error;
   return data;
 }
 
-async function createNote(title, content, tags = []) {
+async function createNote(title, content, tags = [], area = 'Работа') {
   const user = await getUser();
   const { data, error } = await db.from('notes').insert({
     user_id: user?.id,
     title,
     content,
     tags,
-    mood: '💡'
+    area
   }).select().single();
   if (error) throw error;
   return data;
@@ -387,9 +388,10 @@ const TOOLS = [
                 status: { type: 'string', description: 'Статус (по умолч. "Ждёт меня")' },
                 priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
                 deadline: { type: 'string', description: 'Дедлайн YYYY-MM-DD (обязательно вычисляй дату, если просят сделать "на этой неделе", "завтра" и т.д.)' },
-                next_step: { type: 'string', description: 'Следующее действие' }
+                next_step: { type: 'string', description: 'Следующее действие' },
+                area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Сфера жизни (обязательно выбери одну из трех!)' }
               },
-              required: ['title']
+              required: ['title', 'area']
             }
           }
         },
@@ -457,10 +459,11 @@ const TOOLS = [
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Заголовок заметки' },
-          content: { type: 'string', description: 'Текст заметки (поддерживается Markdown)' },
-          tags: { type: 'array', items: { type: 'string' }, description: 'Список тегов' }
+          content: { type: 'string', description: 'Содержимое (можно markdown)' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Теги массива строк' },
+          area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Сфера жизни (обязательно выбери одну из трех!)' }
         },
-        required: ['title', 'content']
+        required: ['title', 'content', 'area']
       }
     }
   },
@@ -609,9 +612,10 @@ const TOOLS = [
         properties: {
           title: { type: 'string', description: 'Краткое название события или напоминания' },
           description: { type: 'string', description: 'Подробности, контакты или ссылки (опционально)' },
-          start_at: { type: 'string', description: 'Точная дата и время события в формате ISO 8601 (например, 2026-06-22T14:00:00). Обязательно учитывай ТЕКУЩЕЕ ВРЕМЯ пользователя, указанное в системном промпте, для расчета.' }
+          start_at: { type: 'string', description: 'Точная дата и время события в формате ISO 8601 (например, 2026-06-22T14:00:00). Обязательно учитывай ТЕКУЩЕЕ ВРЕМЯ пользователя, указанное в системном промпте, для расчета.' },
+          area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Сфера жизни (обязательно выбери одну из трех!)' }
         },
-        required: ['title', 'start_at']
+        required: ['title', 'start_at', 'area']
       }
     }
   }
@@ -621,7 +625,7 @@ async function executeFunctionCall(name, args) {
   try {
     switch (name) {
       case 'create_event': {
-        const { title, description, start_at } = args;
+        const { title, description, start_at, area } = args;
         if (!title || !start_at) return { success: false, error: 'Не указан title или start_at' };
         
         const user = await getUser();
@@ -631,7 +635,8 @@ async function executeFunctionCall(name, args) {
           user_id: user.id,
           title: title,
           description: description || '',
-          start_at: start_at
+          start_at: start_at,
+          area: area || 'Работа'
         }).select().single();
 
         if (error) return { success: false, error: error.message };
@@ -643,6 +648,7 @@ async function executeFunctionCall(name, args) {
         }
         const created = [];
         for (const t of args.tasks) {
+          t.area = t.area || 'Работа';
           const task = await createTask(t.title, t);
           created.push(task);
         }
@@ -679,8 +685,8 @@ async function executeFunctionCall(name, args) {
         return { success: true, item: data, message: 'Мысль записана во входящие' };
       }
       case 'create_note': {
-        const note = await createNote(args.title, args.content, args.tags || []);
-        return { success: true, note, message: `Заметка "${note.title}" создана` };
+        const note = await createNote(args.title, args.content, args.tags, args.area || 'Работа');
+        return { success: true, note, message: `Заметка "${args.title}" успешно создана!` };
       }
       case 'create_transaction': {
         const txType = args.type || 'expense'; // По умолчанию считаем расходом (чек)

@@ -4,6 +4,7 @@
 
 const CalendarPage = {
   currentDate: new Date(),
+  currentTab: 'events', // 'events' or 'tasks'
   events: [],
   tasks: [],
   projects: [],
@@ -39,6 +40,15 @@ const CalendarPage = {
         </div>
 
         <div class="calendar-controls">
+          <div style="display:flex; gap: 8px;">
+            <button class="btn btn-secondary btn-sm" id="cal-tab-events" style="border-radius: 20px;">
+              <i data-lucide="clock" style="width:14px;height:14px;margin-right:6px;"></i> Встречи
+            </button>
+            <button class="btn btn-secondary btn-sm" id="cal-tab-tasks" style="border-radius: 20px;">
+              <i data-lucide="check-square" style="width:14px;height:14px;margin-right:6px;"></i> Задачи
+            </button>
+          </div>
+          
           <div class="calendar-nav">
             <button class="btn btn-secondary btn-icon" id="cal-prev" style="border:none;background:transparent;">
               <i data-lucide="chevron-left" style="width:18px;height:18px;"></i>
@@ -68,6 +78,16 @@ const CalendarPage = {
       this.currentDate = new Date();
       this.renderCalendar();
     });
+    
+    document.getElementById('cal-tab-events').addEventListener('click', () => {
+      this.currentTab = 'events';
+      this.renderCalendar();
+    });
+    document.getElementById('cal-tab-tasks').addEventListener('click', () => {
+      this.currentTab = 'tasks';
+      this.renderCalendar();
+    });
+
     await this.load();
   },
 
@@ -94,14 +114,31 @@ const CalendarPage = {
   },
 
   renderCalendar() {
+    // Update active tab styles
+    const tabEvents = document.getElementById('cal-tab-events');
+    const tabTasks = document.getElementById('cal-tab-tasks');
+    if (this.currentTab === 'events') {
+      tabEvents.classList.add('btn-primary');
+      tabEvents.classList.remove('btn-secondary');
+      tabTasks.classList.add('btn-secondary');
+      tabTasks.classList.remove('btn-primary');
+    } else {
+      tabTasks.classList.add('btn-primary');
+      tabTasks.classList.remove('btn-secondary');
+      tabEvents.classList.add('btn-secondary');
+      tabEvents.classList.remove('btn-primary');
+    }
+
     const year = this.currentDate.getFullYear();
     const month = this.currentDate.getMonth();
     const now = new Date();
 
     document.getElementById('cal-month-label').textContent =
       new Date(year, month, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-    document.getElementById('cal-subtitle').textContent =
-      `${this.events.length} событий в этом месяце`;
+    
+    const count = this.currentTab === 'events' ? this.events.length : this.tasks.length;
+    const countLabel = this.currentTab === 'events' ? 'событий' : 'дедлайнов';
+    document.getElementById('cal-subtitle').textContent = `${count} ${countLabel} в этом месяце`;
 
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
@@ -276,14 +313,19 @@ const CalendarPage = {
 
     const dayTaskDeadlines = this.tasks.filter(t => t.deadline === dateStr && t.status !== 'Отменена');
 
-    const eventsHtml = [
-      ...dayEvents.map(ev => `
+    const eventsHtml = [];
+    
+    if (this.currentTab === 'events') {
+      eventsHtml.push(...dayEvents.map(ev => `
         <div class="calendar-event ${this.TYPE_CLASS[ev.type] || 'event-meeting'}" data-id="${ev.id}" data-type="event" title="${this.esc(ev.title)}" draggable="true">
           <i data-lucide="${this.TYPE_ICON[ev.type] || 'calendar'}" style="width:12px;height:12px;min-width:12px;"></i>
           ${this.esc(ev.title)}
         </div>
-      `),
-      ...dayTaskDeadlines.map(t => {
+      `));
+    }
+    
+    if (this.currentTab === 'tasks') {
+      eventsHtml.push(...dayTaskDeadlines.map(t => {
         const isDone = t.status === 'Готово';
         let projectIcon = '';
         if (t.project_id) {
@@ -298,13 +340,13 @@ const CalendarPage = {
             ${projectIcon}${this.esc(t.title)}
           </div>
         `;
-      })
-    ].join('');
+      }));
+    }
 
     return `
       <div class="calendar-day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}" data-date="${dateStr}">
         <div class="calendar-day-number">${date.getDate()}</div>
-        ${eventsHtml}
+        ${eventsHtml.join('')}
       </div>
     `;
   },

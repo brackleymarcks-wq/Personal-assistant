@@ -178,6 +178,23 @@ const App = {
     this.applyTheme();
     this.updateIcons();
 
+    // Initialize Workspace/Area Switcher
+    const areaSelect = document.getElementById('global-area-select');
+    if (areaSelect) {
+      const savedArea = localStorage.getItem('currentArea') || 'Все';
+      Config.currentArea = savedArea;
+      areaSelect.value = savedArea;
+      
+      areaSelect.addEventListener('change', async (e) => {
+        Config.currentArea = e.target.value;
+        localStorage.setItem('currentArea', e.target.value);
+        UI.toast(`Переключение в сферу: ${e.target.value}`, 'info', 1500);
+        await this.navigateTo(this.currentPage); // Refresh current page with new area
+      });
+    } else {
+      Config.currentArea = 'Все';
+    }
+
     // Start first page
     await this.navigateTo(this.currentPage);
 
