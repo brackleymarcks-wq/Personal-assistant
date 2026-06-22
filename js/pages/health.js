@@ -106,14 +106,14 @@ const HealthPage = {
       const todayStr = new Date().toISOString().split('T')[0];
       quickLogContainer.innerHTML = healthHabits.map(h => {
         const isDone = this.logs.some(l => l.habit_id === h.id && l.date === todayStr && l.status === 'done');
-        return \`
+        return `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-primary);border-radius:var(--radius-md);border:1px solid var(--border-light);">
-            <div style="font-size:14px;font-weight:500;">\${this.escapeHtml(h.name)}</div>
-            <button class="btn btn-sm \${isDone ? 'btn-success' : 'btn-ghost'}" onclick="HealthPage.toggleHabit('\${h.id}', \${!isDone})">
-              <i data-lucide="\${isDone ? 'check' : 'circle'}"></i> \${isDone ? 'Сделано' : 'Отметить'}
+            <div style="font-size:14px;font-weight:500;">${this.escapeHtml(h.name)}</div>
+            <button class="btn btn-sm ${isDone ? 'btn-success' : 'btn-ghost'}" onclick="HealthPage.toggleHabit('${h.id}', ${!isDone})">
+              <i data-lucide="${isDone ? 'check' : 'circle'}"></i> ${isDone ? 'Сделано' : 'Отметить'}
             </button>
           </div>
-        \`;
+        `;
       }).join('');
     }
 
@@ -149,7 +149,7 @@ const HealthPage = {
 
     const currentIndexEl = document.getElementById('health-current-index');
     if (currentIndexEl) {
-      currentIndexEl.textContent = \`\${latestScore}%\`;
+      currentIndexEl.textContent = `${latestScore}%`;
       currentIndexEl.style.color = latestScore >= 80 ? 'var(--success)' : (latestScore >= 50 ? 'var(--warning)' : 'var(--danger)');
     }
 
@@ -222,7 +222,7 @@ const HealthPage = {
             padding: 12,
             boxPadding: 4,
             callbacks: {
-              label: (ctx) => \`\${ctx.raw}%\`
+              label: (ctx) => `${ctx.raw}%`
             }
           }
         },
