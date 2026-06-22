@@ -348,15 +348,17 @@ const CalendarPage = {
         </div>
       `));
       
-      eventsHtml.push(...dayLessons.map(ls => {
-        const studentName = ls.students?.name || 'Ученик';
-        const lsTime = new Date(ls.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-        return `
-        <div class="calendar-event event-lesson" data-id="${ls.id}" data-type="lesson" title="Урок: ${this.esc(studentName)}" draggable="true" style="background:var(--bg-hover);border:1px solid var(--accent);color:var(--accent);">
-          <i data-lucide="book-open" style="width:12px;height:12px;min-width:12px;"></i>
-          ${lsTime} ${this.esc(studentName)}
-        </div>
-      `}));
+      if (!Config.currentArea || Config.currentArea === 'Все' || Config.currentArea === 'Репетиторство') {
+        eventsHtml.push(...dayLessons.map(ls => {
+          const studentName = ls.students?.name || 'Ученик';
+          const lsTime = new Date(ls.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+          return `
+          <div class="calendar-event event-lesson" data-id="${ls.id}" data-type="lesson" title="Урок: ${this.esc(studentName)}" draggable="true" style="background:var(--bg-hover);border:1px solid var(--accent);color:var(--accent);">
+            <i data-lucide="book-open" style="width:12px;height:12px;min-width:12px;"></i>
+            ${lsTime} ${this.esc(studentName)}
+          </div>
+        `}));
+      }
     }
     
     if (this.currentTab === 'tasks') {
