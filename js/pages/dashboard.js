@@ -65,156 +65,133 @@ const DashboardPage = {
     const today = new Date().toISOString().split('T')[0];
 
     // Stats
-    const todayTasks = tasks.filter(t => t.deadline === today);
-    const activeTasks = tasks.filter(t => !['Готово', 'Отменена'].includes(t.status));
-    const doneTasks = tasks.filter(t => t.status === 'Готово');
-    const overdueTasks = tasks.filter(t => t.deadline && t.deadline < today && !['Готово', 'Отменена'].includes(t.status));
-    const todayHabitsDone = habitLogs.filter(l => l.date === today && l.status === 'done').length;
-    const activeGoals = goals.filter(g => g.status === 'В работе');
+    const todayTasks = tasks.filter(t => t.deadline === today && t.status !== 'Отменена');
+    const todayTasksDone = todayTasks.filter(t => t.status === 'Готово').length;
+    const todayTasksTotal = todayTasks.length;
+    const taskProgress = todayTasksTotal === 0 ? 100 : Math.round((todayTasksDone / todayTasksTotal) * 100);
+    const taskDashOffset = 150 - (150 * taskProgress) / 100;
 
-    // Rhythm block
+    const overdueTasks = tasks.filter(t => t.deadline && t.deadline < today && !['Готово', 'Отменена'].includes(t.status));
+    
+    const todayHabitsDone = habitLogs.filter(l => l.date === today && l.status === 'done').length;
+    const totalHabits = habits.length;
+    const habitProgress = totalHabits === 0 ? 0 : Math.round((todayHabitsDone / totalHabits) * 100);
+    const habitDashOffset = 150 - (150 * habitProgress) / 100;
+
+    const activeGoals = goals.filter(g => g.status === 'В работе');
     const rhythm = this.getCurrentRhythmBlock();
 
     const grid = document.getElementById('dashboard-grid');
+    
+    // Add class for bento
+    grid.className = 'bento-grid';
+
     grid.innerHTML = `
-      <!-- Rhythm / Current Block -->
-      <div class="dashboard-widget dashboard-welcome">
-        <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-          <div>
-            <div style="font-size:13px;color:var(--text-secondary);font-weight:500;margin-bottom:4px">Сейчас</div>
-            <div style="font-size:22px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px"><i data-lucide="${rhythm.icon}"></i> ${rhythm.label}</div>
-            <div style="font-size:13px;color:var(--text-secondary);margin-top:4px">${rhythm.hint}</div>
-          </div>
-          <div style="display:flex;gap:var(--space-lg)">
-            <div class="dashboard-stat">
-              <div class="stat-value">${activeTasks.length}</div>
-              <div class="stat-label">Активных задач</div>
-            </div>
-            <div class="dashboard-stat">
-              <div class="stat-value">${doneTasks.length}</div>
-              <div class="stat-label">Выполнено</div>
-            </div>
-            <div class="dashboard-stat">
-              <div class="stat-value">${todayHabitsDone}/${habits.length}</div>
-              <div class="stat-label">Привычки</div>
-            </div>
-          </div>
+      <!-- Hero Bento Box (8 cols) -->
+      <div class="bento-item bento-col-8" style="display:flex;flex-direction:column;justify-content:center;min-height:180px;background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));">
+        <div style="font-size:14px;color:var(--accent-vibrant);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <i data-lucide="${rhythm.icon}" style="width:16px;height:16px;"></i> ${rhythm.label}
+        </div>
+        <div style="font-size:28px;font-weight:800;color:var(--text-primary);line-height:1.2;margin-bottom:8px;">
+          Твой фокус: ${rhythm.hint}
+        </div>
+        <div style="font-size:14px;color:var(--text-secondary);">
+          Сегодня у тебя ${todayTasksTotal} задач и ${events.length} встреч. ${overdueTasks.length > 0 ? \`<span style="color:var(--danger);font-weight:600;">🔥 \${overdueTasks.length} просрочено.</span>\` : ''}
         </div>
       </div>
 
-      <!-- Today's Tasks -->
-      <div class="dashboard-widget">
-        <div class="widget-title"><i data-lucide="check-square" class="widget-icon"></i> Задачи на сегодня</div>
-        ${overdueTasks.length > 0 ? `
-          <div style="background:var(--danger-dim);border:1px solid rgba(248,113,113,0.2);border-radius:var(--radius-md);padding:var(--space-sm) var(--space-md);margin-bottom:var(--space-sm);font-size:12.5px;color:var(--danger);font-weight:500">
-            ⚠️ ${overdueTasks.length} просроченных задач
-          </div>
-        ` : ''}
-        ${todayTasks.length === 0 && overdueTasks.length === 0 ? `
-          <div style="text-align:center;padding:var(--space-lg) 0;color:var(--text-muted);font-size:13px">
-            Нет задач с дедлайном на сегодня
-          </div>
-        ` : ''}
-        <div style="display:flex;flex-direction:column;gap:var(--space-xs)">
-          ${[...overdueTasks.slice(0, 3), ...todayTasks.filter(t => !overdueTasks.includes(t)).slice(0, 5)].map(t => {
-            const sc = (typeof TasksPage !== 'undefined' ? TasksPage.STATUS_COLORS[t.status] : null) || '#64748b';
-            return `
-            <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-sm);border-radius:var(--radius-md);background:${sc}0a;border:1px solid ${sc}80;box-shadow:0 2px 8px ${sc}26;cursor:pointer" onclick="App.navigateTo('tasks')">
-              <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'}"></div>
-              <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.esc(t.title)}</span>
-              <span style="font-size:10px;padding:2px 6px;border-radius:10px;background:${sc}1a;color:${sc};border:1px solid ${sc}40;white-space:nowrap;display:inline-flex;align-items:center;gap:3px;"><div style="width:4px;height:4px;border-radius:50%;background:${sc}"></div>${this.esc(t.status)}</span>
-              <span style="font-size:11px;color:${t.deadline < new Date().toISOString().split('T')[0] ? 'var(--danger)' : 'var(--text-muted)'}">${t.deadline ? this.shortDate(t.deadline) : ''}</span>
-            </div>
-            `;
-          }).join('')}
+      <!-- Tasks Progress Bento Box (4 cols) -->
+      <div class="bento-item bento-col-4" style="display:flex;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;" onclick="App.navigateTo('tasks')">
+        <div style="position:relative;width:80px;height:80px;margin-bottom:12px;">
+          <svg class="progress-ring" width="80" height="80" viewBox="0 0 60 60">
+            <circle class="progress-ring-bg" cx="30" cy="30" r="24" />
+            <circle class="progress-ring-fill" cx="30" cy="30" r="24" stroke-dasharray="150" stroke-dashoffset="${taskDashOffset}" style="stroke:var(--accent-vibrant);" />
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--text-primary);">${taskProgress}%</div>
         </div>
+        <div style="font-size:15px;font-weight:600;color:var(--text-primary);">Задачи на сегодня</div>
+        <div style="font-size:13px;color:var(--text-muted);">${todayTasksDone} из ${todayTasksTotal} выполнено</div>
       </div>
 
-      <!-- Today's Events -->
-      <div class="dashboard-widget">
-        <div class="widget-title"><i data-lucide="calendar" class="widget-icon"></i> Сегодня в календаре</div>
-        ${events.length === 0 ? `
-          <div style="text-align:center;padding:var(--space-lg) 0;color:var(--text-muted);font-size:13px">
-            Нет событий на сегодня
+      <!-- Calendar Events Bento Box (8 cols) -->
+      <div class="bento-item bento-col-8" style="display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+            <i data-lucide="calendar" style="color:var(--info);"></i> Расписание
           </div>
-        ` : ''}
-        <div style="display:flex;flex-direction:column;gap:var(--space-xs)">
-          ${events.slice(0, 6).map(ev => {
-            const start = new Date(ev.start_at);
-            const end = new Date(ev.end_at);
-            const timeStr = start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) + ' – ' + end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-            return `
-              <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-sm);border-radius:var(--radius-md);background:var(--glass-bg);border:1px solid var(--glass-border)">
-                <span style="font-size:11px;color:var(--accent-soft);font-weight:600;min-width:90px">${timeStr}</span>
-                <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.esc(ev.title)}</span>
-              </div>
-            `;
-          }).join('')}
+          <button class="btn btn-ghost btn-sm" onclick="App.navigateTo('calendar')">Все</button>
         </div>
-      </div>
-
-      <!-- Habits Today -->
-      <div class="dashboard-widget">
-        <div class="widget-title"><i data-lucide="star" class="widget-icon"></i> Привычки сегодня</div>
-        ${habits.length === 0 ? `
-          <div style="text-align:center;padding:var(--space-lg) 0;color:var(--text-muted);font-size:13px">
-            Добавь привычки в трекере
-          </div>
-        ` : `
-          <div style="display:flex;flex-direction:column;gap:var(--space-xs)">
-            ${habits.map(h => {
-              const done = habitLogs.some(l => l.habit_id === h.id && l.date === today && l.status === 'done');
-              return `
-                <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-sm);border-radius:var(--radius-md);background:var(--glass-bg);border:1px solid var(--glass-border);cursor:pointer" onclick="App.navigateTo('habits')">
-                  <div style="width:24px;height:24px;border-radius:50%;border:2px solid ${done ? 'var(--success)' : 'var(--glass-border-light)'};background:${done ? 'var(--success-dim)' : 'transparent'};display:flex;align-items:center;justify-content:center;color:${done ? 'var(--success)' : 'transparent'};font-size:12px;flex-shrink:0"><i data-lucide="check" style="width:14px;height:14px;"></i></div>
-                  <span style="font-size:13px;color:${done ? 'var(--text-muted)' : 'var(--text-primary)'}; ${done ? 'text-decoration:line-through' : ''}">${this.esc(h.name)}</span>
+        ${events.length === 0 ? \`<div style="color:var(--text-muted);font-size:14px;">Свободный день! 🎉</div>\` : \`
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            \${events.slice(0, 3).map(ev => {
+              const start = new Date(ev.start_at);
+              const timeStr = start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+              return \`
+                <div style="display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:1px solid var(--glass-border-light);">
+                  <div style="font-size:14px;font-weight:700;color:var(--text-primary);width:45px;">\${timeStr}</div>
+                  <div style="width:3px;height:16px;background:var(--info);border-radius:3px;"></div>
+                  <div style="font-size:15px;font-weight:500;color:var(--text-secondary);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">\${this.esc(ev.title)}</div>
                 </div>
-              `;
+              \`;
             }).join('')}
           </div>
-        `}
+        \`}
       </div>
 
-      <!-- Goals Progress -->
-      <div class="dashboard-widget">
-        <div class="widget-title"><i data-lucide="target" class="widget-icon"></i> Цели</div>
-        ${activeGoals.length === 0 ? `
-          <div style="text-align:center;padding:var(--space-lg) 0;color:var(--text-muted);font-size:13px">
-            Нет активных целей
-          </div>
-        ` : `
-          <div style="display:flex;flex-direction:column;gap:var(--space-md)">
-            ${activeGoals.slice(0, 5).map(g => `
-              <div style="cursor:pointer" onclick="App.navigateTo('goals')">
-                <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-                  <span style="font-size:13px;font-weight:500">${this.esc(g.title)}</span>
-                  <span style="font-size:12px;color:var(--accent-soft);font-weight:600">${g.progress || 0}%</span>
-                </div>
-                <div class="progress-bar">
-                  <div class="progress-bar-fill" style="width:${g.progress || 0}%"></div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        `}
+      <!-- Habits Progress Bento Box (4 cols) -->
+      <div class="bento-item bento-col-4" style="display:flex;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;" onclick="App.navigateTo('habits')">
+        <div style="position:relative;width:80px;height:80px;margin-bottom:12px;">
+          <svg class="progress-ring" width="80" height="80" viewBox="0 0 60 60">
+            <circle class="progress-ring-bg" cx="30" cy="30" r="24" />
+            <circle class="progress-ring-fill" cx="30" cy="30" r="24" stroke-dasharray="150" stroke-dashoffset="${habitDashOffset}" style="stroke:var(--success);" />
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--text-primary);">${habitProgress}%</div>
+        </div>
+        <div style="font-size:15px;font-weight:600;color:var(--text-primary);">Привычки</div>
+        <div style="font-size:13px;color:var(--text-muted);">${todayHabitsDone} из ${totalHabits} сделано</div>
       </div>
 
-      <!-- Inbox -->
-      <div class="dashboard-widget">
-        <div class="widget-title"><i data-lucide="inbox" class="widget-icon"></i> Входящие <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:auto">${inbox.length} необработанных</span></div>
-        ${inbox.length === 0 ? `
-          <div style="text-align:center;padding:var(--space-lg) 0;color:var(--text-muted);font-size:13px">
-            Все мысли разобраны! 🎉
+      <!-- Inbox Bento Box (6 cols) -->
+      <div class="bento-item bento-col-6" style="cursor:pointer;" onclick="App.navigateTo('inbox')">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+            <i data-lucide="inbox" style="color:var(--warning);"></i> Входящие
           </div>
-        ` : `
-          <div style="display:flex;flex-direction:column;gap:var(--space-xs)">
-            ${inbox.slice(0, 5).map(item => `
-              <div style="padding:var(--space-sm);border-radius:var(--radius-md);background:var(--glass-bg);border:1px solid var(--glass-border);font-size:13px;cursor:pointer" onclick="App.navigateTo('inbox')">
-                ${this.esc(item.content).substring(0, 80)}${item.content.length > 80 ? '…' : ''}
+          <div style="background:var(--warning-dim);color:var(--warning);padding:2px 8px;border-radius:12px;font-size:12px;font-weight:700;">\${inbox.length}</div>
+        </div>
+        \${inbox.length === 0 ? \`<div style="color:var(--text-muted);font-size:14px;">Входящие пусты.</div>\` : \`
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            \${inbox.slice(0, 3).map(item => \`
+              <div style="font-size:14px;color:var(--text-secondary);padding:8px 12px;background:var(--bg-hover);border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                \${this.esc(item.content)}
               </div>
-            `).join('')}
+            \`).join('')}
           </div>
-        `}
+        \`}
+      </div>
+
+      <!-- Goals Bento Box (6 cols) -->
+      <div class="bento-item bento-col-6" style="cursor:pointer;" onclick="App.navigateTo('goals')">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+            <i data-lucide="target" style="color:var(--danger);"></i> Активные цели
+          </div>
+        </div>
+        \${activeGoals.length === 0 ? \`<div style="color:var(--text-muted);font-size:14px;">Нет активных целей.</div>\` : \`
+          <div style="display:flex;flex-direction:column;gap:16px;">
+            \${activeGoals.slice(0, 2).map(g => \`
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span style="font-size:14px;font-weight:600;color:var(--text-secondary);">\${this.esc(g.title)}</span>
+                  <span style="font-size:13px;color:var(--text-primary);font-weight:700;">\${g.progress || 0}%</span>
+                </div>
+                <div style="height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden;">
+                  <div style="height:100%;width:\${g.progress || 0}%;background:linear-gradient(90deg, var(--danger), var(--warning));border-radius:3px;"></div>
+                </div>
+              </div>
+            \`).join('')}
+          </div>
+        \`}
       </div>
     `;
   },
