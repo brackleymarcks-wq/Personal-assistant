@@ -8,6 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 const dns = require('dns');
+const cheerio = require('cheerio');
 
 // Fix for Node.js 18+ fetch failing in Docker with incomplete IPv6 stacks
 dns.setDefaultResultOrder('ipv4first');
@@ -520,6 +521,19 @@ const TOOLS = [
       name: 'analyze_finances',
       description: 'Получить статистику по доходам и расходам за текущий месяц (сгруппировано по категориям). Вызывай этот инструмент, когда пользователь просит проанализировать его финансы, сделать "прожарку" или узнать сколько он потратил.',
       parameters: { type: 'object', properties: {} }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_channel_post',
+      description: 'Сгенерировать ИИ-пост для Telegram-канала AI-Connect на основе ссылки или текста.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Ссылка на новость или статью (если есть)' },
+          raw_text: { type: 'string', description: 'Сырой текст новости (если ссылки нет или она не читается)' }
+        }
+      }
     }
   }
 ];
@@ -639,6 +653,56 @@ async function executeFunctionCall(name, args) {
         const json = await response.json();
         const result = json.choices[0].message.content;
         return { success: true, generated_plan: result, message: 'План сгенерирован успешно. Выведи его пользователю красиво и структурированно.' };
+      }
+      case 'generate_channel_post': {
+        let content = args.raw_text || '';
+        
+        // Если передана ссылка, скачиваем и парсим текст
+        if (args.url) {
+          try {
+            const resp = await fetch(args.url, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+            });
+            if (resp.ok) {
+              const html = await resp.text();
+              const $ = cheerio.load(html);
+              // Убираем лишнее
+              $('script, style, nav, footer, iframe, noscript').remove();
+              content = $('body').text().replace(/\s+/g, ' ').trim();
+              if (content.length > 8000) content = content.substring(0, 8000); // лимит
+            } else {
+              return { success: false, error: 'Не удалось открыть ссылку: ' + resp.status };
+            }
+          } catch(e) {
+            return { success: false, error: 'Ошибка скачивания ссылки: ' + e.message };
+          }
+        }
+        
+        if (!content) return { success: false, error: 'Нет текста для генерации поста' };
+        
+        const systemPrompt = `Ты профессиональный копирайтер для внутреннего Telegram-канала "AI-Connect". 
+Твоя задача — сделать из переданной новости один вовлекающий пост.
+Формат поста строго следующий:
+1. 🔥 Кликбейтный, яркий заголовок (используй эмодзи).
+2. Тизер: 2-3 предложения самой сути новости, чтобы заинтересовать. Без лишней воды.
+3. Призыв к действию: "Читайте полную статью с разбором на нашем HR-портале! 👇".
+Напиши пост живо, энергично, для сотрудников компании. Не добавляй лишних приветствий, сразу выдавай готовый текст поста.`;
+
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: `Сделай пост из этого материала:\n\n${content}` }
+            ]
+          })
+        });
+        const json = await response.json();
+        const postText = json.choices[0].message.content;
+        
+        return { success: true, post: postText, message: 'Пост сгенерирован успешно. Выведи его пользователю.' };
       }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
