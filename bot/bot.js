@@ -102,6 +102,26 @@ async function getTasksDueToday() {
   return data || [];
 }
 
+async function getTasksCompletedToday() {
+  const user = await getUser();
+  if (!user) return [];
+  const today = getMinskDateString(0);
+  // Нам нужны задачи, которые были ОБНОВЛЕНЫ сегодня и их статус "Готово"
+  // Мы проверяем updated_at: он должен быть >= начала сегодняшнего дня
+  const startOfToday = new Date();
+  startOfToday.setTime(startOfToday.getTime() + (3 * 60 * 60 * 1000));
+  startOfToday.setUTCHours(0,0,0,0);
+  // Переводим обратно в UTC для базы данных
+  const startOfTodayUTC = new Date(startOfToday.getTime() - (3 * 60 * 60 * 1000)).toISOString();
+  
+  const { data, error } = await db.from('tasks').select('*')
+    .eq('user_id', user.id)
+    .eq('status', 'Готово')
+    .gte('updated_at', startOfTodayUTC);
+  if (error) { console.error('getTasksCompletedToday error:', error); throw error; }
+  return data || [];
+}
+
 async function getOverdueTasks() {
   const user = await getUser();
   if (!user) return [];
@@ -1203,6 +1223,7 @@ async function generateMorningBriefing() {
 }
 
 async function generateEveningReview() {
+  const completedToday = await getTasksCompletedToday();
   const todayTasks = await getTasksDueToday();
   const overdue = await getOverdueTasks();
   const habitLogs = await getHabitLogsToday();
@@ -1210,15 +1231,22 @@ async function generateEveningReview() {
 
   const contextData = `
 ДАННЫЕ ДЛЯ ВЕЧЕРНЕГО ОБЗОРА:
-- Задачи на сегодня: ${JSON.stringify(todayTasks.map(t => ({ title: t.title, status: t.status })))}
-- Просроченные: ${JSON.stringify(overdue.map(t => t.title))}
-- Привычки выполнены сегодня: ${JSON.stringify(habitLogs.map(l => l.habits?.name))}
-- Всего привычек: ${JSON.stringify(habits.map(h => h.name))}
+- РЕАЛЬНО ВЫПОЛНЕНО СЕГОДНЯ: ${completedToday.length} задач. (${JSON.stringify(completedToday.map(t => t.title))})
+- ЗАБРОШЕНО НА СЕГОДНЯ (осталось висеть): ${todayTasks.length} задач. (${JSON.stringify(todayTasks.map(t => t.title))})
+- ПРОСРОЧЕННЫЕ (хвосты с прошлых дней): ${overdue.length} задач. (${JSON.stringify(overdue.map(t => t.title))})
+- Привычки выполнены сегодня: ${habitLogs.length} из ${habits.length}. (${JSON.stringify(habitLogs.map(l => l.habits?.name))})
 
-Сгенерируй вечерний обзор дня. Спроси, что переносим, что закрываем. Напомни про сон до 23:00.
+Сгенерируй вечернюю прожарку дня (Roast My Day).
+ИНСТРУКЦИЯ:
+Ты — жесткий, саркастичный и прямолинейный ИИ-тренер. 
+Проанализируй эти цифры. 
+- Если закрыто много задач (от 5+) и сделаны привычки — скупо похвали, но скажи, что расслабляться рано.
+- Если выполнено мало задач (0-3), остались висяки или забыты привычки — ЖЕСТКО ПРОЖАРЬ ЕГО. Смейся над его ленью, используй сарказм и черный юмор. Заставь его почувствовать жгучий стыд за прокрастинацию. Выведи список того, что он провалил. Запрети ему отдыхать, пока не сделает выводы.
+- Напомни, что отбой строго в 22:30.
+Отвечай ярко, с эмодзи, как строгий коуч. Не будь банальным ботом.
 `;
 
-  return await askAI('Сгенерируй вечерний обзор', contextData);
+  return await askAI('Сгенерируй вечерний обзор-прожарку', contextData);
 }
 
 async function generateWeeklyReview() {
