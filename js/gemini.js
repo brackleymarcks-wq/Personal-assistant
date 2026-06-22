@@ -62,7 +62,8 @@ const TOOLS = [
                 status: { type: 'string', description: 'Статус задачи (по умолч. "Ждёт меня")' },
                 priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
                 deadline: { type: 'string', description: 'Дедлайн в формате YYYY-MM-DD' },
-                next_step: { type: 'string', description: 'Следующее конкретное действие' }
+                next_step: { type: 'string', description: 'Следующее конкретное действие' },
+                area: { type: 'string', description: 'Сфера: Работа / Репетиторство / Личное' }
               },
               required: ['title']
             }
@@ -361,7 +362,8 @@ async function executeFunctionCall(name, args) {
             status: t.status || 'Ждёт меня',
             priority: t.priority || 'Средний',
             deadline: d,
-            next_step: t.next_step || ''
+            next_step: t.next_step || '',
+            area: t.area || null
           });
           created.push(task);
         }
