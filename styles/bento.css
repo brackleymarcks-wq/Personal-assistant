@@ -1,0 +1,86 @@
+/* ============================================
+   BENTO GRID & AMBIENT MESH
+   ============================================ */
+.mesh-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  filter: blur(80px);
+}
+
+.mesh-blob {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.6;
+  animation: blob-float 20s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.blob-1 { width: 60vw; height: 60vw; background: var(--mesh-1, rgba(217, 119, 6, 0.08)); top: -10%; left: -10%; animation-delay: 0s; }
+.blob-2 { width: 50vw; height: 50vw; background: var(--mesh-2, rgba(245, 158, 11, 0.06)); bottom: -10%; right: -10%; animation-delay: -5s; }
+.blob-3 { width: 40vw; height: 40vw; background: var(--mesh-3, rgba(234, 88, 12, 0.05)); top: 30%; left: 40%; animation-delay: -10s; }
+
+@keyframes blob-float {
+  0% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(5%, 5%) scale(1.1); }
+  66% { transform: translate(-5%, 10%) scale(0.9); }
+  100% { transform: translate(10%, -5%) scale(1); }
+}
+
+/* ============================================
+   BENTO GRID SYSTEM
+   ============================================ */
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--space-md);
+  max-width: 1400px;
+  width: 100%;
+}
+
+.bento-item {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+  border-radius: var(--radius-xl);
+  padding: var(--space-lg);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.bento-item::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent 5%, var(--glass-highlight) 50%, transparent 95%);
+  z-index: 1;
+}
+
+.bento-item:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: var(--shadow-md), 0 0 20px var(--accent-glow);
+  border-color: var(--glass-border-light);
+}
+
+.bento-col-12 { grid-column: span 12; }
+.bento-col-8 { grid-column: span 8; }
+.bento-col-6 { grid-column: span 6; }
+.bento-col-4 { grid-column: span 4; }
+.bento-col-3 { grid-column: span 3; }
+
+@media (max-width: 1024px) {
+  .bento-col-8, .bento-col-6, .bento-col-4, .bento-col-3 { grid-column: span 6; }
+}
+@media (max-width: 768px) {
+  .bento-col-8, .bento-col-6, .bento-col-4, .bento-col-3 { grid-column: span 12; }
+  .bento-grid { gap: var(--space-sm); }
+}
+
+/* SVG Progress Rings */
+.progress-ring { transform: rotate(-90deg); transform-origin: 50% 50%; }
+.progress-ring-bg { fill: none; stroke: var(--bg-hover); stroke-width: 8; }
+.progress-ring-fill { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 1s ease-in-out; }
