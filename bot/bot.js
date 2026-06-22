@@ -653,7 +653,28 @@ async function executeFunctionCall(name, args) {
         const txType = args.type || 'expense'; // По умолчанию считаем расходом (чек)
         const tx = await createTransaction(args.amount, txType, args.category, args.comment || '', args.account_name || '');
         const verb = txType === 'income' ? 'Записан доход' : 'Записан расход';
-        return { success: true, transaction: tx, message: `${verb}: ${args.amount} (${args.category})` };
+        
+        let extraMsg = '';
+        if (txType === 'expense') {
+          try {
+            const settings = await getSettings();
+            if (settings && settings.monthlyLimit) {
+              const limit = parseFloat(settings.monthlyLimit);
+              const stats = await getMonthlyFinances();
+              const spent = stats.expense; // это сумма расходов за месяц (уже включает текущую транзакцию, т.к. мы ее записали выше)
+              
+              if (spent > limit) {
+                extraMsg = `\n\n🤬 ВНИМАНИЕ: МЕСЯЧНЫЙ БЮДЖЕТ ПРЕВЫШЕН! (Потрачено ${spent} из ${limit}). АСТАНАВИТЕСЬ! БОЛЬШЕ НИКАКИХ ТРАТ!`;
+              } else if (spent >= limit * 0.8) {
+                extraMsg = `\n\n⚠️ Осторожно! Ты на краю! Потрачено уже больше 80% бюджета (${spent} из ${limit}). Осталось всего ${limit - spent} BYN до конца месяца!`;
+              }
+            }
+          } catch(e) {
+            console.error('Budget check error:', e);
+          }
+        }
+
+        return { success: true, transaction: tx, message: `${verb}: ${args.amount} BYN (${args.category})${extraMsg}` };
       }
       case 'start_deep_work': {
         const mins = args.minutes || 60;

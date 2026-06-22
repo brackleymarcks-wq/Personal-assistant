@@ -263,7 +263,35 @@ const FinancesPage = {
     }
 
     // Render Summary
-    document.getElementById('finance-summary').innerHTML = `
+    let budgetHtml = '';
+    if (this.config.monthlyLimit && this.config.monthlyLimit > 0) {
+      const limit = Number(this.config.monthlyLimit);
+      const percent = Math.min(100, Math.round((expense / limit) * 100));
+      let color = 'linear-gradient(90deg, var(--accent), var(--accent-vibrant))';
+      if (percent >= 100) color = 'var(--danger)';
+      else if (percent >= 80) color = 'var(--warning)';
+
+      budgetHtml = `
+        <div class="finance-summary-card glass-panel" style="grid-column: 1 / -1; box-shadow: var(--shadow-sm); flex-direction: column; align-items: stretch; gap: 8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+            <div class="finance-label" style="color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+              <i data-lucide="target" style="width:14px;height:14px;color:var(--accent);"></i>
+              Бюджет на месяц
+            </div>
+            <div style="font-size:13px; font-weight:600; color:var(--text-secondary);">
+              <span style="color:var(--text-primary);">${expense.toLocaleString('ru-RU')}</span> / ${limit.toLocaleString('ru-RU')} BYN
+            </div>
+          </div>
+          <div style="width: 100%; height: 8px; background: var(--bg-hover); border-radius: 4px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);">
+            <div style="width: ${percent}%; height: 100%; background: ${color}; border-radius: 4px; transition: width 0.3s ease;"></div>
+          </div>
+          ${percent >= 100 ? `<div style="font-size:11px; color:var(--danger); text-align:right;">Бюджет превышен!</div>` : ''}
+          ${percent >= 80 && percent < 100 ? `<div style="font-size:11px; color:var(--warning); text-align:right;">Осталось ${(limit - expense).toLocaleString('ru-RU')} BYN</div>` : ''}
+        </div>
+      `;
+    }
+
+    document.getElementById('finance-summary').innerHTML = budgetHtml + `
       <div class="finance-summary-card glass-panel" style="box-shadow: var(--shadow-sm);">
         <div class="finance-label">
           <i data-lucide="trending-up" style="width:14px;height:14px;color:var(--success);"></i>
@@ -870,7 +898,23 @@ ${JSON.stringify(historySummary, null, 2)}
   },
 
   openBudgetModal() {
-    let inputs = this.categories.expense.map(cat => {
+    const globalLimit = this.config.monthlyLimit || '';
+
+    let inputs = `
+      <div style="background: rgba(var(--accent-rgb), 0.05); padding: 16px; border-radius: var(--radius-md); margin-bottom: 24px; border: 1px solid rgba(var(--accent-rgb), 0.2);">
+        <div style="font-weight: 600; color: var(--accent); margin-bottom: 8px; display:flex; align-items:center; gap:6px;">
+          <i data-lucide="target" style="width:16px;height:16px;"></i> Глобальный лимит на месяц
+        </div>
+        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Общая сумма всех трат, которую вы не хотите превысить. Бот предупредит при достижении 80% и жестко отреагирует при 100%.</div>
+        <div style="display:flex; align-items:center; gap: 8px;">
+          <input type="number" id="budget-global" value="${globalLimit}" placeholder="Без лимита" class="form-input" style="flex:1; max-width:200px; font-weight:600;">
+          <span style="color:var(--text-muted); font-weight:500;">BYN</span>
+        </div>
+      </div>
+      <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Детальные лимиты по категориям:</div>
+    `;
+
+    inputs += this.categories.expense.map(cat => {
       const currentVal = this.config.budgets[cat] || '';
       return `
         <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid var(--border-light);">
@@ -911,6 +955,13 @@ ${JSON.stringify(historySummary, null, 2)}
   },
 
   async saveBudgets() {
+    const globalInput = document.getElementById('budget-global');
+    if (globalInput) {
+      const globalVal = Number(globalInput.value);
+      if (globalVal > 0) this.config.monthlyLimit = globalVal;
+      else delete this.config.monthlyLimit;
+    }
+
     this.categories.expense.forEach(cat => {
       const id = 'budget-' + btoa(unescape(encodeURIComponent(cat))).replace(/=/g, '');
       const input = document.getElementById(id);
