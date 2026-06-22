@@ -1084,6 +1084,18 @@ bot.onText(/\/briefing/, async (msg) => {
   }
 });
 
+// /roast — вечерняя прожарка вручную
+bot.onText(/\/roast/, async (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, '🔥 Готовлю прожарку дня...');
+  try {
+    const text = await generateEveningReview();
+    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+  } catch(e) {
+    bot.sendMessage(chatId, '❌ Ошибка генерации прожарки: ' + e.message);
+  }
+});
+
 // ============================================
 // VOICE TO TEXT (WHISPER)
 // ============================================
