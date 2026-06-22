@@ -750,7 +750,7 @@ async function executeFunctionCall(name, args) {
   }
 }
 
-async function askAI(userMessage, context = '', imageUrl = null) {
+async function askAI(userMessage, context = '', imageUrl = null, disableTools = false) {
   if (!AI_API_KEY) return 'API ключ для нейросети не настроен (AI_API_KEY).';
 
   const settings = await getSettings();
@@ -790,7 +790,7 @@ async function askAI(userMessage, context = '', imageUrl = null) {
   // Сразу отправляем статус "Печатает...", чтобы не казалось, что бот завис
   bot.sendChatAction(CHAT_ID, 'typing').catch(() => {});
 
-  let response = await callAPI(systemInstruction, messages, 0, !!imageUrl);
+  let response = await callAPI(systemInstruction, messages, 0, !!imageUrl, null, disableTools);
   let maxIter = 5;
 
   while (maxIter-- > 0) {
@@ -822,7 +822,7 @@ async function askAI(userMessage, context = '', imageUrl = null) {
   return response.choices?.[0]?.message?.content || 'Не удалось получить ответ';
 }
 
-async function callAPI(systemInstruction, messages, retryCount = 0, isVision = false, forceModel = null) {
+async function callAPI(systemInstruction, messages, retryCount = 0, isVision = false, forceModel = null, disableTools = false) {
   let modelToUse = forceModel || AI_MODEL;
   if (isVision) {
     if (AI_API_URL.includes('groq')) modelToUse = 'llama-3.2-90b-vision-preview';
@@ -842,7 +842,8 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
         { role: 'system', content: systemInstruction },
         ...messages
       ],
-      tools: TOOLS,
+      tools: (isVision || disableTools) ? undefined : TOOLS,
+      tool_choice: (isVision || disableTools) ? undefined : 'auto',
       temperature: 0.1,
       max_tokens: 1024
     })
@@ -855,7 +856,7 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
     if (res.status === 429 && retryCount < 2) {
       if (errMsg.includes('tokens per day') || errMsg.includes('TPD')) {
         console.warn('Groq TPD limit reached! Falling back to smaller model...');
-        return callAPI(systemInstruction, messages, retryCount + 1, isVision, 'llama-3.1-8b-instant');
+        return callAPI(systemInstruction, messages, retryCount + 1, isVision, 'llama-3.1-8b-instant', disableTools);
       }
 
       let waitTime = 20;
@@ -866,12 +867,12 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
       
       if (waitTime > 30 && AI_API_URL.includes('groq')) {
          console.warn(`Wait time ${waitTime}s is too long, falling back to smaller model...`);
-         return callAPI(systemInstruction, messages, retryCount + 1, isVision, 'llama-3.1-8b-instant');
+         return callAPI(systemInstruction, messages, retryCount + 1, isVision, 'llama-3.1-8b-instant', disableTools);
       }
 
       console.warn(`Rate limit hit. Waiting ${waitTime}s...`);
       await new Promise(r => setTimeout(r, waitTime * 1000));
-      return callAPI(systemInstruction, messages, retryCount + 1, isVision, forceModel);
+      return callAPI(systemInstruction, messages, retryCount + 1, isVision, forceModel, disableTools);
     }
     
     // Fallback if model fails to generate valid tool call JSON
@@ -1232,7 +1233,7 @@ async function generateMorningBriefing() {
 6. Мотивация (коротко)
 `;
 
-  return await askAI('Сгенерируй утренний брифинг', contextData);
+  return await askAI('Сгенерируй утренний брифинг', contextData, null, true);
 }
 
 async function generateEveningReview() {
@@ -1259,7 +1260,7 @@ async function generateEveningReview() {
 Отвечай ярко, с эмодзи, как строгий коуч. Не будь банальным ботом.
 `;
 
-  return await askAI('Сгенерируй вечерний обзор-прожарку', contextData);
+  return await askAI('Сгенерируй вечерний обзор-прожарку', contextData, null, true);
 }
 
 async function generateWeeklyReview() {
@@ -1275,7 +1276,7 @@ async function generateWeeklyReview() {
 Сгенерируй еженедельный обзор. Похвали за достижения, обрати внимание на проблемы, спроси про цели на следующую неделю.
 `;
 
-  return await askAI('Еженедельный обзор', contextData);
+  return await askAI('Еженедельный обзор', contextData, null, true);
 }
 
 function sendProactiveMessage(text) {
