@@ -131,7 +131,7 @@ const InboxPage = {
     });
 
     let html = '';
-    const showHeaders = Object.keys(groupedItems).length > 1 || Config.currentArea === 'Все';
+    const showHeaders = true; // Always show headers
 
     for (const [area, items] of Object.entries(groupedItems)) {
       if (showHeaders) {
@@ -199,6 +199,8 @@ const InboxPage = {
         this.convertToTask(id, content);
       });
     });
+
+    if(window.lucide) window.lucide.createIcons({root: container});
   },
 
   async parseAllWithAI() {
