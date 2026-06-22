@@ -823,6 +823,27 @@ ${JSON.stringify(historySummary, null, 2)}
     const acc = id ? this.config.accounts.find(a => a.id === id) : null;
     const isNew = !acc;
 
+    let currentBalance = acc ? (Number(acc.initialBalance) || 0) : 0;
+    if (acc) {
+      this.transactions.forEach(t => {
+        try {
+          const descData = JSON.parse(t.description || '{}');
+          let accId = descData.account;
+          if (!accId && this.config.accounts && this.config.accounts.length > 0) {
+            const defaultAcc = this.config.accounts.find(a => a.name.toLowerCase().includes('карта')) || this.config.accounts[0];
+            accId = defaultAcc.id;
+          }
+          const amt = Number(t.amount);
+          if (t.type === 'income' && accId === acc.id) currentBalance += amt;
+          else if (t.type === 'expense' && accId === acc.id) currentBalance -= amt;
+          else if (t.type === 'transfer') {
+            if (descData.fromAccount === acc.id) currentBalance -= amt;
+            if (descData.toAccount === acc.id) currentBalance += amt;
+          }
+        } catch(e) {}
+      });
+    }
+
     const content = `
       <div class="form-group">
         <label class="form-label">Название счета</label>
@@ -846,8 +867,9 @@ ${JSON.stringify(historySummary, null, 2)}
         </div>
       </div>
       <div class="form-group" style="margin-top:var(--space-md)">
-        <label class="form-label">Начальный баланс (BYN)</label>
-        <input type="number" step="0.01" id="acc-initial-balance" class="form-input" value="${acc ? (acc.initialBalance || 0) : 0}">
+        <label class="form-label">${acc ? 'Скорректировать текущий баланс (BYN)' : 'Начальный баланс (BYN)'}</label>
+        <input type="number" step="0.01" id="acc-current-balance" class="form-input" value="${currentBalance.toFixed(2)}">
+        ${acc ? '<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Если изменить эту сумму, бот автоматически создаст операцию "Корректировка", чтобы подогнать баланс.</div>' : ''}
       </div>
     `;
 
@@ -872,16 +894,48 @@ ${JSON.stringify(historySummary, null, 2)}
     const name = document.getElementById('acc-name').value.trim();
     const icon = document.getElementById('acc-icon').value;
     const color = document.getElementById('acc-color').value;
-    const initialBalance = parseFloat(document.getElementById('acc-initial-balance').value) || 0;
+    const newBalance = parseFloat(document.getElementById('acc-current-balance').value) || 0;
 
     if (!name) { UI.toast('Введите название', 'error'); return; }
 
     if (id) {
       const acc = this.config.accounts.find(a => a.id === id);
-      if (acc) { acc.name = name; acc.icon = icon; acc.color = color; acc.initialBalance = initialBalance; }
+      if (acc) {
+        acc.name = name; acc.icon = icon; acc.color = color;
+        
+        // Calculate old balance
+        let currentBalance = Number(acc.initialBalance) || 0;
+        this.transactions.forEach(t => {
+          try {
+            const descData = JSON.parse(t.description || '{}');
+            let accId = descData.account || (this.config.accounts.find(a => a.name.toLowerCase().includes('карта')) || this.config.accounts[0]).id;
+            const amt = Number(t.amount);
+            if (t.type === 'income' && accId === acc.id) currentBalance += amt;
+            else if (t.type === 'expense' && accId === acc.id) currentBalance -= amt;
+            else if (t.type === 'transfer') {
+              if (descData.fromAccount === acc.id) currentBalance -= amt;
+              if (descData.toAccount === acc.id) currentBalance += amt;
+            }
+          } catch(e) {}
+        });
+
+        const diff = newBalance - currentBalance;
+        if (Math.abs(diff) > 0.001) {
+          // Add correction transaction
+          const txData = {
+            amount: Math.abs(diff).toFixed(2),
+            type: diff > 0 ? 'income' : 'expense',
+            category: 'Другое',
+            date: new Date().toISOString().split('T')[0],
+            description: JSON.stringify({ account: acc.id, text: 'Ручная корректировка баланса' })
+          };
+          const created = await DB.createTransaction(txData);
+          this.transactions.unshift(created);
+        }
+      }
     } else {
       const newId = 'acc_' + Date.now();
-      this.config.accounts.push({ id: newId, name, icon, color, initialBalance });
+      this.config.accounts.push({ id: newId, name, icon, color, initialBalance: newBalance });
     }
 
     await this.saveConfig();
