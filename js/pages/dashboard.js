@@ -94,7 +94,7 @@ const DashboardPage = {
           Твой фокус: ${rhythm.hint}
         </div>
         <div style="font-size:14px;color:var(--text-secondary);">
-          Сегодня у тебя ${todayTasksTotal} задач и ${events.length} встреч. ${overdueTasks.length > 0 ? \`<span style="color:var(--danger);font-weight:600;">🔥 \${overdueTasks.length} просрочено.</span>\` : ''}
+          Сегодня у тебя ${todayTasksTotal} задач и ${events.length} встреч. ${overdueTasks.length > 0 ? `<span style="color:var(--danger);font-weight:600;">🔥 ${overdueTasks.length} просрочено.</span>` : ''}
         </div>
       </div>
 
@@ -119,21 +119,21 @@ const DashboardPage = {
           </div>
           <button class="btn btn-ghost btn-sm" onclick="App.navigateTo('calendar')">Все</button>
         </div>
-        ${events.length === 0 ? \`<div style="color:var(--text-muted);font-size:14px;">Свободный день! 🎉</div>\` : \`
+        ${events.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Свободный день! 🎉</div>` : `
           <div style="display:flex;flex-direction:column;gap:12px;">
-            \${events.slice(0, 3).map(ev => {
+            ${events.slice(0, 3).map(ev => {
               const start = new Date(ev.start_at);
               const timeStr = start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-              return \`
+              return `
                 <div style="display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:1px solid var(--glass-border-light);">
-                  <div style="font-size:14px;font-weight:700;color:var(--text-primary);width:45px;">\${timeStr}</div>
+                  <div style="font-size:14px;font-weight:700;color:var(--text-primary);width:45px;">${timeStr}</div>
                   <div style="width:3px;height:16px;background:var(--info);border-radius:3px;"></div>
-                  <div style="font-size:15px;font-weight:500;color:var(--text-secondary);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">\${this.esc(ev.title)}</div>
+                  <div style="font-size:15px;font-weight:500;color:var(--text-secondary);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.esc(ev.title)}</div>
                 </div>
-              \`;
+              `;
             }).join('')}
           </div>
-        \`}
+        `}
       </div>
 
       <!-- Habits Progress Bento Box (4 cols) -->
@@ -155,17 +155,17 @@ const DashboardPage = {
           <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
             <i data-lucide="inbox" style="color:var(--warning);"></i> Входящие
           </div>
-          <div style="background:var(--warning-dim);color:var(--warning);padding:2px 8px;border-radius:12px;font-size:12px;font-weight:700;">\${inbox.length}</div>
+          <div style="background:var(--warning-dim);color:var(--warning);padding:2px 8px;border-radius:12px;font-size:12px;font-weight:700;">${inbox.length}</div>
         </div>
-        \${inbox.length === 0 ? \`<div style="color:var(--text-muted);font-size:14px;">Входящие пусты.</div>\` : \`
+        ${inbox.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Входящие пусты.</div>` : `
           <div style="display:flex;flex-direction:column;gap:8px;">
-            \${inbox.slice(0, 3).map(item => \`
+            ${inbox.slice(0, 3).map(item => `
               <div style="font-size:14px;color:var(--text-secondary);padding:8px 12px;background:var(--bg-hover);border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                \${this.esc(item.content)}
+                ${this.esc(item.content)}
               </div>
-            \`).join('')}
+            `).join('')}
           </div>
-        \`}
+        `}
       </div>
 
       <!-- Goals Bento Box (6 cols) -->
@@ -175,21 +175,21 @@ const DashboardPage = {
             <i data-lucide="target" style="color:var(--danger);"></i> Активные цели
           </div>
         </div>
-        \${activeGoals.length === 0 ? \`<div style="color:var(--text-muted);font-size:14px;">Нет активных целей.</div>\` : \`
+        ${activeGoals.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Нет активных целей.</div>` : `
           <div style="display:flex;flex-direction:column;gap:16px;">
-            \${activeGoals.slice(0, 2).map(g => \`
+            ${activeGoals.slice(0, 2).map(g => `
               <div>
                 <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-                  <span style="font-size:14px;font-weight:600;color:var(--text-secondary);">\${this.esc(g.title)}</span>
-                  <span style="font-size:13px;color:var(--text-primary);font-weight:700;">\${g.progress || 0}%</span>
+                  <span style="font-size:14px;font-weight:600;color:var(--text-secondary);">${this.esc(g.title)}</span>
+                  <span style="font-size:13px;color:var(--text-primary);font-weight:700;">${g.progress || 0}%</span>
                 </div>
                 <div style="height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden;">
-                  <div style="height:100%;width:\${g.progress || 0}%;background:linear-gradient(90deg, var(--danger), var(--warning));border-radius:3px;"></div>
+                  <div style="height:100%;width:${g.progress || 0}%;background:linear-gradient(90deg, var(--danger), var(--warning));border-radius:3px;"></div>
                 </div>
               </div>
-            \`).join('')}
+            `).join('')}
           </div>
-        \`}
+        `}
       </div>
     `;
   },
