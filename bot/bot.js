@@ -1187,9 +1187,9 @@ bot.onText(/\/health/, async (msg) => {
     const score = Math.round((doneCount / healthHabits.length) * 100);
     let emoji = score >= 80 ? '🔥' : (score >= 50 ? '⚡' : '💀');
     
-    let text = \`*Твой Индекс Формы на сегодня:* \${score}% \${emoji}\\n\\n\`;
-    text += \`Выполнено: \${doneCount} из \${healthHabits.length} здоровых привычек.\\n\`;
-    text += \`\\nЗайди в веб-приложение (вкладка Здоровье), чтобы посмотреть график активности!\`;
+    let text = `*Твой Индекс Формы на сегодня:* ${score}% ${emoji}\n\n`;
+    text += `Выполнено: ${doneCount} из ${healthHabits.length} здоровых привычек.\n`;
+    text += `\nЗайди в веб-приложение (вкладка Здоровье), чтобы посмотреть график активности!`;
 
     await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(() => {
       bot.sendMessage(chatId, text);
