@@ -569,6 +569,16 @@ const Gemini = {
       if (!choice) break;
 
       const message = choice.message;
+      
+      // Normalize legacy function_call from some OpenRouter models
+      if (message.function_call && (!message.tool_calls || message.tool_calls.length === 0)) {
+        message.tool_calls = [{
+          id: 'call_' + Math.random().toString(36).substr(2, 9),
+          type: 'function',
+          function: message.function_call
+        }];
+      }
+
       if (!message.tool_calls || message.tool_calls.length === 0) {
         if (!message.content && messages.some(m => m.role === 'tool')) {
           const lastTool = messages[messages.length - 1];

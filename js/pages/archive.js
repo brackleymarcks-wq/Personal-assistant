@@ -8,14 +8,14 @@ const ArchivePage = {
   
   render() {
     return `
-      <div class="archive-page" style="height:100%; overflow-y:auto; padding-bottom: 32px;">
-        <div class="page-header">
+      <div class="archive-page" style="display:flex; flex-direction:column; height:100%; overflow:hidden;">
+        <div class="page-header" style="flex-shrink:0;">
           <div>
             <div class="page-title">Архив задач</div>
             <div class="page-subtitle" id="archive-count-label">Загрузка…</div>
           </div>
         </div>
-        <div id="archive-content" style="margin-top: 24px; padding: 0 var(--space-xl);"></div>
+        <div id="archive-content" style="flex:1; overflow-y:auto; margin-top: 24px; padding: 0 var(--space-xl); padding-bottom: 32px;"></div>
       </div>
     `;
   },
