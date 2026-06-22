@@ -527,6 +527,8 @@ const Gemini = {
       day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
 
+    const yyyymmdd = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Minsk' });
+
     let extraContext = '';
     if (settings.context?.custom_instructions?.length) {
       const validInstructions = settings.context.custom_instructions.filter(i => !i.includes('ALTER TABLE tasks'));
@@ -535,7 +537,7 @@ const Gemini = {
       }
     }
 
-    return `${systemPrompt}\n\n${userContext}\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr}\n\nРИТМ ДНЯ:\n- Подъём: ${rhythm.wake}\n- Deep Work: ${rhythm.deep_work_start}–${rhythm.deep_work_end}\n- Обед: ${rhythm.lunch_start}–${rhythm.lunch_end}\n- Стоп работы: ${rhythm.work_stop}\n- Сон: ${rhythm.sleep}${extraContext}`;
+    return `${systemPrompt}\n\n${userContext}\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr} (формат YYYY-MM-DD: ${yyyymmdd})\n\nРИТМ ДНЯ:\n- Подъём: ${rhythm.wake}\n- Deep Work: ${rhythm.deep_work_start}–${rhythm.deep_work_end}\n- Обед: ${rhythm.lunch_start}–${rhythm.lunch_end}\n- Стоп работы: ${rhythm.work_stop}\n- Сон: ${rhythm.sleep}${extraContext}`;
   },
 
   async chat(userMessage, historyMessages = []) {
