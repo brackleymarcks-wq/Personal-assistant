@@ -123,8 +123,24 @@ const InboxPage = {
       return;
     }
 
-    container.innerHTML = this.items.map(item => `
-      <div class="inbox-card" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);display:flex;align-items:center;justify-content:space-between;gap:var(--space-md);transition:all var(--transition);animation:fadeInUp 0.2s ease;">
+    const groupedItems = {};
+    this.items.forEach(item => {
+      const area = item.area || 'Работа';
+      if (!groupedItems[area]) groupedItems[area] = [];
+      groupedItems[area].push(item);
+    });
+
+    let html = '';
+    const showHeaders = Object.keys(groupedItems).length > 1 || Config.currentArea === 'Все';
+
+    for (const [area, items] of Object.entries(groupedItems)) {
+      if (showHeaders) {
+        html += `<div style="font-size:14px;font-weight:700;color:var(--text-secondary);margin-top:var(--space-md);margin-bottom:var(--space-xs);padding-left:4px;display:flex;align-items:center;gap:6px;">
+          <i data-lucide="target" style="width:14px;height:14px;"></i> ${this.escapeHtml(area)}
+        </div>`;
+      }
+      html += items.map(item => `
+      <div class="inbox-card" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);display:flex;align-items:center;justify-content:space-between;gap:var(--space-md);transition:all var(--transition);animation:fadeInUp 0.2s ease;margin-bottom:var(--space-sm);">
         <div style="font-size:14px;color:var(--text-primary);line-height:1.5;flex:1;word-break:break-word;white-space:pre-wrap;">${this.escapeHtml(item.content)}</div>
         <div style="display:flex;flex-direction:column;gap:var(--space-xs);flex-shrink:0;">
           <div style="display:flex;gap:var(--space-xs);">
@@ -145,7 +161,10 @@ const InboxPage = {
           </div>
         </div>
       </div>
-    `).join('');
+      `).join('');
+    }
+
+    container.innerHTML = html;
 
     // Bind item buttons
     container.querySelectorAll('.process-btn').forEach(btn => {
