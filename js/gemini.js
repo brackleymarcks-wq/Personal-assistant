@@ -812,5 +812,48 @@ const Gemini = {
     }
     
     return JSON.parse(jsonStr);
+  },
+
+  async generateHomework(studentName, grade, topic) {
+    const settings = await DB.getSettings();
+    const apiKey = settings?.api_key || Config.apiKey;
+    const apiUrl = settings?.api_url || DEFAULT_API_URL;
+    const model = settings?.model || DEFAULT_MODEL;
+
+    if (!apiKey) throw new Error('API ключ не настроен. Перейдите в настройки.');
+
+    const systemPrompt = `Ты — опытный, креативный и дружелюбный преподаватель английского языка. 
+Твоя задача: составить интересное и полезное домашнее задание.
+Ученик: ${studentName}.
+Класс/Уровень: ${grade || 'Не указан'}.
+Тема урока: ${topic}.
+
+Напиши 3-4 небольших практических задания (например: вставить слово, перевести, ответить на вопрос или придумать историю), чтобы ученик закрепил материал.
+Пиши задания на английском, а пояснения (если нужно) на русском.
+ДЗ должно быть рассчитано на 10-15 минут выполнения. Никаких лишних слов, сразу выдавай готовый текст домашки!`;
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Составь домашку по теме "${topic}".` }
+        ],
+        temperature: 0.7
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || \`API error \${res.status}\`);
+    }
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || '';
   }
 };

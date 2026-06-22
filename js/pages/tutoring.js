@@ -129,7 +129,10 @@ const TutoringPage = {
                 <input id="ls-topic" type="text" class="form-input" placeholder="Например: Past Simple" />
               </div>
               <div class="form-group">
-                <label class="form-label">Домашнее задание</label>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <label class="form-label" style="margin-bottom:0;">Домашнее задание</label>
+                  <button id="ls-generate-ai" class="btn btn-ghost" style="font-size:12px;color:var(--accent);display:flex;align-items:center;gap:4px;padding:2px 8px;min-height:auto;"><i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ</button>
+                </div>
                 <textarea id="ls-homework" class="form-input" rows="2" placeholder="Что задано на следующий раз?"></textarea>
               </div>
               <div class="form-row">
@@ -431,6 +434,32 @@ const TutoringPage = {
     const delBtn = document.getElementById('lesson-modal-delete');
     delBtn.style.display = ls ? '' : 'none';
 
+    // AI Generation click
+    const aiBtn = document.getElementById('ls-generate-ai');
+    aiBtn.onclick = async () => {
+      const student_id = document.getElementById('ls-student').value;
+      const st = this.students.find(s => s.id === student_id);
+      const topic = document.getElementById('ls-topic').value.trim();
+      
+      if (!st) return UI.toast('Выберите ученика', 'warning');
+      if (!topic) return UI.toast('Укажите тему урока для генерации (например, Past Simple)', 'warning');
+      
+      aiBtn.innerHTML = '<i class="lucide-loader" style="width:12px;height:12px;animation:spin 1s linear infinite;"></i> Генерируем...';
+      aiBtn.disabled = true;
+      
+      try {
+        const homework = await Gemini.generateHomework(st.name, st.grade, topic);
+        document.getElementById('ls-homework').value = homework;
+        UI.toast('Домашка сгенерирована!', 'success');
+      } catch (e) {
+        UI.toast('Ошибка ИИ: ' + e.message, 'error');
+      } finally {
+        aiBtn.innerHTML = '<i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ';
+        aiBtn.disabled = false;
+        if (window.lucide) window.lucide.createIcons();
+      }
+    };
+
     document.getElementById('lesson-modal-save').onclick = () => this.saveLesson(ls?.id);
     document.getElementById('lesson-modal-cancel').onclick = () => modal.classList.add('hidden');
     document.getElementById('lesson-modal-close').onclick = () => modal.classList.add('hidden');
@@ -453,11 +482,40 @@ const TutoringPage = {
       paid: document.getElementById('ls-paid').checked
     };
 
+    // Finance integration
+    const ls = id ? this.lessons.find(l => l.id === id) : null;
+    const wasPaid = ls ? ls.paid : false;
+    const isPaidNow = data.paid;
+    const isConductedNow = data.status === 'Проведен';
+    
+    let createTx = false;
+    if (!wasPaid && isPaidNow && isConductedNow) {
+      const st = this.students.find(s => s.id === student_id);
+      const price = st ? (st.price || 0) : 0;
+      if (price > 0) {
+        if (confirm(`Зачислить оплату за урок (${price} BYN) в Финансы (Доходы)?`)) {
+          createTx = { amount: price, name: st.name };
+        }
+      }
+    }
+
     try {
       if (id) await DB.updateLesson(id, data);
       else await DB.createLesson(data);
+      
+      // Execute Finance Transaction if confirmed
+      if (createTx) {
+        await DB.createTransaction({
+          type: 'income',
+          amount: createTx.amount,
+          category: 'Репетиторство',
+          description: `Оплата за урок: ${createTx.name} (${data.topic || 'Без темы'})`
+        });
+        UI.toast('Оплата добавлена в Финансы!', 'success');
+      }
+
       document.getElementById('lesson-modal').classList.add('hidden');
-      UI.toast('Урок сохранен', 'success');
+      if (!createTx) UI.toast('Урок сохранен', 'success');
       await this.load();
     } catch(e) { UI.toast('Ошибка: ' + e.message, 'error'); }
   },
