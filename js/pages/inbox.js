@@ -4,7 +4,7 @@
 
 const InboxPage = {
   items: [],
-  currentFilter: 'Все',
+  currentFilter: null,
 
   render() {
     return `
@@ -92,6 +92,9 @@ const InboxPage = {
 
   async load() {
     try {
+      if (!this.currentFilter) {
+        this.currentFilter = Config.currentArea || 'Все';
+      }
       this.items = await DB.getInbox(true); // Only unprocessed
       this.renderContent();
     } catch (e) {
@@ -124,7 +127,7 @@ const InboxPage = {
       return;
     }
 
-    const allAreas = Array.from(new Set(this.items.map(item => item.area || 'Работа')));
+    const allAreas = ['Работа', 'Репетиторство', 'Личное', 'Английский'];
     
     let filterHtml = `
       <div style="display:flex;gap:8px;margin-bottom:var(--space-md);flex-wrap:wrap;">

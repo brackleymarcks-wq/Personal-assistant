@@ -414,7 +414,7 @@ const DB = {
         return { ...item, area: match[1], content: match[2] };
       }
       return { ...item, area: 'Работа' }; // Default for legacy items
-    }).filter(item => Config.currentArea === 'Все' || item.area === Config.currentArea);
+    }); // Inbox now returns all items regardless of global area filter so we can filter locally
   },
 
   async addToInbox(content) {
