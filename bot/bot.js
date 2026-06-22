@@ -1640,22 +1640,41 @@ cron.schedule('* * * * *', async () => {
     const future = new Date(now.getTime() + 1 * 60000);
     const past = new Date(now.getTime() - 10 * 60000);
 
-    const { data } = await db.from('events')
+    // 1. Проверка Событий (AI Календарь)
+    const { data: eventsData } = await db.from('events')
       .select('*')
       .eq('user_id', user.id)
       .gte('start_at', past.toISOString())
       .lte('start_at', future.toISOString());
 
-    if (data && data.length > 0) {
-      for (const e of data) {
+    if (eventsData && eventsData.length > 0) {
+      for (const e of eventsData) {
         if (!notifiedEvents.has(e.id)) {
           const eventTime = new Date(e.start_at);
-          // Если время события уже наступило (или наступит в ближайшую минуту)
           if (eventTime <= future) {
             notifiedEvents.add(e.id);
             sendProactiveMessage(`🔔 **Напоминание:** ${e.title}\n${e.description ? '_' + e.description + '_' : ''}`);
-            // Можно очищать старые ID из Set раз в день, но пока оставим так, они пропадут при рестарте
           }
+        }
+      }
+    }
+
+    // 2. Проверка Уроков (Репетиторство) - Напоминание за 15 минут
+    const future15 = new Date(now.getTime() + 16 * 60000); // 15-16 минут вперед
+    const past15 = new Date(now.getTime() + 14 * 60000);
+
+    const { data: lessonsData } = await db.from('lessons')
+      .select('*, students(name)')
+      .eq('status', 'Запланирован')
+      .gte('date', past15.toISOString())
+      .lte('date', future15.toISOString());
+
+    if (lessonsData && lessonsData.length > 0) {
+      for (const ls of lessonsData) {
+        if (!notifiedEvents.has(ls.id)) {
+          notifiedEvents.add(ls.id);
+          const stName = ls.students?.name || 'Ученик';
+          sendProactiveMessage(`🔔 **Урок через 15 минут!**\nУченик: ${stName}\n📚 Тема: ${ls.topic || 'Без темы'}\n✏️ ДЗ: ${ls.homework || 'Не задано'}`);
         }
       }
     }

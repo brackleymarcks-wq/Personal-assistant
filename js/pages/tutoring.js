@@ -92,6 +92,10 @@ const TutoringPage = {
                 <label class="form-label">Расписание</label>
                 <input id="st-schedule" type="text" class="form-input" placeholder="Например: Пн 18:00, Вс утро" />
               </div>
+              <div class="form-group">
+                <label class="form-label">Заметки преподавателя (Слабые места, интересы)</label>
+                <textarea id="st-notes" class="form-input" rows="2" placeholder="Например: Путает much и many, любит обсуждать игры"></textarea>
+              </div>
               <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:8px;">
                 <input id="st-active" type="checkbox" checked />
                 <label for="st-active" style="font-size:13px;color:var(--text-primary);">Активный ученик</label>
@@ -134,6 +138,10 @@ const TutoringPage = {
                   <button id="ls-generate-ai" class="btn btn-ghost" style="font-size:12px;color:var(--accent);display:flex;align-items:center;gap:4px;padding:2px 8px;min-height:auto;"><i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ</button>
                 </div>
                 <textarea id="ls-homework" class="form-input" rows="2" placeholder="Что задано на следующий раз?"></textarea>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Материалы урока (Ссылки, PDF)</label>
+                <input id="ls-materials" type="text" class="form-input" placeholder="Например: https://youtube.com/..." />
               </div>
               <div class="form-row">
                 <div class="form-group">
@@ -260,6 +268,12 @@ const TutoringPage = {
         const unpaidCount = this.lessons.filter(l => l.student_id === st.id && l.status === 'Проведен' && !l.paid).length;
         const debtBadge = unpaidCount > 0 ? `<div style="background:rgba(239, 68, 68, 0.1);color:var(--danger);font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;border:1px solid rgba(239,68,68,0.2);">Не оплачено: ${unpaidCount}</div>` : '';
 
+        // Extract notes from schedule
+        let displaySchedule = st.schedule || 'Нет расписания';
+        if (displaySchedule.includes('\\n[ЗАМЕТКИ]:')) {
+          displaySchedule = displaySchedule.split('\\n[ЗАМЕТКИ]:')[0];
+        }
+
         return `
           <div class="glass-panel" data-id="${st.id}" style="padding:20px;border-radius:16px;cursor:pointer;opacity:${opacity};transition:all 0.2s;background:var(--bg-surface);border:1px solid var(--border-light);position:relative;overflow:hidden;" onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='var(--accent)';" onmouseout="this.style.transform='none';this.style.borderColor='var(--border-light)';">
             ${!st.active ? '<div style="position:absolute;top:12px;right:12px;font-size:10px;background:var(--bg-secondary);padding:2px 8px;border-radius:12px;font-weight:600;">АРХИВ</div>' : ''}
@@ -281,7 +295,7 @@ const TutoringPage = {
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);background:var(--bg-primary);padding:4px 8px;border-radius:8px;">
                 <i data-lucide="clock" style="width:14px;height:14px;color:var(--accent);"></i>
-                ${this.escapeHtml(st.schedule || 'Нет расписания')}
+                ${this.escapeHtml(displaySchedule)}
               </div>
               ${debtBadge}
             </div>
@@ -316,20 +330,32 @@ const TutoringPage = {
           
           const studentName = ls.students?.name || 'Ученик';
 
+          // Extract materials from homework
+          let displayHomework = ls.homework || '';
+          let displayMaterials = '';
+          if (displayHomework.includes('\\n[МАТЕРИАЛЫ]:')) {
+            const parts = displayHomework.split('\\n[МАТЕРИАЛЫ]:');
+            displayHomework = parts[0];
+            displayMaterials = parts[1].trim();
+          }
+
+          const hasLinks = displayMaterials.includes('http');
+
           return `
             <div class="glass-panel lesson-card" data-id="${ls.id}" style="padding:14px;border-radius:12px;display:flex;align-items:center;gap:16px;cursor:pointer;border-left:4px solid ${statusColor};background:var(--bg-surface);transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
               <div style="flex-shrink:0;width:56px;text-align:center;">
                 <div style="font-size:12px;color:${isToday ? 'var(--accent)' : 'var(--text-secondary)'};font-weight:700;text-transform:uppercase;">${isToday ? 'СЕГОДНЯ' : dateStr}</div>
                 <div style="font-size:16px;font-weight:800;color:var(--text-primary);">${timeStr}</div>
               </div>
-              <div style="flex:1;border-left:1px solid var(--border-light);padding-left:16px;">
+              <div style="flex:1;border-left:1px solid var(--border-light);padding-left:16px;overflow:hidden;">
                 <div style="font-weight:700;font-size:15px;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
                   ${this.escapeHtml(studentName)}
                   ${ls.status === 'Проведен' ? (ls.paid ? '<span style="font-size:10px;background:rgba(16,185,129,0.1);color:var(--success);padding:2px 6px;border-radius:8px;font-weight:700;">ОПЛАЧЕНО</span>' : '<span style="font-size:10px;background:rgba(239,68,68,0.1);color:var(--danger);padding:2px 6px;border-radius:8px;font-weight:700;">НЕ ОПЛАЧЕНО</span>') : ''}
                 </div>
-                <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;display:flex;flex-direction:column;gap:2px;">
+                <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;display:flex;flex-direction:column;gap:4px;">
                   ${ls.topic ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="book" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(ls.topic)}</span></div>` : ''} 
-                  ${ls.homework ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(ls.homework)}</span></div>` : ''}
+                  ${displayHomework ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(displayHomework)}</span></div>` : ''}
+                  ${displayMaterials ? `<div style="display:flex;align-items:center;gap:6px;color:var(--accent);"><i data-lucide="paperclip" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${hasLinks ? `<a href="${displayMaterials}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:underline;">Материалы прикреплены</a>` : this.escapeHtml(displayMaterials)}</span></div>` : ''}
                 </div>
               </div>
             </div>
@@ -367,7 +393,16 @@ const TutoringPage = {
     document.getElementById('st-name').value = st ? st.name : '';
     document.getElementById('st-grade').value = st ? (st.grade || '') : '';
     document.getElementById('st-price').value = st ? st.price : 0;
-    document.getElementById('st-schedule').value = st ? (st.schedule || '') : '';
+    
+    let displaySchedule = st ? (st.schedule || '') : '';
+    let notes = '';
+    if (displaySchedule.includes('\\n[ЗАМЕТКИ]:')) {
+      const parts = displaySchedule.split('\\n[ЗАМЕТКИ]:');
+      displaySchedule = parts[0];
+      notes = parts[1].trim();
+    }
+    document.getElementById('st-schedule').value = displaySchedule;
+    document.getElementById('st-notes').value = notes;
     document.getElementById('st-active').checked = st ? st.active : true;
 
     const delBtn = document.getElementById('student-modal-delete');
@@ -382,14 +417,20 @@ const TutoringPage = {
   },
 
   async saveStudent(id = null) {
-    const name = document.getElementById('st-name').value.trim();
-    if (!name) return UI.toast('Введите имя ученика', 'warning');
+    const name = document.getElementById('st-name').value;
+    if (!name) return UI.toast('Введите имя', 'warning');
+
+    let schedule = document.getElementById('st-schedule').value;
+    const notes = document.getElementById('st-notes').value.trim();
+    if (notes) {
+      schedule += '\\n[ЗАМЕТКИ]:\\n' + notes;
+    }
 
     const data = {
       name,
       grade: document.getElementById('st-grade').value,
       price: parseFloat(document.getElementById('st-price').value) || 0,
-      schedule: document.getElementById('st-schedule').value,
+      schedule: schedule,
       active: document.getElementById('st-active').checked
     };
 
@@ -427,7 +468,17 @@ const TutoringPage = {
     document.getElementById('ls-date').value = dStr;
     
     document.getElementById('ls-topic').value = ls ? (ls.topic || '') : '';
-    document.getElementById('ls-homework').value = ls ? (ls.homework || '') : '';
+    
+    let displayHomework = ls ? (ls.homework || '') : '';
+    let materials = '';
+    if (displayHomework.includes('\\n[МАТЕРИАЛЫ]:')) {
+      const parts = displayHomework.split('\\n[МАТЕРИАЛЫ]:');
+      displayHomework = parts[0];
+      materials = parts[1].trim();
+    }
+    
+    document.getElementById('ls-homework').value = displayHomework;
+    document.getElementById('ls-materials').value = materials;
     document.getElementById('ls-status').value = ls ? ls.status : 'Запланирован';
     document.getElementById('ls-paid').checked = ls ? ls.paid : false;
 
@@ -473,11 +524,17 @@ const TutoringPage = {
     const dStr = document.getElementById('ls-date').value;
     if (!student_id || !dStr) return UI.toast('Заполните обязательные поля', 'warning');
 
+    let homework = document.getElementById('ls-homework').value;
+    const materials = document.getElementById('ls-materials').value.trim();
+    if (materials) {
+      homework += '\\n[МАТЕРИАЛЫ]:\\n' + materials;
+    }
+
     const data = {
       student_id,
       date: new Date(dStr).toISOString(),
       topic: document.getElementById('ls-topic').value,
-      homework: document.getElementById('ls-homework').value,
+      homework: homework,
       status: document.getElementById('ls-status').value,
       paid: document.getElementById('ls-paid').checked
     };
