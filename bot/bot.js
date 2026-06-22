@@ -598,12 +598,45 @@ const TOOLS = [
         required: ['url']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_event',
+      description: 'Создать событие в календаре или установить умное напоминание. Используй этот инструмент, когда пользователь просит напомнить о чем-то или запланировать встречу.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Краткое название события или напоминания' },
+          description: { type: 'string', description: 'Подробности, контакты или ссылки (опционально)' },
+          start_at: { type: 'string', description: 'Точная дата и время события в формате ISO 8601 (например, 2026-06-22T14:00:00). Обязательно учитывай ТЕКУЩЕЕ ВРЕМЯ пользователя, указанное в системном промпте, для расчета.' }
+        },
+        required: ['title', 'start_at']
+      }
+    }
   }
 ];
 
 async function executeFunctionCall(name, args) {
   try {
     switch (name) {
+      case 'create_event': {
+        const { title, description, start_at } = args;
+        if (!title || !start_at) return { success: false, error: 'Не указан title или start_at' };
+        
+        const user = await getUser();
+        if (!user) return { success: false, error: 'User not found' };
+
+        const { data, error } = await db.from('events').insert({
+          user_id: user.id,
+          title: title,
+          description: description || '',
+          start_at: start_at
+        }).select().single();
+
+        if (error) return { success: false, error: error.message };
+        return { success: true, event: data, message: `Напоминание/событие "${title}" успешно добавлено на ${start_at}!` };
+      }
       case 'create_tasks': {
         if (!args.tasks || !Array.isArray(args.tasks)) {
           return { success: false, error: 'Параметр tasks должен быть массивом' };
@@ -1583,6 +1616,42 @@ console.log('   🛑 Стоп работы: 20:00');
 console.log('   🛌 Отход ко сну: 22:00');
 console.log('   📊 Еженедельный обзор: Вс 19:00');
 console.log('   ⚠️ Проверка дедлайнов: 10:00');
+
+// [NEW] Умные напоминания (AI Календарь) — проверка каждую минуту
+const notifiedEvents = new Set();
+cron.schedule('* * * * *', async () => {
+  try {
+    const user = await getUser();
+    if (!user) return;
+    
+    const now = new Date();
+    // Ищем события, которые наступили в диапазоне: сейчас минус 10 минут ... сейчас плюс 1 минута
+    const future = new Date(now.getTime() + 1 * 60000);
+    const past = new Date(now.getTime() - 10 * 60000);
+
+    const { data } = await db.from('events')
+      .select('*')
+      .eq('user_id', user.id)
+      .gte('start_at', past.toISOString())
+      .lte('start_at', future.toISOString());
+
+    if (data && data.length > 0) {
+      for (const e of data) {
+        if (!notifiedEvents.has(e.id)) {
+          const eventTime = new Date(e.start_at);
+          // Если время события уже наступило (или наступит в ближайшую минуту)
+          if (eventTime <= future) {
+            notifiedEvents.add(e.id);
+            sendProactiveMessage(`🔔 **Напоминание:** ${e.title}\n${e.description ? '_' + e.description + '_' : ''}`);
+            // Можно очищать старые ID из Set раз в день, но пока оставим так, они пропадут при рестарте
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Cron reminders check error:', e);
+  }
+}, { timezone: 'UTC' });
 
 // ---- HTTP Server for Render Health Checks ----
 const http = require('http');
