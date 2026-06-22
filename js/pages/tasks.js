@@ -581,9 +581,19 @@ const TasksPage = {
           </select>
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Дедлайн</label>
-        <input id="tf-deadline" type="date" class="form-input" value="${task?.deadline || ''}" />
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Сфера (Workspace)</label>
+          <select id="tf-area" class="form-input">
+            <option value="Работа" ${(task?.area || Config.currentArea === 'Работа' ? 'Работа' : '') === 'Работа' ? 'selected' : ''}>🏢 Работа</option>
+            <option value="Репетиторство" ${(task?.area || Config.currentArea === 'Репетиторство' ? 'Репетиторство' : '') === 'Репетиторство' ? 'selected' : ''}>👨‍🏫 Репетиторство</option>
+            <option value="Личное" ${(task?.area || Config.currentArea === 'Личное' ? 'Личное' : '') === 'Личное' ? 'selected' : ''}>🏠 Личное</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Дедлайн</label>
+          <input id="tf-deadline" type="date" class="form-input" value="${task?.deadline || ''}" />
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Следующий шаг</label>
@@ -650,6 +660,7 @@ const TasksPage = {
       direction: Array.from(document.querySelectorAll('#tf-directions-container .direction-pill.active')).map(p => p.dataset.val).join(', ') || null,
       priority: document.getElementById('tf-priority').value,
       status: document.getElementById('tf-status').value,
+      area: document.getElementById('tf-area').value,
       deadline: document.getElementById('tf-deadline').value || null,
       next_step: document.getElementById('tf-next-step').value,
       description: document.getElementById('tf-description').value,
@@ -663,6 +674,11 @@ const TasksPage = {
         const idx = this.tasks.findIndex(t => t.id === id);
         if (idx >= 0) this.tasks[idx] = { ...this.tasks[idx], ...updated };
         UI.toast('Задача обновлена', 'success');
+        
+        // If the area was changed to something other than current (and not 'Все'), remove from current view
+        if (Config.currentArea !== 'Все' && data.area !== Config.currentArea) {
+          this.tasks = this.tasks.filter(t => t.id !== id);
+        }
       } else {
         const created = await DB.createTask(data);
         this.tasks.unshift(created);

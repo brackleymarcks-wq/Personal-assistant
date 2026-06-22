@@ -387,6 +387,16 @@ const CalendarPage = {
           </select>
         </div>
         <div class="form-group">
+          <label class="form-label">Сфера (Workspace)</label>
+          <select id="ef-area" class="form-input">
+            <option value="Работа" ${(event?.area || Config.currentArea === 'Работа' ? 'Работа' : '') === 'Работа' ? 'selected' : ''}>🏢 Работа</option>
+            <option value="Репетиторство" ${(event?.area || Config.currentArea === 'Репетиторство' ? 'Репетиторство' : '') === 'Репетиторство' ? 'selected' : ''}>👨‍🏫 Репетиторство</option>
+            <option value="Личное" ${(event?.area || Config.currentArea === 'Личное' ? 'Личное' : '') === 'Личное' ? 'selected' : ''}>🏠 Личное</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
           <label class="form-label">Повторение</label>
           <select id="ef-recurrence" class="form-input">
             <option value="">Нет</option>
@@ -422,6 +432,7 @@ const CalendarPage = {
       start_at: document.getElementById('ef-start').value,
       end_at: document.getElementById('ef-end').value,
       type: document.getElementById('ef-type').value,
+      area: document.getElementById('ef-area').value,
       recurrence: document.getElementById('ef-recurrence').value || null,
       notes: document.getElementById('ef-notes').value
     };
@@ -432,6 +443,11 @@ const CalendarPage = {
         const idx = this.events.findIndex(e => e.id === id);
         if (idx >= 0) this.events[idx] = { ...this.events[idx], ...updated };
         UI.toast('Событие обновлено', 'success');
+        
+        // Remove from current view if area changed to something else
+        if (Config.currentArea !== 'Все' && data.area !== Config.currentArea) {
+          this.events = this.events.filter(e => e.id !== id);
+        }
       } else {
         const created = await DB.createEvent(data);
         this.events.push(created);
