@@ -132,11 +132,11 @@ const DashboardPage = {
           <div style="font-size:13px;color:var(--text-muted);">${todayTasksDone} из ${todayTasksTotal}</div>
         </div>
         ${todayTasks.length === 0 && overdueTasks.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Всё выполнено! 🎉</div>` : `
-          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(250px, 1fr));gap:8px;">
             ${[...overdueTasks, ...todayTasks.filter(t => !overdueTasks.includes(t))].slice(0, 6).map(t => {
               const sc = (typeof TasksPage !== 'undefined' ? TasksPage.STATUS_COLORS[t.status] : null) || '#64748b';
               return `
-              <div style="flex:1 1 250px;max-width:100%;display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:${sc}0f;border:1px solid ${sc}40;cursor:pointer;transition:all 0.2s ease;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'" onclick="App.navigateTo('tasks')">
+              <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:${sc}0f;border:1px solid ${sc}40;cursor:pointer;transition:all 0.2s ease;min-width:0;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'" onclick="App.navigateTo('tasks')">
                 <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'};box-shadow:0 0 8px ${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'}40;"></div>
                 <span style="font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);font-weight:500;">${this.esc(t.title)}</span>
               </div>
