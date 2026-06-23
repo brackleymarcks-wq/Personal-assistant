@@ -85,8 +85,8 @@ const DashboardPage = {
     grid.className = 'bento-grid';
 
     grid.innerHTML = `
-      <!-- Hero Bento Box (12 cols) -->
-      <div class="bento-item bento-col-12" style="display:flex;flex-direction:column;justify-content:center;min-height:160px;background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));">
+      <!-- Hero Bento Box (8 cols) -->
+      <div class="bento-item bento-col-8" style="display:flex;flex-direction:column;justify-content:center;min-height:160px;background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));">
         <div style="font-size:14px;color:var(--accent-vibrant);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
           <i data-lucide="${rhythm.icon}" style="width:16px;height:16px;"></i> ${rhythm.label}
         </div>
@@ -98,31 +98,8 @@ const DashboardPage = {
         </div>
       </div>
 
-      <!-- Tasks List Bento Box (6 cols) -->
-      <div class="bento-item bento-col-6" style="display:flex;flex-direction:column;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-          <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
-            <i data-lucide="check-square" style="color:var(--accent-vibrant);"></i> Задачи на сегодня
-          </div>
-          <div style="font-size:13px;color:var(--text-muted);">${todayTasksDone} из ${todayTasksTotal}</div>
-        </div>
-        ${todayTasks.length === 0 && overdueTasks.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Всё выполнено! 🎉</div>` : `
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            ${[...overdueTasks.slice(0, 2), ...todayTasks.filter(t => !overdueTasks.includes(t)).slice(0, 4)].map(t => {
-              const sc = (typeof TasksPage !== 'undefined' ? TasksPage.STATUS_COLORS[t.status] : null) || '#64748b';
-              return `
-              <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:8px;background:${sc}0a;border:1px solid ${sc}80;cursor:pointer" onclick="App.navigateTo('tasks')">
-                <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'}"></div>
-                <span style="font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);">${this.esc(t.title)}</span>
-              </div>
-              `;
-            }).join('')}
-          </div>
-        `}
-      </div>
-
-      <!-- Calendar Events Bento Box (6 cols) -->
-      <div class="bento-item bento-col-6" style="display:flex;flex-direction:column;">
+      <!-- Calendar Events Bento Box (4 cols, right column) -->
+      <div class="bento-item bento-col-4" style="display:flex;flex-direction:column;grid-row:span 2;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
             <i data-lucide="calendar" style="color:var(--info);"></i> Расписание
@@ -130,8 +107,8 @@ const DashboardPage = {
           <button class="btn btn-ghost btn-sm" onclick="App.navigateTo('calendar')">Все</button>
         </div>
         ${events.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Свободный день! 🎉</div>` : `
-          <div style="display:flex;flex-direction:column;gap:12px;">
-            ${events.slice(0, 3).map(ev => {
+          <div style="display:flex;flex-direction:column;gap:12px;overflow-y:auto;max-height:300px;padding-right:4px;">
+            ${events.map(ev => {
               const start = new Date(ev.start_at);
               const timeStr = start.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
               return `
@@ -146,8 +123,30 @@ const DashboardPage = {
         `}
       </div>
 
-      <!-- Habits Progress Bento Box (4 cols) -->
-      <!-- Habits List Bento Box (4 cols) -->
+      <!-- Tasks List Bento Box (8 cols) -->
+      <div class="bento-item bento-col-8" style="display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+            <i data-lucide="check-square" style="color:var(--accent-vibrant);"></i> Задачи на сегодня
+          </div>
+          <div style="font-size:13px;color:var(--text-muted);">${todayTasksDone} из ${todayTasksTotal}</div>
+        </div>
+        ${todayTasks.length === 0 && overdueTasks.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Всё выполнено! 🎉</div>` : `
+          <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));gap:8px;">
+            ${[...overdueTasks, ...todayTasks.filter(t => !overdueTasks.includes(t))].slice(0, 6).map(t => {
+              const sc = (typeof TasksPage !== 'undefined' ? TasksPage.STATUS_COLORS[t.status] : null) || '#64748b';
+              return `
+              <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:${sc}0f;border:1px solid ${sc}40;cursor:pointer;transition:all 0.2s ease;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'" onclick="App.navigateTo('tasks')">
+                <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'};box-shadow:0 0 8px ${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'}40;"></div>
+                <span style="font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);font-weight:500;">${this.esc(t.title)}</span>
+              </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      </div>
+
+      <!-- Habits Bento Box (4 cols) -->
       <div class="bento-item bento-col-4" style="cursor:pointer;" onclick="App.navigateTo('habits')">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
@@ -156,15 +155,15 @@ const DashboardPage = {
           <div style="font-size:13px;color:var(--text-muted);">${todayHabitsDone} / ${totalHabits}</div>
         </div>
         ${habits.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Добавь привычки в трекере.</div>` : `
-          <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:12px;">
             ${habits.slice(0, 4).map(h => {
               const done = habitLogs.some(l => l.habit_id === h.id && l.date === today && l.status === 'done');
               return `
-                <div style="display:flex;align-items:center;gap:12px;padding:6px 0;">
-                  <div style="width:20px;height:20px;border-radius:6px;border:2px solid ${done ? 'var(--success)' : 'var(--glass-border-light)'};background:${done ? 'var(--success)' : 'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    ${done ? `<i data-lucide="check" style="color:white;width:12px;height:12px;"></i>` : ''}
+                <div style="display:flex;align-items:center;gap:12px;padding:4px 0;">
+                  <div style="width:24px;height:24px;border-radius:8px;border:2px solid ${done ? 'var(--success)' : 'var(--glass-border-light)'};background:${done ? 'var(--success)' : 'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.3s ease;">
+                    ${done ? `<i data-lucide="check" style="color:white;width:14px;height:14px;"></i>` : ''}
                   </div>
-                  <span style="font-size:14px;color:${done ? 'var(--text-muted)' : 'var(--text-primary)'};${done ? 'text-decoration:line-through' : ''}">${this.esc(h.name)}</span>
+                  <span style="font-size:15px;font-weight:500;color:${done ? 'var(--text-muted)' : 'var(--text-primary)'};${done ? 'text-decoration:line-through' : ''};transition:all 0.3s ease;">${this.esc(h.name)}</span>
                 </div>
               `;
             }).join('')}
@@ -176,14 +175,14 @@ const DashboardPage = {
       <div class="bento-item bento-col-4" style="cursor:pointer;" onclick="App.navigateTo('inbox')">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
-            <i data-lucide="inbox" style="color:var(--warning);"></i> Входящие
+            <i data-lucide="inbox" style="color:var(--warning);"></i> Входящие мыслей
           </div>
-          <div style="background:var(--warning-dim);color:var(--warning);padding:2px 8px;border-radius:12px;font-size:12px;font-weight:700;">${inbox.length}</div>
+          <div style="background:var(--warning-dim);color:var(--warning);padding:4px 10px;border-radius:12px;font-size:12px;font-weight:700;">${inbox.length}</div>
         </div>
         ${inbox.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Входящие пусты.</div>` : `
           <div style="display:flex;flex-direction:column;gap:8px;">
             ${inbox.slice(0, 3).map(item => `
-              <div style="font-size:14px;color:var(--text-secondary);padding:8px 12px;background:var(--bg-hover);border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              <div style="font-size:14px;color:var(--text-secondary);padding:10px 14px;background:var(--bg-hover);border-radius:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--border-light);">
                 ${this.esc(item.content)}
               </div>
             `).join('')}
@@ -195,19 +194,19 @@ const DashboardPage = {
       <div class="bento-item bento-col-4" style="cursor:pointer;" onclick="App.navigateTo('goals')">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
-            <i data-lucide="target" style="color:var(--danger);"></i> Активные цели
+            <i data-lucide="target" style="color:var(--danger);"></i> Цели
           </div>
         </div>
         ${activeGoals.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Нет активных целей.</div>` : `
           <div style="display:flex;flex-direction:column;gap:16px;">
             ${activeGoals.slice(0, 2).map(g => `
               <div>
-                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
                   <span style="font-size:14px;font-weight:600;color:var(--text-secondary);">${this.esc(g.title)}</span>
-                  <span style="font-size:13px;color:var(--text-primary);font-weight:700;">${g.progress || 0}%</span>
+                  <span style="font-size:13px;color:var(--text-primary);font-weight:800;">${g.progress || 0}%</span>
                 </div>
-                <div style="height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden;">
-                  <div style="height:100%;width:${g.progress || 0}%;background:linear-gradient(90deg, var(--danger), var(--warning));border-radius:3px;"></div>
+                <div style="height:8px;background:var(--bg-hover);border-radius:4px;overflow:hidden;border:1px solid var(--border-light);">
+                  <div style="height:100%;width:${g.progress || 0}%;background:linear-gradient(90deg, var(--danger), var(--warning));border-radius:4px;box-shadow:0 0 10px var(--danger);"></div>
                 </div>
               </div>
             `).join('')}
