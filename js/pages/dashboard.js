@@ -132,12 +132,12 @@ const DashboardPage = {
           <div style="font-size:13px;color:var(--text-muted);">${todayTasksDone} из ${todayTasksTotal}</div>
         </div>
         ${todayTasks.length === 0 && overdueTasks.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Всё выполнено! 🎉</div>` : `
-          <div style="display:grid;grid-template-columns:repeat(2, 1fr);grid-auto-rows:1fr;gap:12px;flex:1;">
+          <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:12px;width:100%;flex:1;align-content:space-between;justify-content:space-between;">
             ${[...overdueTasks, ...todayTasks.filter(t => !overdueTasks.includes(t))].slice(0, 6).map((t, i, arr) => {
               const sc = (typeof TasksPage !== 'undefined' ? TasksPage.STATUS_COLORS[t.status] : null) || '#64748b';
               const spanClass = (arr.length % 2 !== 0 && i === arr.length - 1) ? 'grid-column: span 2;' : '';
               return `
-              <div style="${spanClass}display:flex;align-items:center;gap:12px;padding:16px;border-radius:12px;background:${sc}0f;border:1px solid ${sc}40;cursor:pointer;transition:all 0.2s ease;min-width:0;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'" onclick="App.navigateTo('tasks')">
+              <div style="${spanClass}display:flex;align-items:center;gap:12px;padding:16px;border-radius:12px;background:${sc}0f;border:1px solid ${sc}40;cursor:pointer;transition:all 0.2s ease;width:100%;min-height:54px;box-sizing:border-box;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'" onclick="App.navigateTo('tasks')">
                 <div style="width:12px;height:12px;border-radius:50%;flex-shrink:0;background:${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'};box-shadow:0 0 8px ${t.priority === 'Высокий' ? 'var(--danger)' : t.priority === 'Средний' ? 'var(--warning)' : 'var(--success)'}40;"></div>
                 <span style="font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);font-weight:500;">${this.esc(t.title)}</span>
               </div>
