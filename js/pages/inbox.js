@@ -18,7 +18,7 @@ const InboxPage = {
 
         <div style="padding:var(--space-xl);display:flex;flex-direction:column;gap:var(--space-xl);flex:1;overflow-y:auto;">
           <!-- Quick add card -->
-          <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:var(--space-lg);box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:var(--space-md);">
+          <div class="bento-item" style="display:flex;flex-direction:column;gap:var(--space-md);">
             <div style="font-size:15px;font-weight:600;color:var(--text-primary);display:flex;align-items:center;justify-content:space-between;">
               <div style="display:flex;align-items:center;gap:var(--space-sm);"><i data-lucide="inbox"></i> Быстрый сброс мыслей</div>
             </div>
@@ -156,7 +156,7 @@ const InboxPage = {
         </div>`;
       }
       html += items.map(item => `
-      <div class="inbox-card" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);display:flex;align-items:center;justify-content:space-between;gap:var(--space-md);transition:all var(--transition);animation:fadeInUp 0.2s ease;margin-bottom:var(--space-sm);">
+      <div class="bento-item" style="padding:var(--space-md);display:flex;align-items:center;justify-content:space-between;gap:var(--space-md);transition:all var(--transition);animation:pageFadeInUp 0.3s ease forwards;margin-bottom:var(--space-sm);">
         <div style="font-size:14px;color:var(--text-primary);line-height:1.5;flex:1;word-break:break-word;white-space:pre-wrap;">${this.escapeHtml(item.content)}</div>
         <div style="display:flex;flex-direction:column;gap:var(--space-xs);flex-shrink:0;">
           <div style="display:flex;gap:var(--space-xs);">

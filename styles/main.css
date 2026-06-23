@@ -93,43 +93,46 @@
 
 /* === LIGHT THEME === */
 body.theme-light {
-  --bg-primary: #f0f2f7;
-  --bg-surface: rgba(255, 255, 255, 0.55);
-  --bg-elevated: rgba(255, 255, 255, 0.65);
-  --bg-hover: rgba(0, 0, 0, 0.04);
-  --bg-active: rgba(0, 0, 0, 0.07);
+  --bg-primary: #f8fafc;
+  --bg-surface: rgba(255, 255, 255, 0.65);
+  --bg-elevated: rgba(255, 255, 255, 0.85);
+  --bg-hover: rgba(0, 0, 0, 0.03);
+  --bg-active: rgba(0, 0, 0, 0.06);
   --bg-solid: #ffffff;
 
-  --glass-bg: rgba(255, 255, 255, 0.5);
-  --glass-bg-heavy: rgba(255, 255, 255, 0.78);
-  --glass-border: rgba(0, 0, 0, 0.06);
-  --glass-border-light: rgba(0, 0, 0, 0.1);
-  --glass-highlight: rgba(255, 255, 255, 0.8);
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-bg-heavy: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.9);
+  --glass-border-light: rgba(255, 255, 255, 0.6);
+  --glass-highlight: rgba(255, 255, 255, 1);
+  --glass-blur: 40px;
+  --glass-blur-heavy: 64px;
 
-  --accent: #6355d8;
-  --accent-soft: #7c6aef;
-  --accent-dim: rgba(99, 85, 216, 0.1);
-  --accent-glow: rgba(99, 85, 216, 0.2);
-  --accent-vibrant: #7c6aef;
+  --accent: #ea580c; /* Matching user's actual saved/preferred orange accent */
+  --accent-soft: #f97316;
+  --accent-dim: rgba(234, 88, 12, 0.1);
+  --accent-glow: rgba(234, 88, 12, 0.2);
+  --accent-vibrant: #f97316;
 
-  --text-primary: #0f1729;
-  --text-secondary: #4a5270;
-  --text-muted: #8b95b0;
-  --text-accent: #6355d8;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-accent: #ea580c;
 
-  --border: rgba(0, 0, 0, 0.06);
-  --border-light: rgba(0, 0, 0, 0.1);
-  --border-accent: rgba(99, 85, 216, 0.3);
+  --border: rgba(0, 0, 0, 0.05);
+  --border-light: rgba(0, 0, 0, 0.08);
+  --border-accent: rgba(234, 88, 12, 0.3);
 
-  --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
-  --shadow-md: 0 8px 24px rgba(0,0,0,0.08);
-  --shadow-lg: 0 16px 48px rgba(0,0,0,0.1);
-  --shadow-glow: 0 0 32px rgba(99,85,216,0.12);
-  --shadow-glass: 0 8px 32px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9);
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.03);
+  --shadow-md: 0 8px 24px rgba(0,0,0,0.06);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,0.08);
+  --shadow-glow: 0 0 32px rgba(234, 88, 12, 0.15);
+  --shadow-glass: 0 8px 32px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,1);
 
-  --mesh-1: rgba(99, 85, 216, 0.08);
-  --mesh-2: rgba(139, 92, 246, 0.06);
-  --mesh-3: rgba(59, 130, 246, 0.05);
+  /* Deep vibrant mesh for light theme */
+  --mesh-1: rgba(0, 184, 255, 0.18);
+  --mesh-2: rgba(138, 43, 226, 0.15);
+  --mesh-3: rgba(255, 136, 0, 0.12);
 }
 
 /* === COMFORT THEME (Warm Native) === */
