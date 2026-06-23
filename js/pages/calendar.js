@@ -72,9 +72,18 @@ const CalendarPage = {
 
   async init() {
     document.getElementById('add-event-btn').addEventListener('click', () => {
+      console.log("Calendar add btn clicked. Tab:", this.currentTab);
       if (this.currentTab === 'tasks') {
         const today = new Date().toISOString().slice(0, 10);
-        if (window.TasksPage) TasksPage.openTaskModal(null, { deadline: today });
+        console.log("Calling TasksPage.openTaskModal...");
+        if (window.TasksPage) {
+          TasksPage.openTaskModal(null, { deadline: today }).catch(err => {
+            console.error("Error from openTaskModal promise:", err);
+            alert("Error: " + err.message);
+          });
+        } else {
+          alert("TasksPage is not loaded!");
+        }
       } else {
         this.openEventModal();
       }
@@ -252,8 +261,17 @@ const CalendarPage = {
 
       dayEl.addEventListener('click', () => {
         const dateStr = dayEl.dataset.date;
+        console.log("Day clicked:", dateStr, "Tab:", this.currentTab);
         if (this.currentTab === 'tasks') {
-          if (window.TasksPage) TasksPage.openTaskModal(null, { deadline: dateStr });
+          console.log("Calling TasksPage.openTaskModal for date:", dateStr);
+          if (window.TasksPage) {
+            TasksPage.openTaskModal(null, { deadline: dateStr }).catch(err => {
+              console.error(err);
+              alert("Error: " + err.message);
+            });
+          } else {
+            alert("TasksPage is not loaded!");
+          }
         } else {
           this.openEventModal(null, dateStr);
         }
