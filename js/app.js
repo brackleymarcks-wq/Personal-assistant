@@ -62,7 +62,6 @@ const PAGES = {
   knowledge: { module: () => KnowledgePage, label: 'База знаний' },
   chat: { module: () => ChatPage, label: 'Чат' },
   pomodoro: { module: () => PomodoroPage, label: 'Помодоро' },
-  gantt: { module: () => GanttPage, label: 'Гант' },
   notes: { module: () => NotesPage, label: 'Заметки' },
   finances: { module: () => FinancesPage, label: 'Финансы' },
   analytics: { module: () => AnalyticsPage, label: 'Аналитика' },
