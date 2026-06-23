@@ -592,7 +592,7 @@ const TasksPage = {
         </div>
         <div class="form-group">
           <label class="form-label">Дедлайн</label>
-          <input id="tf-deadline" type="date" class="form-input" value="${task?.deadline || ''}" />
+          <input id="tf-deadline" type="date" class="form-input" value="${task?.deadline || (prefillData?.deadline || '')}" />
         </div>
       </div>
       <div class="form-group">

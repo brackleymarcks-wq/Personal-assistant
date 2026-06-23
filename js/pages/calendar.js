@@ -71,7 +71,16 @@ const CalendarPage = {
   },
 
   async init() {
-    document.getElementById('add-event-btn').addEventListener('click', () => this.openEventModal());
+    document.getElementById('add-event-btn').addEventListener('click', () => {
+      if (this.currentTab === 'tasks') {
+        const today = new Date().toISOString().slice(0, 10);
+        App.navigateTo('tasks').then(() => {
+          if (window.TasksPage) TasksPage.openTaskModal(null, { deadline: today });
+        });
+      } else {
+        this.openEventModal();
+      }
+    });
     document.getElementById('cal-prev').addEventListener('click', () => this.changeMonth(-1));
     document.getElementById('cal-next').addEventListener('click', () => this.changeMonth(1));
     document.getElementById('cal-today').addEventListener('click', () => {
@@ -128,6 +137,13 @@ const CalendarPage = {
       tabTasks.classList.remove('btn-secondary');
       tabEvents.classList.add('btn-secondary');
       tabEvents.classList.remove('btn-primary');
+    }
+
+    const btn = document.getElementById('add-event-btn');
+    if (this.currentTab === 'events') {
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> Новое событие`;
+    } else {
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> Новая задача`;
     }
 
     const year = this.currentDate.getFullYear();
@@ -238,7 +254,13 @@ const CalendarPage = {
 
       dayEl.addEventListener('click', () => {
         const dateStr = dayEl.dataset.date;
-        this.openEventModal(null, dateStr);
+        if (this.currentTab === 'tasks') {
+          App.navigateTo('tasks').then(() => {
+            if (window.TasksPage) TasksPage.openTaskModal(null, { deadline: dateStr });
+          });
+        } else {
+          this.openEventModal(null, dateStr);
+        }
       });
     });
 
