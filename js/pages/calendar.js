@@ -74,9 +74,7 @@ const CalendarPage = {
     document.getElementById('add-event-btn').addEventListener('click', () => {
       if (this.currentTab === 'tasks') {
         const today = new Date().toISOString().slice(0, 10);
-        App.navigateTo('tasks').then(() => {
-          if (window.TasksPage) TasksPage.openTaskModal(null, { deadline: today });
-        });
+        if (window.TasksPage) TasksPage.openTaskModal(null, { deadline: today });
       } else {
         this.openEventModal();
       }
@@ -255,9 +253,7 @@ const CalendarPage = {
       dayEl.addEventListener('click', () => {
         const dateStr = dayEl.dataset.date;
         if (this.currentTab === 'tasks') {
-          App.navigateTo('tasks').then(() => {
-            if (window.TasksPage) TasksPage.openTaskModal(null, { deadline: dateStr });
-          });
+          if (window.TasksPage) TasksPage.openTaskModal(null, { deadline: dateStr });
         } else {
           this.openEventModal(null, dateStr);
         }

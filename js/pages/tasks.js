@@ -543,7 +543,13 @@ const TasksPage = {
     App.refreshTasksBadge();
   },
 
-  openTaskModal(taskId = null, prefillData = null) {
+  async openTaskModal(taskId = null, prefillData = null) {
+    if (!this.projects || this.projects.length === 0) {
+      this.projects = await DB.getProjects() || [];
+    }
+    if (!this.knowledge || this.knowledge.length === 0) {
+      this.knowledge = await DB.getKnowledge() || [];
+    }
     const task = taskId ? this.tasks.find(t => t.id === taskId) : null;
     const modal = document.getElementById('task-modal');
     const titleEl = document.getElementById('task-modal-title');
@@ -685,7 +691,11 @@ const TasksPage = {
         UI.toast('Задача создана', 'success');
       }
       document.getElementById('task-modal').classList.add('hidden');
-      this.renderContent();
+      if (App.currentPage === 'tasks') {
+        this.renderContent();
+      } else if (App.currentPage === 'calendar' && window.CalendarPage) {
+        CalendarPage.load();
+      }
       App.refreshTasksBadge();
     } catch (e) {
       UI.toast('Ошибка сохранения: ' + e.message, 'error');
@@ -697,7 +707,11 @@ const TasksPage = {
     await DB.deleteTask(id);
     this.tasks = this.tasks.filter(t => t.id !== id);
     document.getElementById('task-modal').classList.add('hidden');
-    this.renderContent();
+    if (App.currentPage === 'tasks') {
+      this.renderContent();
+    } else if (App.currentPage === 'calendar' && window.CalendarPage) {
+      CalendarPage.load();
+    }
     App.refreshTasksBadge();
     UI.toast('Задача удалена', 'info');
   },
