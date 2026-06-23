@@ -76,13 +76,14 @@ const CalendarPage = {
       if (this.currentTab === 'tasks') {
         const today = new Date().toISOString().slice(0, 10);
         console.log("Calling TasksPage.openTaskModal...");
-        if (window.TasksPage) {
+        if (typeof TasksPage !== 'undefined') {
           TasksPage.openTaskModal(null, { deadline: today }).catch(err => {
             console.error("Error from openTaskModal promise:", err);
-            alert("Error: " + err.message);
+            if (window.UI) UI.toast("Ошибка: " + err.message, "error");
+            else alert("Ошибка: " + err.message);
           });
         } else {
-          alert("TasksPage is not loaded!");
+          console.error("TasksPage is not loaded!");
         }
       } else {
         this.openEventModal();
@@ -264,13 +265,14 @@ const CalendarPage = {
         console.log("Day clicked:", dateStr, "Tab:", this.currentTab);
         if (this.currentTab === 'tasks') {
           console.log("Calling TasksPage.openTaskModal for date:", dateStr);
-          if (window.TasksPage) {
+          if (typeof TasksPage !== 'undefined') {
             TasksPage.openTaskModal(null, { deadline: dateStr }).catch(err => {
               console.error(err);
-              alert("Error: " + err.message);
+              if (window.UI) UI.toast("Ошибка: " + err.message, "error");
+              else alert("Ошибка: " + err.message);
             });
           } else {
-            alert("TasksPage is not loaded!");
+            console.error("TasksPage is not loaded!");
           }
         } else {
           this.openEventModal(null, dateStr);
