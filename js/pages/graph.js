@@ -9,11 +9,12 @@ window.GraphPage = {
   edges: new vis.DataSet([]),
 
   async init() {
-    console.log('GraphPage init');
-    this.container = document.getElementById('graph-container');
-    
-    // Get computed styles for canvas
-    const style = getComputedStyle(document.body);
+    try {
+      console.log('GraphPage init');
+      this.container = document.getElementById('graph-container');
+      
+      // Get computed styles for canvas
+      const style = getComputedStyle(document.body);
     const textColor = style.getPropertyValue('--text-primary').trim() || '#fff';
     const borderColor = style.getPropertyValue('--border-light').trim() || '#333';
     const accentColor = style.getPropertyValue('--accent').trim() || '#4facfe';
@@ -60,17 +61,21 @@ window.GraphPage = {
     this.network = new vis.Network(this.container, data, options);
     
     // Double click node to open in PeekView
-    this.network.on('doubleClick', (params) => {
-      if (params.nodes.length > 0) {
-        const nodeId = params.nodes[0];
-        const node = this.nodes.get(nodeId);
-        if (node && node.entityType && node.entityId && window.PeekView) {
-          window.PeekView.open(node.entityType, node.entityId);
+      this.network.on('doubleClick', (params) => {
+        if (params.nodes.length > 0) {
+          const nodeId = params.nodes[0];
+          const node = this.nodes.get(nodeId);
+          if (node && node.entityType && node.entityId && window.PeekView) {
+            window.PeekView.open(node.entityType, node.entityId);
+          }
         }
-      }
-    });
+      });
 
-    await this.loadGraph();
+      await this.loadGraph();
+    } catch (e) {
+      console.error(e);
+      if (window.UI) UI.toast('Graph init error: ' + e.message, 'error');
+    }
   },
 
   render() {
@@ -91,8 +96,8 @@ window.GraphPage = {
 
   async loadGraph() {
     if (!this.network) return;
-
-    // Fetch all entities
+    try {
+      // Fetch all entities
     const tasks = await DB.getTasks();
     const projects = await DB.getProjects();
     const notes = await DB.getNotes();
@@ -177,7 +182,7 @@ window.GraphPage = {
     // 5. Build explicit links from [[Title]] markdown syntax
     const parseContentLinks = (sourceId, text) => {
       if (!text) return;
-      const regex = /\\[\\[(.*?)\\]\\]/g;
+      const regex = /\[\[(.*?)\]\]/g;
       let match;
       while ((match = regex.exec(text)) !== null) {
         const targetTitle = normalize(match[1]);
@@ -198,11 +203,15 @@ window.GraphPage = {
     this.nodes.add(newNodes);
     this.edges.add(newEdges);
 
-    // Fit graph
-    setTimeout(() => {
-      if (this.network) {
-        this.network.fit({ animation: { duration: 1000, easingFunction: 'easeInOutQuad' } });
-      }
-    }, 500);
+      // Fit graph
+      setTimeout(() => {
+        if (this.network) {
+          this.network.fit({ animation: { duration: 1000, easingFunction: 'easeInOutQuad' } });
+        }
+      }, 500);
+    } catch (e) {
+      console.error(e);
+      if (window.UI) UI.toast('Graph load error: ' + e.message, 'error');
+    }
   }
 };
