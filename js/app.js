@@ -60,7 +60,6 @@ const PAGES = {
   health: { module: () => HealthPage, label: 'Здоровье' },
   tutoring: { module: () => TutoringPage, label: 'Репетиторство' },
   knowledge: { module: () => KnowledgePage, label: 'База знаний' },
-  graph: { module: () => GraphPage, label: 'Граф связей' },
   chat: { module: () => ChatPage, label: 'Чат' },
   pomodoro: { module: () => PomodoroPage, label: 'Помодоро' },
   gantt: { module: () => GanttPage, label: 'Гант' },
