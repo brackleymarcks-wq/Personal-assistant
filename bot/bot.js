@@ -1348,14 +1348,19 @@ bot.onText(/\/health/, async (msg) => {
 
 async function transcribeAudio(buffer, filename) {
   if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY не задан в .env. Голосовые сообщения не работают.");
-  const formData = new FormData();
-  formData.append('file', new Blob([buffer]), filename);
+  
+  const FormDataNode = require('form-data');
+  const formData = new FormDataNode();
+  formData.append('file', Buffer.from(buffer), { filename: filename, contentType: 'audio/ogg' });
   formData.append('model', 'whisper-large-v3');
 
   const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}` },
-    body: formData
+    headers: { 
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+      ...formData.getHeaders()
+    },
+    body: formData.getBuffer()
   });
 
   if (!res.ok) {
