@@ -312,6 +312,11 @@ const App = {
     // Render page
     const pageModule = PAGES[page].module();
     const content = document.getElementById('content-area');
+    
+    content.classList.remove('page-enter');
+    void content.offsetWidth; // Force reflow to restart animation
+    content.classList.add('page-enter');
+
     content.innerHTML = pageModule.render();
     
     // Only init once? No, if we re-render, we MUST re-bind events.

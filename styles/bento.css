@@ -17,9 +17,9 @@
   animation: blob-float 20s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.blob-1 { width: 60vw; height: 60vw; background: var(--mesh-1, rgba(217, 119, 6, 0.08)); top: -10%; left: -10%; animation-delay: 0s; }
-.blob-2 { width: 50vw; height: 50vw; background: var(--mesh-2, rgba(245, 158, 11, 0.06)); bottom: -10%; right: -10%; animation-delay: -5s; }
-.blob-3 { width: 40vw; height: 40vw; background: var(--mesh-3, rgba(234, 88, 12, 0.05)); top: 30%; left: 40%; animation-delay: -10s; }
+.blob-1 { width: 60vw; height: 60vw; background: var(--mesh-1, rgba(0, 184, 255, 0.15)); top: -10%; left: -10%; animation-delay: 0s; }
+.blob-2 { width: 50vw; height: 50vw; background: var(--mesh-2, rgba(138, 43, 226, 0.12)); bottom: -10%; right: -10%; animation-delay: -5s; }
+.blob-3 { width: 40vw; height: 40vw; background: var(--mesh-3, rgba(0, 255, 170, 0.1)); top: 30%; left: 40%; animation-delay: -10s; }
 
 @keyframes blob-float {
   0% { transform: translate(0, 0) scale(1); }
@@ -61,8 +61,8 @@
 }
 
 .bento-item:hover {
-  transform: translateY(-2px) scale(1.01);
-  box-shadow: var(--shadow-md), 0 0 20px var(--accent-glow);
+  transform: translateY(-4px) scale(1.015);
+  box-shadow: var(--shadow-lg), 0 0 30px var(--accent-glow);
   border-color: var(--glass-border-light);
 }
 
