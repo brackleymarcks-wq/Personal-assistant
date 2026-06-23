@@ -83,7 +83,7 @@ window.GraphPage = {
       <div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <h1 class="page-title">Граф связей</h1>
-          <p class="page-subtitle">Визуализация всех ваших проектов, задач и заметок</p>
+          <p class="page-subtitle">Визуализация всех ваших проектов, задач и заметок <span id="graph-debug-info" style="color:var(--text-secondary);font-size:12px;margin-left:12px;"></span></p>
         </div>
         <button class="btn btn-primary" onclick="GraphPage.loadGraph()">Обновить граф</button>
       </div>
@@ -98,10 +98,10 @@ window.GraphPage = {
     if (!this.network) return;
     try {
       // Fetch all entities
-    const tasks = await DB.getTasks();
-    const projects = await DB.getProjects();
-    const notes = await DB.getNotes();
-    const knowledge = await DB.getKnowledgeItems ? await DB.getKnowledgeItems() : [];
+      const tasks = await DB.getTasks();
+      const projects = await DB.getProjects();
+      const notes = await DB.getNotes ? await DB.getNotes() : [];
+      const knowledge = await DB.getKnowledge ? await DB.getKnowledge() : [];
 
     const newNodes = [];
     const newEdges = [];
@@ -202,6 +202,11 @@ window.GraphPage = {
     this.edges.clear();
     this.nodes.add(newNodes);
     this.edges.add(newEdges);
+
+      const debugInfo = document.getElementById('graph-debug-info');
+      if (debugInfo) {
+        debugInfo.textContent = `(Загружено: Узлов ${newNodes.length}, Связей ${newEdges.length})`;
+      }
 
       // Fit graph
       setTimeout(() => {
