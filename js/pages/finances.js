@@ -238,7 +238,7 @@ const FinancesPage = {
     const carouselEl = document.getElementById('finance-accounts-carousel');
     if (carouselEl) {
       carouselEl.innerHTML = this.config.accounts.map(acc => `
-        <div class="finance-account-card glass-panel" onclick="FinancesPage.openAccountModal('${acc.id}')" style="min-width: 180px; padding: 16px; border-radius: 16px; flex-shrink: 0; scroll-snap-align: start; box-shadow: 0 4px 12px rgba(0,0,0,0.05); position: relative; overflow: hidden; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+        <div class="finance-account-card glass-panel interactive-card" onclick="FinancesPage.openAccountModal('${acc.id}')" style="min-width: 180px; padding: 16px; border-radius: 16px; flex-shrink: 0; scroll-snap-align: start; position: relative; cursor: pointer;">
           <div style="position: absolute; top: -10px; right: -10px; opacity: 0.1; color: ${acc.color || 'var(--text-primary)'};">
             <i data-lucide="${acc.icon || 'wallet'}" style="width: 80px; height: 80px;"></i>
           </div>
@@ -253,7 +253,7 @@ const FinancesPage = {
           </div>
         </div>
       `).join('') + `
-        <div class="finance-account-card glass-panel" onclick="FinancesPage.openAccountModal()" style="min-width: 180px; padding: 16px; border-radius: 16px; flex-shrink: 0; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; border: 1px dashed var(--border-light); background: transparent;">
+        <div class="finance-account-card glass-panel interactive-card" onclick="FinancesPage.openAccountModal()" style="min-width: 180px; padding: 16px; border-radius: 16px; flex-shrink: 0; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; border: 1px dashed var(--border-light); background: transparent;">
           <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-hover); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; margin-bottom: 8px;">
             <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
           </div>
@@ -502,7 +502,7 @@ const FinancesPage = {
             : 'border: 1px solid var(--border-light);';
             
           return `
-            <div class="glass-panel" onclick="FinancesPage.selectMonth(${item.year}, ${item.month})" style="padding: 16px; border-radius: var(--radius-md); cursor: pointer; transition: var(--transition); display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-surface); min-height: 120px; ${activeStyle}" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+            <div class="glass-panel interactive-card" onclick="FinancesPage.selectMonth(${item.year}, ${item.month})" style="padding: 16px; border-radius: var(--radius-md); cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-surface); min-height: 120px; ${activeStyle}">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: var(--space-xs);">
                 <div style="font-weight: 600; font-size: 13.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${capitalizedMonth}</div>
                 <div style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: ${delta >= 0 && savingsRate > 0 ? 'var(--success-dim)' : 'var(--bg-hover)'}; color: ${delta >= 0 && savingsRate > 0 ? 'var(--success)' : 'var(--text-secondary)'}; font-weight: 700; white-space: nowrap;">

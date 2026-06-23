@@ -60,7 +60,7 @@
   z-index: 1;
 }
 
-.bento-item:hover {
+.bento-item:hover, .interactive-card:hover {
   transform: translateY(-4px) scale(1.015);
   box-shadow: var(--shadow-lg), 0 0 30px var(--accent-glow);
   border-color: var(--glass-border-light);
