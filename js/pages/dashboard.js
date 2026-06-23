@@ -180,10 +180,13 @@ const DashboardPage = {
           <div style="background:var(--warning-dim);color:var(--warning);padding:4px 10px;border-radius:12px;font-size:12px;font-weight:700;">${inbox.length}</div>
         </div>
         ${inbox.length === 0 ? `<div style="color:var(--text-muted);font-size:14px;">Входящие пусты.</div>` : `
-          <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:10px;">
             ${inbox.slice(0, 3).map(item => `
-              <div style="font-size:14px;color:var(--text-secondary);padding:10px 14px;background:var(--bg-hover);border-radius:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--border-light);">
-                ${this.esc(item.content)}
+              <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--warning-dim);border:1px solid rgba(234, 88, 12, 0.1);border-radius:12px;transition:transform 0.2s ease;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+                <i data-lucide="message-square" style="width:14px;height:14px;color:var(--warning);flex-shrink:0;margin-top:2px;"></i>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+                  ${this.esc(item.content)}
+                </div>
               </div>
             `).join('')}
           </div>
