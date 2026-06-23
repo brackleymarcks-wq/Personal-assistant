@@ -544,13 +544,14 @@ const TasksPage = {
   },
 
   async openTaskModal(taskId = null, prefillData = null) {
-    if (!this.projects || this.projects.length === 0) {
-      this.projects = await DB.getProjects() || [];
-    }
-    if (!this.knowledge || this.knowledge.length === 0) {
-      this.knowledge = await DB.getKnowledge() || [];
-    }
-    const task = taskId ? this.tasks.find(t => t.id === taskId) : null;
+    try {
+      if (!this.projects || this.projects.length === 0) {
+        this.projects = await DB.getProjects() || [];
+      }
+      if (!this.knowledge || this.knowledge.length === 0) {
+        this.knowledge = await DB.getKnowledge() || [];
+      }
+      const task = taskId ? this.tasks.find(t => t.id === taskId) : null;
     const modal = document.getElementById('task-modal');
     const titleEl = document.getElementById('task-modal-title');
     const bodyEl = document.getElementById('task-modal-body');
@@ -653,8 +654,13 @@ const TasksPage = {
       });
     });
 
-    document.getElementById('tf-title').focus();
-    modal.classList.remove('hidden');
+      document.getElementById('tf-title').focus();
+      modal.classList.remove('hidden');
+    } catch (e) {
+      console.error(e);
+      if (window.UI) UI.toast('Ошибка открытия задачи: ' + e.message, 'error');
+      else alert('Ошибка: ' + e.message);
+    }
   },
 
   async saveTask(id = null) {

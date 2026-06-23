@@ -314,7 +314,25 @@ const App = {
     const pageModule = PAGES[page].module();
     const content = document.getElementById('content-area');
     content.innerHTML = pageModule.render();
-    await pageModule.init();
+    
+    // Only init once? No, if we re-render, we MUST re-bind events.
+    if (!pageModule._initialized) {
+      if (pageModule.init) await pageModule.init();
+      pageModule._initialized = true;
+    } else {
+      // If we re-rendered the HTML, the old listeners are dead.
+      // Many modules attach listeners in init() or bindEvents(). 
+      // If there's a bindEvents, call it.
+      if (pageModule.bindEvents) {
+        pageModule.bindEvents();
+      } else if (pageModule.init) {
+        // As a fallback, call init() again if there's no bindEvents
+        // But init might do heavy loading. We'll trust bindEvents if it exists.
+        await pageModule.init();
+      }
+      if (pageModule.load) await pageModule.load();
+    }
+    
     this.updateIcons();
   },
 
