@@ -571,6 +571,30 @@ const TutoringPage = {
         UI.toast('Оплата добавлена в Финансы!', 'success');
       }
 
+      // Auto-complete related tasks
+      if (isConductedNow) {
+        try {
+          const st = this.students.find(s => s.id === student_id);
+          if (st) {
+            const firstName = st.name.split(' ')[0].toLowerCase();
+            const allTasks = await DB.getTasks(); 
+            const relatedTasks = allTasks.filter(t => 
+              (t.area === 'Репетиторство' || t.area === 'Все') && 
+              !['Готово', 'Отменена'].includes(t.status) &&
+              t.title.toLowerCase().includes(firstName) &&
+              t.title.toLowerCase().includes('урок')
+            );
+            
+            for (const t of relatedTasks) {
+              await DB.updateTask(t.id, { status: 'Готово' });
+              UI.toast(`Связанная задача "${t.title}" выполнена!`, 'info');
+            }
+          }
+        } catch (e) {
+          console.error('Failed to auto-complete related tasks:', e);
+        }
+      }
+
       document.getElementById('lesson-modal').classList.add('hidden');
       if (!createTx) UI.toast('Урок сохранен', 'success');
       await this.load();
