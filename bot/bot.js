@@ -1114,7 +1114,7 @@ bot.on('photo', async (msg) => {
     // Вызываем API только для извлечения текста
     let visionUrl = 'https://openrouter.ai/api/v1/chat/completions';
     let visionKey = process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY;
-    let visionModel = 'nvidia/nemotron-nano-12b-v2-vl:free';
+    let visionModel = 'meta-llama/llama-3.2-90b-vision-instruct:free';
     
     const visionRes = await fetch(visionUrl, {
       method: 'POST',
