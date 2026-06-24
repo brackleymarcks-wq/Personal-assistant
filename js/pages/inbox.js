@@ -156,7 +156,7 @@ const InboxPage = {
         </div>`;
       }
       html += items.map(item => `
-      <div class="bento-item" style="padding:var(--space-md);display:flex;align-items:center;justify-content:space-between;gap:var(--space-md);transition:all var(--transition);animation:pageFadeInUp 0.3s ease forwards;margin-bottom:var(--space-sm);">
+      <div class="bento-item" style="padding:var(--space-md);display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-md);transition:all var(--transition);animation:pageFadeInUp 0.3s ease forwards;margin-bottom:var(--space-sm);">
         <div style="font-size:14px;color:var(--text-primary);line-height:1.5;flex:1;word-break:break-word;white-space:pre-wrap;">${this.escapeHtml(item.content)}</div>
         <div style="display:flex;flex-direction:column;gap:var(--space-xs);flex-shrink:0;">
           <div style="display:flex;gap:var(--space-xs);">
@@ -324,6 +324,6 @@ const InboxPage = {
   },
 
   escapeHtml(str) {
-    return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/\n/g,'&#10;');
   }
 };
