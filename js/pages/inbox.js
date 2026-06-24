@@ -18,7 +18,7 @@ const InboxPage = {
 
         <div style="padding:var(--space-xl);display:flex;flex-direction:column;gap:var(--space-xl);flex:1;overflow-y:auto;">
           <!-- Quick add card -->
-          <div class="bento-item" style="display:flex;flex-direction:column;gap:var(--space-md);">
+          <div class="bento-item" style="display:flex;flex-direction:column;gap:var(--space-md);flex-shrink:0;">
             <div style="font-size:15px;font-weight:600;color:var(--text-primary);display:flex;align-items:center;justify-content:space-between;">
               <div style="display:flex;align-items:center;gap:var(--space-sm);"><i data-lucide="inbox"></i> Быстрый сброс мыслей</div>
             </div>
@@ -160,18 +160,18 @@ const InboxPage = {
         <div style="font-size:14px;color:var(--text-primary);line-height:1.5;flex:1;word-break:break-word;white-space:pre-wrap;">${this.escapeHtml(item.content)}</div>
         <div style="display:flex;flex-direction:column;gap:var(--space-xs);flex-shrink:0;">
           <div style="display:flex;gap:var(--space-xs);">
-            <button class="btn btn-sm btn-ghost parse-ai-btn" data-id="${item.id}" data-content="${this.escapeHtml(item.content)}" style="color:var(--accent-vibrant);" title="Разобрать с ИИ">
+            <button class="btn btn-sm btn-secondary parse-ai-btn" data-id="${item.id}" data-content="${this.escapeHtml(item.content)}" style="color:var(--accent-vibrant);" title="Разобрать с ИИ">
               <i data-lucide="sparkles" style="width:16px;height:16px;"></i> ИИ
             </button>
-            <button class="btn btn-sm btn-secondary process-btn" data-id="${item.id}" title="Отметить обработанным">
+            <button class="btn btn-sm btn-secondary btn-icon process-btn" data-id="${item.id}" title="Отметить обработанным">
               <i data-lucide="check" style="width:16px;height:16px;"></i>
             </button>
           </div>
           <div style="display:flex;gap:var(--space-xs);">
-            <button class="btn btn-sm btn-secondary convert-task-btn" data-id="${item.id}" data-content="${this.escapeHtml(item.content)}" title="Создать задачу вручную">
-              <i data-lucide="check-square" style="width:16px;height:16px;"></i>
+            <button class="btn btn-sm btn-secondary convert-task-btn" data-id="${item.id}" data-content="${this.escapeHtml(item.content)}" title="Создать задачу вручную" style="flex:1;justify-content:center;">
+              <i data-lucide="check-square" style="width:16px;height:16px;"></i> Задача
             </button>
-            <button class="btn btn-sm btn-ghost delete-inbox-btn" data-id="${item.id}" style="color:var(--danger);" title="Удалить">
+            <button class="btn btn-sm btn-secondary btn-icon delete-inbox-btn" data-id="${item.id}" style="color:var(--danger);" title="Удалить">
               <i data-lucide="trash-2" style="width:16px;height:16px;"></i>
             </button>
           </div>
