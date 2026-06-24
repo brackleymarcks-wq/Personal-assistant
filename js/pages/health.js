@@ -13,10 +13,10 @@ const HealthPage = {
       <div class="health-page" style="display:flex;flex-direction:column;height:100%;overflow-y:auto;">
         <div class="page-header">
           <div>
-            <div class="page-title" style="display:flex;align-items:center;gap:8px;">
+            <div class="page-title" style="font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px;">
               <i data-lucide="heart-pulse" style="color:var(--danger)"></i> Здоровье и Форма
             </div>
-            <div class="page-subtitle">Твой Индекс Формы и активность</div>
+            <div class="page-subtitle" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Твой Индекс Формы и активность</div>
           </div>
         </div>
 

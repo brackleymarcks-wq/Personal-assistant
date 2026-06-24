@@ -35,7 +35,7 @@ const FinancesPage = {
       <div class="finances-page" style="display:flex;flex-direction:column;height:100%;overflow-y:auto;">
         <div class="page-header">
           <div>
-            <div class="page-title" style="display:flex;align-items:center;gap:8px;">
+            <div class="page-title" style="font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px;">
               Финансы
               <div style="display:flex;align-items:center;background:var(--bg-primary);border-radius:var(--radius-full);padding:2px;margin-left:8px;border:1px solid var(--border-light);">
                 <button onclick="FinancesPage.changeMonth(-1)" style="border:none;background:transparent;cursor:pointer;padding:4px;color:var(--text-secondary);border-radius:50%;display:flex;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'"><i data-lucide="chevron-left" style="width:16px;height:16px;"></i></button>

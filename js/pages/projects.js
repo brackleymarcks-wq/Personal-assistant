@@ -11,8 +11,8 @@ const ProjectsPage = {
       <div class="projects-page" id="projects-page" style="display:flex;flex-direction:column;height:100%;">
         <div class="page-header">
           <div>
-            <div class="page-title">Проекты</div>
-            <div class="page-subtitle" id="projects-count-label">Загрузка…</div>
+            <div class="page-title" style="font-size:20px;font-weight:700;">Проекты</div>
+            <div class="page-subtitle" id="projects-count-label" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Загрузка…</div>
           </div>
           <div class="page-actions">
             <button class="btn btn-primary" id="add-project-btn" style="display:flex;align-items:center;gap:6px;">

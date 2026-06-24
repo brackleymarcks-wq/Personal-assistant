@@ -1,5 +1,5 @@
-// ============================================
-// ANALYTICS PAGE � Productivity Reports
+﻿// ============================================
+// ANALYTICS PAGE — Productivity Reports
 // ============================================
 
 const AnalyticsPage = {
@@ -14,8 +14,8 @@ const AnalyticsPage = {
       <div class="analytics-page">
         <div class="page-header">
           <div>
-            <div class="page-title">���������</div>
-            <div class="page-subtitle">��������� ����� ����� �����</div>
+            <div class="page-title" style="font-size:20px;font-weight:700;">Аналитика</div>
+            <div class="page-subtitle" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Командный центр вашей жизни</div>
           </div>
         </div>
         <div class="analytics-grid" id="analytics-grid">
@@ -52,12 +52,12 @@ const AnalyticsPage = {
 
   renderCharts() {
     const grid = document.getElementById('analytics-grid');
-    const doneTasks = this.tasks.filter(t => t.status === '������');
-    const activeTasks = this.tasks.filter(t => !['������', '��������'].includes(t.status));
+    const doneTasks = this.tasks.filter(t => t.status === 'Готово');
+    const activeTasks = this.tasks.filter(t => !['Готово', 'Отменена'].includes(t.status));
     const today = new Date().toISOString().split('T')[0];
 
     // === Summary Stats ===
-    const overdue = this.tasks.filter(t => t.deadline && t.deadline < today && !['������', '��������'].includes(t.status)).length;
+    const overdue = this.tasks.filter(t => t.deadline && t.deadline < today && !['Готово', 'Отменена'].includes(t.status)).length;
     const avgProgress = this.goals.length > 0 ? Math.round(this.goals.reduce((s, g) => s + (g.progress || 0), 0) / this.goals.length) : 0;
     const bestStreak = this.calculateBestStreak();
 
@@ -84,49 +84,49 @@ const AnalyticsPage = {
     grid.innerHTML = `
       <!-- Summary Cards -->
       <div class="analytics-card">
-        <div class="analytics-card-title"><i data-lucide="bar-chart-2" style="width:18px;height:18px;"></i> ����� ����������</div>
+        <div class="analytics-card-title"><i data-lucide="bar-chart-2" style="width:18px;height:18px;"></i> Общая статистика</div>
         <div class="stat-grid">
           <div class="stat-item">
             <div class="stat-val">${this.tasks.length}</div>
-            <div class="stat-label">����� �����</div>
+            <div class="stat-label">Всего задач</div>
           </div>
           <div class="stat-item">
             <div class="stat-val" style="color:var(--success)">${doneTasks.length}</div>
-            <div class="stat-label">���������</div>
+            <div class="stat-label">Выполнено</div>
           </div>
           <div class="stat-item">
             <div class="stat-val" style="color:${overdue > 0 ? 'var(--danger)' : 'var(--text-primary)'}">${overdue}</div>
-            <div class="stat-label">����������</div>
+            <div class="stat-label">Просрочено</div>
           </div>
           <div class="stat-item">
             <div class="stat-val">${avgProgress}%</div>
-            <div class="stat-label">��. �������� �����</div>
+            <div class="stat-label">Ср. прогресс целей</div>
           </div>
         </div>
       </div>
 
       <!-- Financial Summary -->
       <div class="analytics-card">
-        <div class="analytics-card-title"><i data-lucide="wallet" style="width:18px;height:18px;color:var(--warning);"></i> ������� �� �����</div>
+        <div class="analytics-card-title"><i data-lucide="wallet" style="width:18px;height:18px;color:var(--warning);"></i> Финансы за месяц</div>
         <div class="stat-grid" style="margin-top:var(--space-sm);">
           <div class="stat-item" style="grid-column:1/-1;">
-            <div class="stat-label" style="margin-top:0;">�������</div>
+            <div class="stat-label" style="margin-top:0;">Остаток</div>
             <div class="stat-val" style="font-size:36px;color:${(income-expense) < 0 ? 'var(--danger)' : 'var(--text-primary)'}">${(income - expense).toLocaleString('ru-RU')} BYN</div>
           </div>
           <div class="stat-item">
             <div class="stat-val" style="font-size:20px;color:var(--success)">+${income.toLocaleString('ru-RU')}</div>
-            <div class="stat-label">������</div>
+            <div class="stat-label">Доходы</div>
           </div>
           <div class="stat-item">
             <div class="stat-val" style="font-size:20px;color:var(--danger)">-${expense.toLocaleString('ru-RU')}</div>
-            <div class="stat-label">�������</div>
+            <div class="stat-label">Расходы</div>
           </div>
         </div>
       </div>
 
       <!-- Weekly Task Chart -->
       <div class="analytics-card">
-        <div class="analytics-card-title"><i data-lucide="trending-up" style="width:18px;height:18px;color:var(--info);"></i> ������ �� �������</div>
+        <div class="analytics-card-title"><i data-lucide="trending-up" style="width:18px;height:18px;color:var(--info);"></i> Задачи по неделям</div>
         <div class="chart-container" style="display:flex;align-items:flex-end;gap:8px;padding-top:var(--space-md);height:140px;">
           ${weeklyData.map(w => {
             const maxVal = Math.max(...weeklyData.map(x => x.count), 1);
@@ -146,7 +146,7 @@ const AnalyticsPage = {
 
       <!-- Direction Distribution -->
       <div class="analytics-card">
-        <div class="analytics-card-title"><i data-lucide="pie-chart" style="width:18px;height:18px;color:var(--success);"></i> �� ������������</div>
+        <div class="analytics-card-title"><i data-lucide="pie-chart" style="width:18px;height:18px;color:var(--success);"></i> По направлениям</div>
         <div style="display:flex;flex-direction:column;gap:var(--space-md);margin-top:var(--space-sm)">
           ${directionData.map(d => {
             const maxCount = Math.max(...directionData.map(x => x.count), 1);
@@ -166,13 +166,13 @@ const AnalyticsPage = {
               </div>
             `;
           }).join('')}
-          ${directionData.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;text-align:center;">��� ����� ��� ����������</div>' : ''}
+          ${directionData.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;text-align:center;">Нет задач для статистики</div>' : ''}
         </div>
       </div>
 
       <!-- Habits Heatmap -->
       <div class="analytics-card" style="grid-column:1/-1;">
-        <div class="analytics-card-title"><i data-lucide="calendar-days" style="width:18px;height:18px;color:var(--accent);"></i> �������� ����� �������� (90 ����)</div>
+        <div class="analytics-card-title"><i data-lucide="calendar-days" style="width:18px;height:18px;color:var(--accent);"></i> Тепловая карта привычек (90 дней)</div>
         <div style="display:flex;flex-wrap:wrap;gap:var(--space-2xl);margin-top:var(--space-sm)">
           ${this.habits.map(habit => {
             const logs = this.habitLogs.filter(l => l.habit_id === habit.id && l.status === 'done');
@@ -180,39 +180,39 @@ const AnalyticsPage = {
               <div class="heatmap-wrapper">
                 <div style="font-size:13px;font-weight:600;color:var(--text-primary);display:flex;justify-content:space-between;">
                   ${this.esc(habit.name)}
-                  <span style="color:var(--text-muted);font-weight:400;font-size:11px;">���������: ${logs.length}</span>
+                  <span style="color:var(--text-muted);font-weight:400;font-size:11px;">Выполнено: ${logs.length}</span>
                 </div>
                 <div class="heatmap-grid" style="grid-template-columns: repeat(13, 1fr);">
                   ${heatmapData.dates.map(date => {
                     const dateStr = date.toISOString().split('T')[0];
                     const done = logs.some(l => l.date === dateStr);
-                    return `<div class="heatmap-cell ${done ? 'level-3' : ''}" title="${new Date(date).toLocaleDateString('ru-RU')} ${done ? ' ?' : ''}"></div>`;
+                    return `<div class="heatmap-cell ${done ? 'level-3' : ''}" title="${new Date(date).toLocaleDateString('ru-RU')} ${done ? ' ✓' : ''}"></div>`;
                   }).join('')}
                 </div>
               </div>
             `;
           }).join('')}
-          ${this.habits.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;text-align:center;width:100%;padding:var(--space-lg) 0;">�������� �������� ��� ������������ �����������</div>' : ''}
+          ${this.habits.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;text-align:center;width:100%;padding:var(--space-lg) 0;">Добавьте привычки для отслеживания контрибуций</div>' : ''}
         </div>
       </div>
 
       <!-- Goals Timeline -->
       <div class="analytics-card">
-        <div class="analytics-card-title"><i data-lucide="target" style="width:18px;height:18px;color:var(--danger);"></i> �������� �����</div>
-        ${this.goals.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:var(--space-lg)">��� �����</div>' : ''}
+        <div class="analytics-card-title"><i data-lucide="target" style="width:18px;height:18px;color:var(--danger);"></i> Прогресс целей</div>
+        ${this.goals.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:var(--space-lg)">Нет целей</div>' : ''}
         <div style="display:flex;flex-direction:column;gap:var(--space-lg);margin-top:var(--space-sm);">
           ${this.goals.map(g => `
             <div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <span style="font-size:14px;font-weight:600">${this.esc(g.title)}</span>
-                <span class="status-badge ${g.status === '����������' ? 'status-done' : g.status === '��������' ? 'status-cancelled' : 'status-working'}" style="font-size:10px;">${g.status}</span>
+                <span class="status-badge ${g.status === 'Достигнута' ? 'status-done' : g.status === 'Отменена' ? 'status-cancelled' : 'status-working'}" style="font-size:10px;">${g.status}</span>
               </div>
               <div class="progress-bar" style="height:8px;background:var(--bg-elevated);">
-                <div class="progress-bar-fill" style="width:${g.progress || 0}%;${g.status === '����������' ? 'background:linear-gradient(90deg,var(--success),#34d399)' : 'background:linear-gradient(90deg,var(--accent),var(--accent-vibrant))'}"></div>
+                <div class="progress-bar-fill" style="width:${g.progress || 0}%;${g.status === 'Достигнута' ? 'background:linear-gradient(90deg,var(--success),#34d399)' : 'background:linear-gradient(90deg,var(--accent),var(--accent-vibrant))'}"></div>
               </div>
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:6px;font-weight:500;">
-                <span>��������: ${g.progress || 0}%</span>
-                <span>${g.target_date ? '�� ' + new Date(g.target_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''}</span>
+                <span>Прогресс: ${g.progress || 0}%</span>
+                <span>${g.target_date ? 'До ' + new Date(g.target_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''}</span>
               </div>
             </div>
           `).join('')}
@@ -221,8 +221,8 @@ const AnalyticsPage = {
 
       <!-- Best Streaks -->
       <div class="analytics-card">
-        <div class="analytics-card-title"><i data-lucide="flame" style="width:18px;height:18px;color:var(--warning);"></i> ������ ����� ��������</div>
-        ${bestStreak.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:var(--space-lg)">��� ������</div>' : ''}
+        <div class="analytics-card-title"><i data-lucide="flame" style="width:18px;height:18px;color:var(--warning);"></i> Лучшие серии привычек</div>
+        ${bestStreak.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:var(--space-lg)">Нет данных</div>' : ''}
         <div style="display:flex;flex-direction:column;gap:var(--space-xs);margin-top:var(--space-sm);">
           ${bestStreak.map((s, idx) => `
             <div class="best-streak-item">
@@ -230,7 +230,7 @@ const AnalyticsPage = {
                 <span style="color:var(--text-muted);font-size:12px;">#${idx+1}</span> ${this.esc(s.name)}
               </span>
               <span style="font-size:15px;font-weight:800;color:var(--warning);display:flex;align-items:center;gap:4px;">
-                <i data-lucide="flame" style="width:16px;height:16px;"></i> ${s.streak} ��.
+                <i data-lucide="flame" style="width:16px;height:16px;"></i> ${s.streak} дн.
               </span>
             </div>
           `).join('')}
@@ -265,7 +265,7 @@ const AnalyticsPage = {
     const map = {};
     const colors = ['linear-gradient(90deg,var(--accent),var(--accent-vibrant))', '#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6'];
     this.tasks.forEach(t => {
-      const dir = t.direction || '������';
+      const dir = t.direction || 'Личное';
       map[dir] = (map[dir] || 0) + 1;
     });
     return Object.entries(map)

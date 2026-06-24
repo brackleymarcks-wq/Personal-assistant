@@ -8,7 +8,7 @@ const TutoringPage = {
 
   render() {
     return `
-      <div class="$($matches[1] -replace "-page","")-page" style="display:flex;flex-direction:column;height:100%;">
+      <div class="tutoring-page" style="display:flex;flex-direction:column;height:100%;">
         <div class="page-header">
           <div>
             <div class="page-title" style="font-size:24px;font-weight:800;background:linear-gradient(90deg, var(--accent), var(--accent-vibrant));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Репетиторство 🇬🇧</div>
