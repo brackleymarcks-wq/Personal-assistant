@@ -9,16 +9,19 @@ const InboxPage = {
   render() {
     return `
       <div class="inbox-page" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
-        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:between;flex-shrink:0;">
+        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
           <div>
             <div class="page-title" style="font-size:20px;font-weight:700;">Входящие</div>
             <div class="page-subtitle" id="inbox-count-label" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Загрузка…</div>
           </div>
+          <button id="inbox-archive-toggle" class="btn btn-sm btn-secondary">
+            <i data-lucide="archive"></i> <span>Архив</span>
+          </button>
         </div>
 
         <div style="padding:var(--space-xl);display:flex;flex-direction:column;gap:var(--space-xl);flex:1;overflow-y:auto;">
           <!-- Quick add card -->
-          <div class="bento-item" style="display:flex;flex-direction:column;gap:var(--space-md);flex-shrink:0;">
+          <div id="inbox-quick-add" class="bento-item" style="display:flex;flex-direction:column;gap:var(--space-md);flex-shrink:0;">
             <div style="font-size:15px;font-weight:600;color:var(--text-primary);display:flex;align-items:center;justify-content:space-between;">
               <div style="display:flex;align-items:center;gap:var(--space-sm);"><i data-lucide="inbox"></i> Быстрый сброс мыслей</div>
             </div>
@@ -48,6 +51,18 @@ const InboxPage = {
   bindEvents() {
     const input = document.getElementById('inbox-add-input');
     const btn = document.getElementById('inbox-add-btn');
+    const archiveToggle = document.getElementById('inbox-archive-toggle');
+
+    if (archiveToggle) {
+      archiveToggle.addEventListener('click', () => {
+        this.showingArchive = !this.showingArchive;
+        const icon = this.showingArchive ? 'inbox' : 'archive';
+        const text = this.showingArchive ? 'К мыслям' : 'Архив';
+        archiveToggle.innerHTML = `<i data-lucide="${icon}"></i> <span>${text}</span>`;
+        if (window.lucide) window.lucide.createIcons({root: archiveToggle});
+        this.load();
+      });
+    }
 
     const handleAdd = async (e) => {
       if (e) e.preventDefault();
@@ -96,7 +111,12 @@ const InboxPage = {
       if (!this.currentFilter) {
         this.currentFilter = Config.currentArea || 'Все';
       }
-      this.items = await DB.getInbox(true); // Only unprocessed
+      const allItems = await DB.getInbox(!this.showingArchive);
+      if (this.showingArchive) {
+        this.items = allItems.filter(i => i.processed);
+      } else {
+        this.items = allItems;
+      }
       this.renderContent();
     } catch (e) {
       console.error(e);
@@ -107,21 +127,32 @@ const InboxPage = {
     const container = document.getElementById('inbox-items-container');
     const countLabel = document.getElementById('inbox-count-label');
 
+    const quickAdd = document.getElementById('inbox-quick-add');
+    if (quickAdd) {
+      quickAdd.style.display = this.showingArchive ? 'none' : 'flex';
+    }
+
     if (this.items.length > 0) {
-      countLabel.innerHTML = `${this.items.length} необработанных мыслей <button id="parse-all-btn" class="btn btn-sm btn-ghost" style="margin-left:8px;color:var(--accent-vibrant);"><i data-lucide="sparkles" style="width:14px;height:14px;"></i> Разобрать всё с ИИ</button>`;
-      const parseAllBtn = document.getElementById('parse-all-btn');
-      parseAllBtn.addEventListener('click', () => this.parseAllWithAI());
-      if (window.lucide) window.lucide.createIcons({root: countLabel});
+      if (this.showingArchive) {
+        countLabel.textContent = `${this.items.length} мыслей в архиве`;
+      } else {
+        countLabel.innerHTML = `${this.items.length} необработанных мыслей <button id="parse-all-btn" class="btn btn-sm btn-ghost" style="margin-left:8px;color:var(--accent-vibrant);"><i data-lucide="sparkles" style="width:14px;height:14px;"></i> Разобрать всё с ИИ</button>`;
+        const parseAllBtn = document.getElementById('parse-all-btn');
+        if (parseAllBtn) parseAllBtn.addEventListener('click', () => this.parseAllWithAI());
+        if (window.lucide) window.lucide.createIcons({root: countLabel});
+      }
     } else {
-      countLabel.textContent = `0 необработанных мыслей`;
+      countLabel.textContent = this.showingArchive ? `0 мыслей в архиве` : `0 необработанных мыслей`;
     }
 
     if (this.items.length === 0) {
+      const emptyText = this.showingArchive ? 'Архив пуст' : 'Входящие пусты';
+      const emptySub = this.showingArchive ? 'Здесь будут храниться разобранные мысли' : 'Все мысли разобраны и превращены в дела!';
       container.innerHTML = `
         <div class="empty-state" style="text-align:center;padding:var(--space-2xl) 0;color:var(--text-muted);">
-          <div class="empty-icon" style="margin-bottom:var(--space-md);display:flex;justify-content:center;opacity:0.6;"><i data-lucide="inbox" style="width:48px;height:48px;"></i></div>
-          <div class="empty-text" style="font-size:16px;font-weight:600;color:var(--text-primary)">Входящие пусты</div>
-          <div class="empty-subtext" style="font-size:13px;color:var(--text-secondary);margin-top:4px">Все мысли разобраны и превращены в дела!</div>
+          <div class="empty-icon" style="margin-bottom:var(--space-md);display:flex;justify-content:center;opacity:0.6;"><i data-lucide="${this.showingArchive ? 'archive' : 'inbox'}" style="width:48px;height:48px;"></i></div>
+          <div class="empty-text" style="font-size:16px;font-weight:600;color:var(--text-primary)">${emptyText}</div>
+          <div class="empty-subtext" style="font-size:13px;color:var(--text-secondary);margin-top:4px">${emptySub}</div>
         </div>
       `;
       if (window.lucide) window.lucide.createIcons({root: container});
@@ -156,29 +187,48 @@ const InboxPage = {
           <i data-lucide="target" style="width:14px;height:14px;"></i> ${this.escapeHtml(area)}
         </div>`;
       }
-      html += items.map(item => `
-      <div class="bento-item" style="padding:var(--space-md);display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-md);transition:all var(--transition);animation:pageFadeInUp 0.3s ease forwards;margin-bottom:var(--space-sm);">
-        <div style="font-size:14px;color:var(--text-primary);line-height:1.5;flex:1;word-break:break-word;white-space:pre-wrap;">${this.escapeHtml(item.content)}</div>
-        <div style="display:flex;flex-direction:column;gap:var(--space-xs);flex-shrink:0;">
-          <div style="display:flex;gap:var(--space-xs);">
-            <button class="btn btn-sm btn-secondary parse-ai-btn" data-id="${item.id}" data-content="${this.escapeHtml(item.content)}" style="color:var(--accent-vibrant);" title="Разобрать с ИИ">
-              <i data-lucide="sparkles" style="width:16px;height:16px;"></i> ИИ
-            </button>
-            <button class="btn btn-sm btn-secondary btn-icon process-btn" data-id="${item.id}" title="Отметить обработанным">
-              <i data-lucide="check" style="width:16px;height:16px;"></i>
-            </button>
-          </div>
-          <div style="display:flex;gap:var(--space-xs);">
-            <button class="btn btn-sm btn-secondary convert-task-btn" data-id="${item.id}" data-content="${this.escapeHtml(item.content)}" title="Создать задачу вручную" style="flex:1;justify-content:center;">
-              <i data-lucide="check-square" style="width:16px;height:16px;"></i> Задача
-            </button>
-            <button class="btn btn-sm btn-secondary btn-icon delete-inbox-btn" data-id="${item.id}" style="color:var(--danger);" title="Удалить">
-              <i data-lucide="trash-2" style="width:16px;height:16px;"></i>
-            </button>
+      html += items.map(item => {
+        let buttonsHtml = '';
+        if (this.showingArchive) {
+          buttonsHtml = `
+            <div style="display:flex;gap:var(--space-xs);">
+              <button class="btn btn-sm btn-secondary restore-btn" data-id="${item.id}" title="Вернуть во входящие" style="flex:1;justify-content:center;">
+                <i data-lucide="rotate-ccw" style="width:16px;height:16px;"></i> Вернуть
+              </button>
+              <button class="btn btn-sm btn-secondary btn-icon delete-forever-btn" data-id="${item.id}" style="color:var(--danger);" title="Удалить навсегда">
+                <i data-lucide="trash-2" style="width:16px;height:16px;"></i>
+              </button>
+            </div>
+          `;
+        } else {
+          buttonsHtml = `
+            <div style="display:flex;gap:var(--space-xs);">
+              <button class="btn btn-sm btn-secondary parse-ai-btn" data-id="${item.id}" data-content="${this.escapeHtml(item.content)}" style="color:var(--accent-vibrant);" title="Разобрать с ИИ">
+                <i data-lucide="sparkles" style="width:16px;height:16px;"></i> ИИ
+              </button>
+              <button class="btn btn-sm btn-secondary btn-icon process-btn" data-id="${item.id}" title="Отметить обработанным">
+                <i data-lucide="check" style="width:16px;height:16px;"></i>
+              </button>
+            </div>
+            <div style="display:flex;gap:var(--space-xs);">
+              <button class="btn btn-sm btn-secondary convert-task-btn" data-id="${item.id}" data-content="${this.escapeHtml(item.content)}" title="Создать задачу вручную" style="flex:1;justify-content:center;">
+                <i data-lucide="check-square" style="width:16px;height:16px;"></i> Задача
+              </button>
+              <button class="btn btn-sm btn-secondary btn-icon archive-inbox-btn" data-id="${item.id}" style="color:var(--text-secondary);" title="В архив">
+                <i data-lucide="archive" style="width:16px;height:16px;"></i>
+              </button>
+            </div>
+          `;
+        }
+        return `
+        <div class="bento-item" style="padding:var(--space-md);display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-md);transition:all var(--transition);animation:pageFadeInUp 0.3s ease forwards;margin-bottom:var(--space-sm);">
+          <div style="font-size:14px;color:var(--text-primary);line-height:1.5;flex:1;word-break:break-word;white-space:pre-wrap;">${this.escapeHtml(item.content)}</div>
+          <div style="display:flex;flex-direction:column;gap:var(--space-xs);flex-shrink:0;">
+            ${buttonsHtml}
           </div>
         </div>
-      </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     container.innerHTML = html;
@@ -199,7 +249,27 @@ const InboxPage = {
       });
     });
 
-    container.querySelectorAll('.delete-inbox-btn').forEach(btn => {
+    container.querySelectorAll('.archive-inbox-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        await this.processItem(id); // Sets processed: true
+      });
+    });
+
+    container.querySelectorAll('.restore-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        try {
+          await DB.updateInboxItem(id, { processed: false });
+          UI.toast('Мысль возвращена во входящие');
+          await this.load();
+        } catch(e) {
+          UI.toast('Ошибка: ' + e.message, 'error');
+        }
+      });
+    });
+
+    container.querySelectorAll('.delete-forever-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
         await this.deleteItem(id);
