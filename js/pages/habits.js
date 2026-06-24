@@ -9,11 +9,11 @@ const HabitsPage = {
 
   render() {
     return `
-      <div class="habits-page" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
-        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div class="habits-page" style="display:flex;flex-direction:column;height:100%;">
+        <div class="page-header">
           <div>
-            <div class="page-title" style="font-size:20px;font-weight:700;">Трекер привычек</div>
-            <div class="page-subtitle" id="habits-count-label" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Загрузка привычек…</div>
+            <div class="page-title">Трекер привычек</div>
+            <div class="page-subtitle" id="habits-count-label">Загрузка привычек…</div>
           </div>
           <div style="display:flex;gap:var(--space-sm);align-items:center;">
              <input id="habit-name-input" type="text" class="form-input" placeholder="Например: Сделать зарядку..." style="width:250px;" />
@@ -23,7 +23,7 @@ const HabitsPage = {
           </div>
         </div>
 
-        <div class="habits-grid" id="habits-list-body" style="flex:1;overflow-y:auto;align-content:start;padding:var(--space-xl);display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:var(--space-lg);">
+        <div class="habits-grid" id="habits-list-body" style="flex:1;overflow-y:auto;align-content:start;">
            <!-- Habits list injected here -->
         </div>
       </div>
