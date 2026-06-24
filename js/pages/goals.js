@@ -8,11 +8,11 @@ const GoalsPage = {
 
   render() {
     return `
-      <div class="goals-page" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
-        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div class="goals-page" style="display:flex;flex-direction:column;height:100%;">
+        <div class="page-header">
           <div>
-            <div class="page-title" style="font-size:20px;font-weight:700;">Цели (OKR / SMART)</div>
-            <div class="page-subtitle" id="goals-count-label" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Загрузка целей…</div>
+            <div class="page-title">Цели (OKR / SMART)</div>
+            <div class="page-subtitle" id="goals-count-label">Загрузка целей…</div>
           </div>
           <div class="page-actions">
             <button class="btn btn-primary" id="add-goal-btn" style="display:flex;align-items:center;gap:6px;">
@@ -113,10 +113,10 @@ const GoalsPage = {
 
     if (this.goals.length === 0) {
       container.innerHTML = `
-        <div class="empty-state" style="grid-column:1/-1;text-align:center;padding:var(--space-3xl) 0;color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:var(--space-md);">
-          <i data-lucide="target" style="width:48px;height:48px;color:var(--border-light);"></i>
-          <div style="font-size:16px;font-weight:600;color:var(--text-primary)">Целей пока нет</div>
-          <div style="font-size:13px;color:var(--text-secondary);">Сформулируйте свою первую амбициозную цель!</div>
+        <div class="empty-state" style="grid-column:1/-1;">
+          <div class="empty-icon"><i data-lucide="target"></i></div>
+          <div class="empty-text">Целей пока нет</div>
+          <div class="empty-subtext">Сформулируйте свою первую амбициозную цель!</div>
         </div>
       `;
       if (window.lucide) window.lucide.createIcons();
