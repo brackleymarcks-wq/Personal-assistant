@@ -3000,8 +3000,9 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
 
 .habit-days {
   display: flex;
-  justify-content: space-between;
-  margin-top: var(--space-sm);
+  justify-content: flex-start;
+  gap: 16px;
+  margin-top: var(--space-md);
 }
 
 .habit-day-col {
