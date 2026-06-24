@@ -352,8 +352,8 @@ async function getRecentMessages(limit = 6) {
   const { data } = await db.from('messages').select('role, content')
     .order('created_at', { ascending: false }).limit(limit);
   return (data || []).reverse().map(m => {
-    if (m.content && m.content.length > 500) {
-      m.content = m.content.substring(0, 500) + '...';
+    if (m.content && m.content.length > 300) {
+      m.content = m.content.substring(0, 300) + '...';
     }
     return m;
   });
@@ -383,13 +383,13 @@ const TOOLS = [
             items: {
               type: 'object',
               properties: {
-                title: { type: 'string', description: 'Название задачи' },
-                direction: { type: 'string', description: 'Направления (можно несколько через запятую): Митап AI-Connect/ТГ AI-Connect/Учись и применяй/ИИ Дайджест/Задача от руководителя/Банк промтов/Smart-запрос/ответ/Операционная задача/Английский/Личное' },
-                status: { type: 'string', description: 'Статус (по умолч. "Ждёт меня")' },
-                priority: { type: 'string', description: 'Приоритет: Высокий/Средний/Низкий' },
-                deadline: { type: 'string', description: 'Дедлайн YYYY-MM-DD (обязательно вычисляй дату, если просят сделать "на этой неделе", "завтра" и т.д.)' },
-                next_step: { type: 'string', description: 'Следующее действие' },
-                area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Сфера жизни (обязательно выбери одну из трех!)' }
+                title: { type: 'string', description: 'Task title' },
+                direction: { type: 'string', description: 'Direction tags: AI-Connect, English, Personal, etc. CSV' },
+                status: { type: 'string', description: 'Default "Ждёт меня"' },
+                priority: { type: 'string', description: 'High, Medium, Low (Высокий/Средний/Низкий)' },
+                deadline: { type: 'string', description: 'YYYY-MM-DD (must compute date)' },
+                next_step: { type: 'string', description: 'Next step' },
+                area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Must select one: Работа, Репетиторство, Личное' }
               },
               required: ['title', 'area']
             }
@@ -403,7 +403,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_tasks',
-      description: 'Получить список активных задач',
+      description: 'Get active tasks list',
       parameters: {
         type: 'object',
         properties: {
@@ -418,11 +418,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'update_context',
-      description: 'Запомнить новую инструкцию, привычку, обязанность или факт навсегда',
+      description: 'Remember new instruction, habit, fact forever',
       parameters: {
         type: 'object',
         properties: {
-          new_instruction: { type: 'string', description: 'Что запомнить' }
+          new_instruction: { type: 'string', description: 'What to remember' }
         },
         required: ['new_instruction']
       }
@@ -440,11 +440,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'add_to_inbox',
-      description: 'Записать быструю мысль, идею или черновик во входящие (Inbox) для последующего разбора',
+      description: 'Save quick thought/idea to Inbox',
       parameters: {
         type: 'object',
         properties: {
-          content: { type: 'string', description: 'Текст мысли/идеи' }
+          content: { type: 'string', description: 'Thought text' }
         },
         required: ['content']
       }
@@ -454,14 +454,14 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'create_note',
-      description: 'Создать полноценную Заметку (Дневник, База знаний, Идеи)',
+      description: 'Create full Note (Diary, Knowledge Base, Ideas)',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'Заголовок заметки' },
-          content: { type: 'string', description: 'Содержимое (можно markdown)' },
-          tags: { type: 'array', items: { type: 'string' }, description: 'Теги массива строк' },
-          area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Сфера жизни (обязательно выбери одну из трех!)' }
+          title: { type: 'string', description: 'Note title' },
+          content: { type: 'string', description: 'Content (markdown supported)' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'String tags array' },
+          area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Area' }
         },
         required: ['title', 'content', 'area']
       }
@@ -471,15 +471,15 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'create_transaction',
-      description: 'Записать финансы (доходы или расходы)',
+      description: 'Log transaction (income or expense)',
       parameters: {
         type: 'object',
         properties: {
-          amount: { type: 'number', description: 'Сумма операции' },
-          type: { type: 'string', description: 'Тип: income (доход) или expense (расход)' },
-          category: { type: 'string', description: 'Категория. ОБЯЗАТЕЛЬНО придумай сам на основе текста (Транспорт, Продукты, Кафе, Зарплата, Коммуналка, Развлечения и т.д.)' },
-          comment: { type: 'string', description: 'Оригинальный комментарий (например "на метро" или "за кофе")' },
-          account_name: { type: 'string', description: 'Счет оплаты. Если не указано, пиши "Карта"' }
+          amount: { type: 'number', description: 'Amount' },
+          type: { type: 'string', description: 'income or expense' },
+          category: { type: 'string', description: 'Invent category based on text (e.g. Transport, Food, Cafe, Salary)' },
+          comment: { type: 'string', description: 'Original comment text' },
+          account_name: { type: 'string', description: 'Account name or "Карта"' }
         },
         required: ['amount', 'type', 'category']
       }
@@ -489,11 +489,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'start_deep_work',
-      description: 'Запустить режим Deep Work (фокус/работа) на указанное количество минут. Во время этого режима все сообщения пользователя будут молча сохраняться в Inbox.',
+      description: 'Start Deep Work mode (focus). Routes all messages to Inbox silently.',
       parameters: {
         type: 'object',
         properties: {
-          minutes: { type: 'number', description: 'Длительность в минутах (обычно 60 или 90)' }
+          minutes: { type: 'number', description: 'Duration in mins (e.g. 60)' }
         },
         required: ['minutes']
       }
@@ -503,14 +503,14 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'add_lesson',
-      description: 'Добавить/отметить проведенный урок по английскому языку',
+      description: 'Log an English lesson conducted',
       parameters: {
         type: 'object',
         properties: {
-          student_name: { type: 'string', description: 'Имя ученика (например, Нелли, Соня)' },
-          topic: { type: 'string', description: 'Тема урока' },
-          homework: { type: 'string', description: 'Домашнее задание' },
-          paid: { type: 'boolean', description: 'Оплачен ли урок' }
+          student_name: { type: 'string', description: 'Student name' },
+          topic: { type: 'string', description: 'Lesson topic' },
+          homework: { type: 'string', description: 'Homework' },
+          paid: { type: 'boolean', description: 'Is paid' }
         },
         required: ['student_name']
       }
@@ -520,11 +520,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'generate_lesson_plan',
-      description: 'Сгенерировать план урока, вопросы или учебный материал для ученика',
+      description: 'Generate lesson plan or questions for student',
       parameters: {
         type: 'object',
         properties: {
-          prompt: { type: 'string', description: 'Текст запроса для ИИ' }
+          prompt: { type: 'string', description: 'Prompt for generation' }
         },
         required: ['prompt']
       }
@@ -534,7 +534,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_habits',
-      description: 'Получить список активных привычек пользователя',
+      description: 'Get active habits list',
       parameters: { type: 'object', properties: {} }
     }
   },
@@ -542,11 +542,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'log_habit',
-      description: 'Отметить привычку выполненной на сегодня',
+      description: 'Log habit as done for today',
       parameters: {
         type: 'object',
         properties: {
-          habit_id: { type: 'string', description: 'ID привычки' }
+          habit_id: { type: 'string', description: 'Habit ID' }
         },
         required: ['habit_id']
       }
@@ -556,11 +556,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'search_knowledge_base',
-      description: 'Поиск информации в Базе Знаний пользователя. Используй этот инструмент, когда нужно найти сохраненные промпты, инструкции, заметки, статьи или документы.',
+      description: 'Search in Knowledge Base (find prompts, articles, notes)',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Поисковый запрос (1-2 ключевых слова)' }
+          query: { type: 'string', description: 'Search query (1-2 keywords)' }
         },
         required: ['query']
       }
@@ -570,7 +570,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'analyze_finances',
-      description: 'Получить статистику по доходам и расходам за текущий месяц (сгруппировано по категориям). Вызывай этот инструмент, когда пользователь просит проанализировать его финансы, сделать "прожарку" или узнать сколько он потратил.',
+      description: 'Get financial stats for current month. Use for finance roast or tracking.',
       parameters: { type: 'object', properties: {} }
     }
   },
@@ -578,12 +578,12 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'generate_channel_post',
-      description: 'Сгенерировать ИИ-пост для Telegram-канала AI-Connect на основе ссылки или текста.',
+      description: 'Generate AI post for Telegram channel AI-Connect',
       parameters: {
         type: 'object',
         properties: {
-          url: { type: 'string', description: 'Ссылка на новость или статью (если есть)' },
-          raw_text: { type: 'string', description: 'Сырой текст новости (если ссылки нет или она не читается)' }
+          url: { type: 'string', description: 'Source URL if available' },
+          raw_text: { type: 'string', description: 'Raw text if no URL' }
         }
       }
     }
@@ -592,11 +592,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'save_link_to_knowledge_base',
-      description: 'Автоматически прочитать статью по ссылке, сделать выжимку и сохранить в Базу знаний.',
+      description: 'Auto-read URL, summarize, and save to Knowledge Base',
       parameters: {
         type: 'object',
         properties: {
-          url: { type: 'string', description: 'Ссылка на статью или видео' }
+          url: { type: 'string', description: 'URL to read' }
         },
         required: ['url']
       }
@@ -606,14 +606,14 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'create_event',
-      description: 'Создать событие в календаре или установить умное напоминание. Используй этот инструмент, когда пользователь просит напомнить о чем-то или запланировать встречу.',
+      description: 'Create calendar event or reminder',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'Краткое название события или напоминания' },
-          description: { type: 'string', description: 'Подробности, контакты или ссылки (опционально)' },
-          start_at: { type: 'string', description: 'Точная дата и время события в формате ISO 8601 (например, 2026-06-22T14:00:00). Обязательно учитывай ТЕКУЩЕЕ ВРЕМЯ пользователя, указанное в системном промпте, для расчета.' },
-          area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Сфера жизни (обязательно выбери одну из трех!)' }
+          title: { type: 'string', description: 'Event title' },
+          description: { type: 'string', description: 'Details or links (optional)' },
+          start_at: { type: 'string', description: 'ISO 8601 date/time (e.g. 2026-06-22T14:00:00). Compute using CURRENT TIME.' },
+          area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Area' }
         },
         required: ['title', 'start_at', 'area']
       }
@@ -936,7 +936,7 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
 
   let messages = [];
   if (!disableHistory) {
-    const history = await getRecentMessages(20);
+    const history = await getRecentMessages(8); // Reduced from 20 to avoid Groq TPM 6000 token limit
     messages = history.map(m => ({ role: m.role, content: m.content }));
   }
   
