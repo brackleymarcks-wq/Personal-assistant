@@ -9,7 +9,7 @@ const ArchivePage = {
   render() {
     return `
       <div class="archive-page" style="display:flex; flex-direction:column; height:100%; overflow:hidden;">
-        <div class="page-header" style="flex-shrink:0;">
+        <div class="page-header">
           <div>
             <div class="page-title">Архив задач</div>
             <div class="page-subtitle" id="archive-count-label">Загрузка…</div>

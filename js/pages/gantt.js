@@ -12,10 +12,10 @@ const GanttPage = {
   render() {
     return `
       <div class="gantt-page">
-        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <div class="page-header">
           <div>
-            <div class="page-title" style="font-size:20px;font-weight:700;">Диаграмма Ганта</div>
-            <div class="page-subtitle" id="gantt-subtitle" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Таймлайн задач по проектам</div>
+            <div class="page-title">Диаграмма Ганта</div>
+            <div class="page-subtitle" id="gantt-subtitle">Таймлайн задач по проектам</div>
           </div>
           <div class="page-actions">
             <div class="view-toggle">

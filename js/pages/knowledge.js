@@ -15,7 +15,7 @@ const KnowledgePage = {
 
   render() {
     return `
-      <div class="knowledge-page" style="display:flex; flex-direction:row; height:100%; background:var(--bg-primary); overflow:hidden;">
+      <div class="knowledge-page" style="display:flex; flex-direction:row; height:100%;  overflow:hidden;">
         
         <!-- Sidebar -->
         <div class="knowledge-sidebar" style="width:320px; background:rgba(var(--bg-surface-rgb), 0.5); border-right:1px solid var(--border-light); display:flex; flex-direction:column; flex-shrink:0;">

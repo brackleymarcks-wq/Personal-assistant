@@ -10,7 +10,7 @@ const NotesPage = {
   render() {
     return `
       <div class="notes-page" style="height: 100%; display: flex; flex-direction: column; background: transparent;">
-        <div class="page-header" style="background:transparent;padding:var(--space-md) var(--space-xl);display:flex;align-items:center;justify-content:space-between;flex-shrink:0; border-bottom: 1px solid var(--glass-border);">
+        <div class="page-header">
           <div>
             <div class="page-title" style="font-size:24px;font-weight:700; color: var(--text-primary);">Дневник и Заметки</div>
             <div class="page-subtitle" id="notes-count" style="font-size:13px;color:var(--text-muted);margin-top:4px;">Загрузка...</div>

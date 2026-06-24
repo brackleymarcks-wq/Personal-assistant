@@ -8,11 +8,11 @@ const InboxPage = {
 
   render() {
     return `
-      <div class="inbox-page" style="display:flex;flex-direction:column;height:100%;background:var(--bg-primary);">
-        <div class="page-header" style="background:var(--bg-surface);padding:var(--space-lg) var(--space-xl);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div class="$($matches[1] -replace "-page","")-page" style="display:flex;flex-direction:column;height:100%;">
+        <div class="page-header">
           <div>
-            <div class="page-title" style="font-size:20px;font-weight:700;">Входящие</div>
-            <div class="page-subtitle" id="inbox-count-label" style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Загрузка…</div>
+            <div class="page-title">Входящие</div>
+            <div class="page-subtitle" id="inbox-count-label">Загрузка…</div>
           </div>
           <button id="inbox-archive-toggle" class="btn btn-sm btn-secondary">
             <i data-lucide="archive"></i> <span>Архив</span>
