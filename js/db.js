@@ -417,9 +417,9 @@ const DB = {
     }); // Inbox now returns all items regardless of global area filter so we can filter locally
   },
 
-  async addToInbox(content) {
+  async addToInbox(content, areaOverride = null) {
     const userId = Config.userId;
-    const area = Config.currentArea !== 'Все' ? Config.currentArea : 'Работа';
+    const area = areaOverride || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
     const textWithArea = `[[AREA:${area}]]${content}`;
     const { data, error } = await _supabase.from('inbox').insert({ user_id: userId, content: textWithArea }).select().single();
     if (error) throw error;

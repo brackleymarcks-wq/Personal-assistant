@@ -68,7 +68,8 @@ const InboxPage = {
       if (window.lucide) window.lucide.createIcons();
 
       try {
-        await DB.addToInbox(text);
+        const targetArea = InboxPage.currentFilter !== 'Все' ? InboxPage.currentFilter : null;
+        await DB.addToInbox(text, targetArea);
         input.value = '';
         UI.toast('Мысль сохранена!', 'success');
         await this.load();
