@@ -175,7 +175,7 @@ const ArchivePage = {
     `;
 
     return `
-      <div class="archive-card glass-panel" style="padding: 20px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; border-left: 4px solid ${isDone ? 'var(--success)' : 'var(--text-muted)'}; margin-bottom: 16px;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.transform='none'; this.style.boxShadow='var(--shadow-glass)'">
+      <div class="archive-card glass-panel" style="padding: 20px; border-radius: var(--radius-lg); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; border-left: 4px solid ${isDone ? 'var(--success)' : 'var(--text-muted)'}; margin-bottom: 16px;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.transform='none'; this.style.boxShadow='var(--shadow-glass)'">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
           <div>
             <div style="font-weight: 500; font-size: 15px; margin-bottom: 4px; ${!isDone ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${this.escHtml(task.title)}</div>
