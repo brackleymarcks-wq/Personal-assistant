@@ -109,25 +109,25 @@ const HabitsPage = {
       const streak = this.calculateStreak(habit.id);
 
       return `
-        <div class="habit-card" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-lg);box-shadow:var(--shadow-sm);">
-          <div class="habit-header" style="display:flex;justify-content:space-between;align-items:start;margin-bottom:var(--space-md);">
+        <div class="habit-card">
+          <div class="habit-header">
             <div>
-              <div class="habit-title" style="font-weight:600;font-size:16px;">${this.escapeHtml(habit.name)}</div>
-              <div class="habit-streak" style="font-size:12px;color:var(--warning);display:flex;align-items:center;gap:4px;margin-top:2px;">
+              <div class="habit-title">${this.escapeHtml(habit.name)}</div>
+              <div class="habit-streak">
                 <i data-lucide="flame" style="width:14px;height:14px;"></i> ${streak} ${this.getPlural(streak, 'день', 'дня', 'дней')} подряд
               </div>
             </div>
-            <div class="habit-actions" style="display:flex;gap:4px;">
-              <button class="habit-btn edit-habit-btn" data-id="${habit.id}" data-name="${this.escapeHtml(habit.name)}" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--text-secondary);">
+            <div class="habit-actions">
+              <button class="habit-btn edit-habit-btn" data-id="${habit.id}" data-name="${this.escapeHtml(habit.name)}" title="Редактировать">
                 <i data-lucide="pencil" style="width:16px;height:16px;"></i>
               </button>
-              <button class="habit-btn danger delete-habit-btn" data-id="${habit.id}" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--text-secondary);">
+              <button class="habit-btn danger delete-habit-btn" data-id="${habit.id}" title="Удалить">
                 <i data-lucide="trash-2" style="width:16px;height:16px;"></i>
               </button>
             </div>
           </div>
           
-          <div class="habit-days" style="display:flex;justify-content:space-between;gap:8px;">
+          <div class="habit-days">
             ${this.dates.map(date => {
               const dateStr = date.toISOString().split('T')[0];
               const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short' }).toUpperCase();
@@ -135,13 +135,12 @@ const HabitsPage = {
               const isLogged = logsForHabit.some(l => l.date === dateStr && l.status === 'done');
               
               return `
-                <div class="habit-day-col" style="display:flex;flex-direction:column;align-items:center;gap:6px;">
-                  <div class="habit-day-label" style="font-size:10px;color:${isToday ? 'var(--accent)' : 'var(--text-muted)'};font-weight:600;">${dayName}</div>
+                <div class="habit-day-col">
+                  <div class="habit-day-label ${isToday ? 'today' : ''}">${dayName}</div>
                   <div class="habit-bubble ${isLogged ? 'checked' : ''}" 
                     data-habit-id="${habit.id}" 
                     data-date="${dateStr}" 
-                    data-checked="${isLogged}"
-                    style="width:32px;height:32px;border-radius:var(--radius-md);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;background:${isLogged ? 'var(--success)' : 'var(--bg-secondary)'};color:${isLogged ? 'white' : 'transparent'};">
+                    data-checked="${isLogged}">
                     <i data-lucide="check" style="width:16px;height:16px;"></i>
                   </div>
                 </div>
