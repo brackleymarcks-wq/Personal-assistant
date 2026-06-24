@@ -663,10 +663,9 @@ const Gemini = {
   },
 
   async parseInboxItem(text) {
-    const { geminiKey, geminiUrl, geminiModel } = Config.get();
-    const apiKey = geminiKey;
-    const apiUrl = geminiUrl || DEFAULT_API_URL;
-    const model = geminiModel || DEFAULT_MODEL;
+    const apiKey = Config.geminiKey;
+    const apiUrl = Config.aiApiUrl;
+    const model = Config.aiModel;
     if (!apiKey) throw new Error('API ключ не настроен (нужен для ИИ)');
 
     const prompt = `Ты — умный парсер входящих мыслей по системе GTD. 
@@ -720,10 +719,9 @@ const Gemini = {
   },
 
   async assistWithNote(content, userPrompt, type) {
-    const { geminiKey, geminiUrl, geminiModel } = Config.get();
-    const apiKey = geminiKey;
-    const apiUrl = geminiUrl || DEFAULT_API_URL;
-    const model = geminiModel || DEFAULT_MODEL;
+    const apiKey = Config.geminiKey;
+    const apiUrl = Config.aiApiUrl;
+    const model = Config.aiModel;
     if (!apiKey) throw new Error('API ключ не настроен (нужен для ИИ)');
 
     let systemPrompt = '';
@@ -772,10 +770,9 @@ const Gemini = {
   },
 
   async autoFillKnowledge(content) {
-    const { geminiKey, geminiUrl, geminiModel } = Config.get();
-    const apiKey = geminiKey;
-    const apiUrl = geminiUrl || DEFAULT_API_URL;
-    const model = geminiModel || DEFAULT_MODEL;
+    const apiKey = Config.geminiKey;
+    const apiUrl = Config.aiApiUrl;
+    const model = Config.aiModel;
     if (!apiKey) throw new Error('API ключ не настроен (нужен для ИИ)');
 
     const systemPrompt = `Ты — умный ассистент, который помогает структурировать базу знаний пользователя. 

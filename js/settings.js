@@ -162,6 +162,14 @@ const SettingsModule = {
             <label class="form-label">Gemini API Key</label>
             <input id="key-gemini" type="password" class="form-input" value="${this.esc(cfg.geminiKey || '')}" placeholder="AIza…" />
           </div>
+          <div class="form-group">
+            <label class="form-label">API URL (сервер)</label>
+            <input id="key-ai-url" type="text" class="form-input" value="${this.esc(cfg.aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions')}" placeholder="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Модель ИИ</label>
+            <input id="key-ai-model" type="text" class="form-input" value="${this.esc(cfg.aiModel || 'openrouter/free')}" placeholder="gemini-1.5-pro" />
+          </div>
           <div style="margin-top:var(--space-md)">
             <a href="https://aistudio.google.com/app/apikey" target="_blank" class="btn btn-secondary btn-sm">
               🔑 Получить Gemini API Key
@@ -219,7 +227,9 @@ const SettingsModule = {
       Config.save({
         supabaseUrl: document.getElementById('key-supabase-url')?.value.trim(),
         supabaseKey: document.getElementById('key-supabase-key')?.value.trim(),
-        geminiKey: document.getElementById('key-gemini')?.value.trim()
+        geminiKey: document.getElementById('key-gemini')?.value.trim(),
+        aiApiUrl: document.getElementById('key-ai-url')?.value.trim(),
+        aiModel: document.getElementById('key-ai-model')?.value.trim()
       });
       UI.toast('API ключи сохранены. Перезагрузи страницу.', 'success');
       this.close();
