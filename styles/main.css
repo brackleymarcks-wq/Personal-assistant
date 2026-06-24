@@ -3820,7 +3820,6 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-lg);
   padding: var(--space-xl);
-  background: var(--bg-primary);
 }
 
 @media (max-width: 768px) {
