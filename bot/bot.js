@@ -194,6 +194,50 @@ async function getGamificationStats() {
   return { tasksDone: tasksDone || 0, habitsDone: habitsDone || 0, totalXp: xp };
 }
 
+async function removeDuplicateTasks() {
+  const user = await getUser();
+  if (!user) return 0;
+
+  const { data: tasks, error } = await db.from('tasks')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching tasks for deduplication:', error);
+    throw error;
+  }
+
+  const seen = new Set();
+  const toDelete = [];
+
+  for (const t of tasks) {
+    if (t.status === 'Готово' || t.status === 'Отменена') continue;
+
+    const sig = `${t.title.trim().toLowerCase()}_${t.deadline || 'no-deadline'}_${t.area || 'Работа'}`;
+    if (seen.has(sig)) {
+      toDelete.push(t.id);
+    } else {
+      seen.add(sig);
+    }
+  }
+
+  if (toDelete.length > 0) {
+    console.log(`[Deduplication] Deleting ${toDelete.length} duplicate tasks...`);
+    const { error: delError } = await db.from('tasks')
+      .delete()
+      .in('id', toDelete);
+    
+    if (delError) {
+      console.error('Error deleting duplicate tasks:', delError);
+      throw delError;
+    }
+    return toDelete.length;
+  }
+
+  return 0;
+}
+
 async function createTask(title, opts = {}) {
   const user = await getUser();
   const { data, error } = await db.from('tasks').insert({
@@ -658,6 +702,13 @@ async function executeFunctionCall(name, args) {
           const task = await createTask(t.title, t);
           created.push(task);
         }
+        
+        try {
+          await removeDuplicateTasks();
+        } catch(e) {
+          console.error('Auto-deduplication on task creation failed:', e.message);
+        }
+
         const titles = created.map(t => t.title).join('", "');
         return { success: true, count: created.length, message: `Успешно создано задач: ${created.length}. ("${titles}")` };
       }
@@ -2069,6 +2120,19 @@ cron.schedule('0 7 * * *', async () => {
   }
 }, { timezone: 'UTC' });
 
+// Ночное удаление дубликатов задач: 3:00 по Минску = 0:00 UTC
+cron.schedule('0 0 * * *', async () => {
+  console.log('⏰ Cron: удаление дубликатов задач');
+  try {
+    const deletedCount = await removeDuplicateTasks();
+    if (deletedCount > 0) {
+      sendProactiveMessage(`🧹 **Уборка задач:** Автоматически удалено дубликатов задач: ${deletedCount}.`);
+    }
+  } catch(e) {
+    console.error('Cron deduplication error:', e);
+  }
+}, { timezone: 'UTC' });
+
 console.log('✅ Cron-задачи настроены:');
 console.log('   🏃 Подъем и бег: 7:00');
 console.log('   📝 Утренний брифинг: 8:45');
@@ -2079,6 +2143,7 @@ console.log('   🛑 Стоп работы: 20:00');
 console.log('   🛌 Отход ко сну: 22:00');
 console.log('   📊 Еженедельный обзор: Вс 19:00');
 console.log('   ⚠️ Проверка дедлайнов: 10:00');
+console.log('   🧹 Уборка дубликатов задач: 3:00');
 
 // [NEW] Умные напоминания (AI Календарь) — проверка каждую минуту
 const notifiedEvents = new Set();
