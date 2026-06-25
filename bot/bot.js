@@ -1127,9 +1127,9 @@ bot.on('photo', async (msg) => {
 Напиши это просто текстом. Никаких функций не вызывай.`;
 
     // Вызываем API только для извлечения текста
-    let visionUrl = process.env.GROQ_API_KEY ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions';
-    let visionKey = process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY;
-    let visionModel = process.env.GROQ_API_KEY ? 'llama-3.2-90b-vision-preview' : 'google/gemini-2.0-flash-exp:free';
+    let visionUrl = isOpenRouter ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
+    let visionKey = isOpenRouter ? (process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY) : process.env.GROQ_API_KEY;
+    let visionModel = isOpenRouter ? 'google/gemini-2.0-flash-exp:free' : 'llama-3.2-90b-vision-preview';
     
     const visionRes = await fetch(visionUrl, {
       method: 'POST',
@@ -1137,7 +1137,7 @@ bot.on('photo', async (msg) => {
       body: JSON.stringify({
         model: visionModel,
         messages: [{ role: 'user', content: [{ type: 'text', text: visionPrompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
-        max_tokens: 500
+        max_tokens: 1000
       })
     });
     
