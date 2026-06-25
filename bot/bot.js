@@ -724,14 +724,7 @@ async function executeFunctionCall(name, args) {
       }
       case 'start_deep_work': {
         const mins = args.minutes || 60;
-        globalDeepWorkUntil = Date.now() + mins * 60 * 1000;
-        
-        if (deepWorkTimeout) clearTimeout(deepWorkTimeout);
-        deepWorkTimeout = setTimeout(() => {
-          globalDeepWorkUntil = null;
-          bot.sendMessage(CHAT_ID, '⏳ Режим Deep Work завершен! Как успехи? Напоминаю, что во время работы ты мог присылать мне сообщения — они все ждут тебя во вкладке Инбокс в веб-интерфейсе.').catch(e => console.error(e));
-        }, mins * 60 * 1000);
-
+        await startDeepWorkMode(CHAT_ID, mins);
         return { success: true, message: `Режим Deep Work активирован на ${mins} минут.` };
       }
       case 'get_habits': {
@@ -1325,6 +1318,27 @@ bot.on('callback_query', async (query) => {
     } catch (e) {
       console.error('Callback query finance error:', e);
     }
+  } else if (data === 'focus_stop') {
+    try {
+      globalDeepWorkUntil = null;
+      if (deepWorkTimeout) clearTimeout(deepWorkTimeout);
+      await bot.answerCallbackQuery(query.id, { text: 'Фокусировка отменена!' });
+      await bot.editMessageText('🧠 Режим Deep Work досрочно завершен.', {
+        chat_id: chatId,
+        message_id: messageId
+      }).catch(e => console.error(e));
+    } catch (e) {
+      console.error('Callback query focus_stop error:', e);
+    }
+  } else if (data && data.startsWith('focus_start:')) {
+    const mins = parseInt(data.split(':')[1], 10);
+    try {
+      await bot.answerCallbackQuery(query.id, { text: `Запускаем на ${mins} мин! 🚀` });
+      await bot.deleteMessage(chatId, messageId).catch(() => {});
+      await startDeepWorkMode(chatId, mins);
+    } catch (e) {
+      console.error('Callback query focus_start error:', e);
+    }
   }
 });
 
@@ -1402,6 +1416,73 @@ async function sendFinanceSummary(chatId, messageId = null) {
       bot.sendMessage(chatId, '❌ Ошибка формирования отчета: ' + e.message);
     }
   }
+}
+
+// /focus и /deepwork — управление режимом фокусировки
+bot.onText(/\/(focus|deepwork)/, async (msg) => {
+  const chatId = msg.chat.id;
+  const text = msg.text || '';
+  
+  const match = text.match(/\d+/);
+  const mins = match ? parseInt(match[0], 10) : null;
+
+  if (mins) {
+    await startDeepWorkMode(chatId, mins);
+  } else {
+    if (globalDeepWorkUntil && Date.now() < globalDeepWorkUntil) {
+      const remainingMins = Math.round((globalDeepWorkUntil - Date.now()) / 60000);
+      const keyboard = [[{ text: '🛑 Завершить досрочно', callback_data: 'focus_stop' }]];
+      
+      await bot.sendMessage(chatId, `🧠 Ты сейчас в режиме *Deep Work*. Осталось работать примерно ${remainingMins} мин.`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard }
+      }).catch(() => {
+        bot.sendMessage(chatId, `🧠 Ты сейчас в режиме Deep Work. Осталось работать примерно ${remainingMins} мин.`, {
+          reply_markup: { inline_keyboard: keyboard }
+        });
+      });
+    } else {
+      const keyboard = [
+        [
+          { text: '⏱ 25 минут', callback_data: 'focus_start:25' },
+          { text: '⏱ 45 минут', callback_data: 'focus_start:45' }
+        ],
+        [
+          { text: '⏱ 60 минут', callback_data: 'focus_start:60' },
+          { text: '⏱ 90 минут', callback_data: 'focus_start:90' }
+        ]
+      ];
+      await bot.sendMessage(chatId, `🧠 Режим *Deep Work* (фокусировка) не активен. Выбери время, чтобы запустить его:`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard }
+      }).catch(() => {
+        bot.sendMessage(chatId, `🧠 Режим Deep Work (фокусировка) не активен. Выбери время, чтобы запустить его:`, {
+          reply_markup: { inline_keyboard: keyboard }
+        });
+      });
+    }
+  }
+});
+
+async function startDeepWorkMode(chatId, mins) {
+  globalDeepWorkUntil = Date.now() + mins * 60 * 1000;
+  
+  if (deepWorkTimeout) clearTimeout(deepWorkTimeout);
+  deepWorkTimeout = setTimeout(() => {
+    globalDeepWorkUntil = null;
+    bot.sendMessage(chatId, '⏳ Режим Deep Work завершен! Как успехи? Напоминаю, что во время работы ты мог присылать мне сообщения — они все ждут тебя во вкладке Инбокс в веб-интерфейсе.').catch(e => console.error(e));
+  }, mins * 60 * 1000);
+
+  const keyboard = [[{ text: '🛑 Завершить досрочно', callback_data: 'focus_stop' }]];
+
+  await bot.sendMessage(chatId, `🧠 Режим *Deep Work* успешно активирован на ${mins} минут! Все входящие сообщения будут тихо сохранены во входящие (Inbox). Удачи! 🚀`, {
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: keyboard }
+  }).catch(() => {
+    bot.sendMessage(chatId, `🧠 Режим Deep Work успешно активирован на ${mins} минут! Все входящие сообщения будут тихо сохранены во входящие (Inbox). Удачи! 🚀`, {
+      reply_markup: { inline_keyboard: keyboard }
+    });
+  });
 }
 
 // /tasks — список задач
