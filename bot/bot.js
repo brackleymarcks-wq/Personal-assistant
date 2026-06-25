@@ -1020,9 +1020,10 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
     const errMsg = err.error?.message || `API error ${res.status}`;
     
     if (res.status === 429 && retryCount < 2) {
-      if (errMsg.includes('tokens per day') || errMsg.includes('TPD')) {
-        console.warn('Groq TPD limit reached! Falling back to smaller model...');
-        return callAPI(systemInstruction, messages, retryCount + 1, isVision, 'llama-3.1-8b-instant', disableTools);
+      if (errMsg.includes('tokens per day') || errMsg.includes('TPD') || errMsg.includes('rate limit')) {
+        console.warn('Rate limit reached! Falling back to an alternative model...');
+        let fallbackModel = AI_API_URL.includes('openrouter') ? 'google/gemini-2.5-flash:free' : 'llama-3.1-8b-instant';
+        return callAPI(systemInstruction, messages, retryCount + 1, isVision, fallbackModel, disableTools);
       }
 
       let waitTime = 20;
@@ -1031,9 +1032,10 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
       if (matchM && matchM[1]) waitTime = parseFloat(matchM[1]) * 60 + 1;
       else if (matchS && matchS[1]) waitTime = parseFloat(matchS[1]) + 1;
       
-      if (waitTime > 30 && AI_API_URL.includes('groq')) {
-         console.warn(`Wait time ${waitTime}s is too long, falling back to smaller model...`);
-         return callAPI(systemInstruction, messages, retryCount + 1, isVision, 'llama-3.1-8b-instant', disableTools);
+      if (waitTime > 30) {
+         console.warn(`Wait time ${waitTime}s is too long, falling back to alternative model...`);
+         let fallbackModel = AI_API_URL.includes('openrouter') ? 'google/gemini-2.5-flash:free' : 'llama-3.1-8b-instant';
+         return callAPI(systemInstruction, messages, retryCount + 1, isVision, fallbackModel, disableTools);
       }
 
       console.warn(`Rate limit hit. Waiting ${waitTime}s...`);
