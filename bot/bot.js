@@ -914,7 +914,7 @@ async function executeFunctionCall(name, args) {
   }
 }
 
-async function askAI(userMessage, context = '', imageUrl = null, disableTools = false, disableHistory = false, allowedTools = null) {
+async function askAI(userMessage, context = '', imageUrl = null, disableTools = false, disableHistory = false, allowedTools = null, minimalSystem = false) {
   if (!AI_API_KEY) return 'API ключ для нейросети не настроен (AI_API_KEY).';
 
   const settings = await getSettings();
@@ -926,7 +926,7 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
   });
 
   let extraCtx = '';
-  if (settings.context?.custom_instructions?.length) {
+  if (settings.context?.custom_instructions?.length && !minimalSystem) {
     const validInstructions = settings.context.custom_instructions.filter(i => !i.includes('ALTER TABLE tasks'));
     if (validInstructions.length) {
       extraCtx = '\n\nДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ:\n' +
@@ -939,7 +939,12 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
     context = context.substring(0, 3000) + '... (контекст обрезан из-за лимитов Groq)';
   }
 
-  const systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr}${extraCtx}${context ? '\n\n' + context : ''}`;
+  let systemInstruction = '';
+  if (minimalSystem) {
+    systemInstruction = `Ты технический ИИ-ассистент. Твоя единственная цель - вызывать нужные функции для обработки данных (например, транзакций или привычек). Никаких лишних слов.\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr}`;
+  } else {
+    systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr}${extraCtx}${context ? '\n\n' + context : ''}`;
+  }
 
   let messages = [];
   if (!disableHistory) {
@@ -1119,12 +1124,10 @@ bot.on('photo', async (msg) => {
     let userCaption = msg.caption ? `Комментарий пользователя: ${msg.caption}\n` : '';
     
     // Шаг 1: Просим Vision-модель (которая может не уметь вызывать инструменты) просто подробно описать чек
-    const visionPrompt = `Ты профессиональный бухгалтер. Внимательно изучи этот чек. 
-Извлеки: 
-1. Итоговую сумму (только число).
-2. Способ оплаты (наличные, карта и т.д.).
-3. ПОЛНЫЙ список всех покупок (название товара, количество, цена). Это критически важно для аналитики. Ничего не пропускай!
-Напиши это просто текстом. Никаких функций не вызывай.`;
+    const visionPrompt = `Ты профессиональный бухгалтер. Изучи этот чек. 
+Извлеки: 1) Итоговую сумму, 2) Способ оплаты, 3) ПОЛНЫЙ список покупок. 
+КРИТИЧНО: Пиши МАКСИМАЛЬНО КРАТКО! Без лишних слов, пробелов и переносов строк. 
+Формат: Товар 1шт 2.50р, Товар2 2шт 5.00р. Ничего не пропускай, но экономь символы!`;
 
     // Вызываем API только для извлечения текста
     let visionUrl = isOpenRouter ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
@@ -1172,8 +1175,8 @@ ${receiptDescription}
 
 ПОСЛЕ успешного вызова функции, обязательно напиши пользователю красивый ответ, в котором ОБЯЗАТЕЛЬНО перечисли все купленные товары из чека списком, чтобы он видел их в чате!`;
 
-    // Вызываем askAI с отключенной историей и ТОЛЬКО с тремя нужными инструментами, чтобы радикально уменьшить размер запроса (Groq TPM 6000)
-    const aiResponse = await askAI(actionPrompt, '', null, false, true, ['create_transaction', 'get_habits', 'log_habit']);
+    // Вызываем askAI с отключенной историей, минимальным системным промптом и ТОЛЬКО нужными инструментами (радикальное уменьшение размера запроса для Groq)
+    const aiResponse = await askAI(actionPrompt, '', null, false, true, ['create_transaction', 'get_habits', 'log_habit'], true);
     
     // Сохраняем в историю
     await saveMessage('user', userCaption + ' [Фотография чека]');
