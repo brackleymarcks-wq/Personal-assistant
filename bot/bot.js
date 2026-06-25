@@ -19,11 +19,11 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 let CHAT_ID = '521675050';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
-const AI_API_KEY = process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY || process.env.GROQ_API_KEY;
+const AI_API_KEY = process.env.OPENROUTER_API_KEY || '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';
 const GROQ_API_KEY = process.env.GROQ_API_KEY; // Для транскрибации Whisper
-const isOpenRouter = process.env.OPENROUTER_API_KEY || (process.env.AI_API_KEY && process.env.AI_API_KEY.includes('sk-or'));
-const AI_API_URL = process.env.AI_API_URL || (isOpenRouter ? 'https://openrouter.ai/api/v1/chat/completions' : (process.env.GROQ_API_KEY ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions'));
-const AI_MODEL = process.env.AI_MODEL || (isOpenRouter ? 'meta-llama/llama-3.3-70b-instruct:free' : (process.env.GROQ_API_KEY ? 'llama-3.3-70b-versatile' : 'meta-llama/llama-3.3-70b-instruct:free'));
+const isOpenRouter = true;
+const AI_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const AI_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
 
 if (!BOT_TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN не задан в .env'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
@@ -1136,9 +1136,9 @@ bot.on('photo', async (msg) => {
 Формат: Товар 1шт 2.50р, Товар2 2шт 5.00р. Ничего не пропускай, но экономь символы!`;
 
     // Вызываем API только для извлечения текста
-    let visionUrl = isOpenRouter ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
-    let visionKey = isOpenRouter ? (process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY) : process.env.GROQ_API_KEY;
-    let visionModel = isOpenRouter ? 'google/gemini-2.0-flash-exp:free' : 'llama-3.2-90b-vision-preview';
+    let visionUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    let visionKey = AI_API_KEY;
+    let visionModel = 'google/gemini-2.0-flash-exp:free';
     
     const visionRes = await fetch(visionUrl, {
       method: 'POST',
