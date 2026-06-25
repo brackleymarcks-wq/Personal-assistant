@@ -133,20 +133,46 @@ const FinancesPage = {
 
   async loadConfig() {
     try {
-      const allNotes = await DB.getNotes();
-      const configNote = allNotes.find(n => n.title === 'SYSTEM_CONFIG_FINANCES');
-      if (configNote) {
+      const userId = Config.userId;
+      if (!DB.client) {
+        console.error('Database client not initialized');
+        return;
+      }
+      
+      const { data, error } = await DB.client
+        .from('notes')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('title', 'SYSTEM_CONFIG_FINANCES');
+        
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        // Sort by updated_at descending to get the newest/freshest config note
+        data.sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+        const configNote = data[0];
         this.configNoteId = configNote.id;
+        
         try {
           const parsed = JSON.parse(configNote.content);
           this.config = { ...this.config, ...parsed };
         } catch(e) {}
+        
+        // Clean up duplicate systemic config notes if any were created under other areas
+        if (data.length > 1) {
+          console.warn('Cleaning up duplicate SYSTEM_CONFIG_FINANCES notes...');
+          for (let i = 1; i < data.length; i++) {
+            await DB.deleteNote(data[i].id);
+          }
+        }
       } else {
+        // Create new config note in a fixed area 'Работа' so it is always accessible globally
         const newNote = await DB.createNote({
           title: 'SYSTEM_CONFIG_FINANCES',
           content: JSON.stringify(this.config),
           mood: '⚙️',
-          tags: ['system']
+          tags: ['system'],
+          area: 'Работа'
         });
         this.configNoteId = newNote.id;
       }
@@ -426,7 +452,7 @@ const FinancesPage = {
                  <i data-lucide="${this.ICONS[cat] || 'circle-dollar-sign'}" style="width:14px;height:14px;color:var(--text-muted)"></i>
                  ${this.esc(cat)}
               </span>
-              <div style="text-align:right">
+              <div style="text-align:right; white-space: nowrap; flex-shrink: 0; margin-left: 8px;">
                  <span style="color: var(--text-primary); font-weight:600;">${spent.toLocaleString('ru-RU')} BYN</span>
                  ${limit > 0 ? `<span style="color: var(--text-muted); font-size:11px;"> из ${limit.toLocaleString('ru-RU')}</span>` : ''}
               </div>
@@ -1090,7 +1116,7 @@ ${JSON.stringify(historySummary, null, 2)}
       <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Детальные лимиты по категориям:</div>
     `;
 
-    inputs += this.categories.expense.map(cat => {
+    inputs += this.categories.expense.map((cat, index) => {
       const currentVal = this.config.budgets[cat] || '';
       return `
         <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid var(--border-light);">
@@ -1098,7 +1124,7 @@ ${JSON.stringify(historySummary, null, 2)}
             <i data-lucide="${this.ICONS[cat] || 'circle-dollar-sign'}" style="width:18px;height:18px;color:var(--text-muted)"></i>
             ${this.esc(cat)}
           </div>
-          <input type="number" id="budget-${btoa(unescape(encodeURIComponent(cat))).replace(/=/g, '')}" value="${currentVal}" placeholder="Без лимита" class="form-input" style="width:120px; text-align:right;">
+          <input type="number" id="budget-cat-${index}" value="${currentVal}" placeholder="Без лимита" class="form-input" style="width:120px; text-align:right;">
         </div>
       `;
     }).join('');
@@ -1138,8 +1164,8 @@ ${JSON.stringify(historySummary, null, 2)}
       else delete this.config.monthlyLimit;
     }
 
-    this.categories.expense.forEach(cat => {
-      const id = 'budget-' + btoa(unescape(encodeURIComponent(cat))).replace(/=/g, '');
+    this.categories.expense.forEach((cat, index) => {
+      const id = 'budget-cat-' + index;
       const input = document.getElementById(id);
       if (input) {
         const val = Number(input.value);
