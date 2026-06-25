@@ -1117,8 +1117,9 @@ bot.on('photo', async (msg) => {
   try {
     const sentMsg = await bot.sendMessage(msg.chat.id, '👀 Изучаю чек...');
     
-    // Получаем фото в максимальном разрешении
-    const fileId = msg.photo[msg.photo.length - 1].file_id;
+    // Получаем фото в среднем разрешении, чтобы избежать 504 тайм-аутов на OpenRouter из-за огромного размера base64
+    const photoIndex = msg.photo.length > 1 ? msg.photo.length - 2 : 0;
+    const fileId = msg.photo[photoIndex].file_id;
     const fileLink = await bot.getFileLink(fileId);
     
     // Скачиваем фото и конвертируем в base64
