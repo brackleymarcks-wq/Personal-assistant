@@ -973,7 +973,13 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
   // Сразу отправляем статус "Печатает...", чтобы не казалось, что бот завис
   bot.sendChatAction(CHAT_ID, 'typing').catch(() => {});
 
-  let response = await callAPI(systemInstruction, messages, 0, !!imageUrl, null, disableTools, activeTools);
+  // Для чеков (minimalSystem = true) всегда используем Gemini Flash, так как у нее контекст 2 млн токенов, а у Llama 3.3 Free - лимит 6000 TPM
+  let overrideModel = null;
+  if (minimalSystem && isOpenRouter) {
+    overrideModel = 'google/gemini-2.0-flash-exp:free';
+  }
+
+  let response = await callAPI(systemInstruction, messages, 0, !!imageUrl, overrideModel, disableTools, activeTools);
   let maxIter = 5;
 
   while (maxIter-- > 0) {
@@ -999,7 +1005,7 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
       });
     }
 
-    response = await callAPI(systemInstruction, messages, 0, !!imageUrl, null, disableTools, activeTools);
+    response = await callAPI(systemInstruction, messages, 0, !!imageUrl, overrideModel, disableTools, activeTools);
   }
 
   return response.choices?.[0]?.message?.content || 'Не удалось получить ответ';
@@ -1149,6 +1155,11 @@ bot.on('photo', async (msg) => {
     
     if (!receiptDescription) {
       throw new Error(`Не удалось прочитать фотографию чека: ${JSON.stringify(visionData.error || visionData)}`);
+    }
+
+    // Если описание слишком длинное, жестко обрезаем его, чтобы гарантированно влезть в 6000 TPM лимит Groq
+    if (receiptDescription.length > 3000) {
+      receiptDescription = receiptDescription.substring(0, 3000) + '\n... (чек обрезан из-за огромного размера)';
     }
 
     // Шаг 2: Передаем извлеченный текст ОБЫЧНОЙ текстовой модели, которая идеально умеет вызывать инструменты
