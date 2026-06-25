@@ -23,7 +23,7 @@ const AI_API_KEY = process.env.OPENROUTER_API_KEY || 'sk-or-v1-145e4770c93f96c02
 const GROQ_API_KEY = process.env.GROQ_API_KEY; // Для транскрибации Whisper
 const isOpenRouter = true;
 const AI_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const AI_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
+const AI_MODEL = 'openrouter/free';
 
 if (!BOT_TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN не задан в .env'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
@@ -976,7 +976,7 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
   // Для чеков (minimalSystem = true) всегда используем Gemini Flash, так как у нее контекст 2 млн токенов, а у Llama 3.3 Free - лимит 6000 TPM
   let overrideModel = null;
   if (minimalSystem && isOpenRouter) {
-    overrideModel = 'google/gemini-2.0-flash-exp:free';
+    overrideModel = 'openrouter/free';
   }
 
   let response = await callAPI(systemInstruction, messages, 0, !!imageUrl, overrideModel, disableTools, activeTools);
@@ -1045,7 +1045,7 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
     if (res.status === 429 && retryCount < 2) {
       if (errMsg.includes('tokens per day') || errMsg.includes('TPD') || errMsg.includes('rate limit')) {
         console.warn('Rate limit reached! Falling back to an alternative model...');
-        let fallbackModel = AI_API_URL.includes('openrouter') ? 'google/gemini-2.0-flash-exp:free' : 'llama-3.1-8b-instant';
+        let fallbackModel = AI_API_URL.includes('openrouter') ? 'openrouter/free' : 'llama-3.1-8b-instant';
         return callAPI(systemInstruction, messages, retryCount + 1, isVision, fallbackModel, disableTools);
       }
 
@@ -1057,7 +1057,7 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
       
       if (waitTime > 30) {
          console.warn(`Wait time ${waitTime}s is too long, falling back to alternative model...`);
-         let fallbackModel = AI_API_URL.includes('openrouter') ? 'google/gemini-2.0-flash-exp:free' : 'llama-3.1-8b-instant';
+         let fallbackModel = AI_API_URL.includes('openrouter') ? 'openrouter/free' : 'llama-3.1-8b-instant';
          return callAPI(systemInstruction, messages, retryCount + 1, isVision, fallbackModel, disableTools);
       }
 
@@ -1138,7 +1138,7 @@ bot.on('photo', async (msg) => {
     // Вызываем API только для извлечения текста
     let visionUrl = 'https://openrouter.ai/api/v1/chat/completions';
     let visionKey = AI_API_KEY;
-    let visionModel = 'google/gemini-2.0-flash-exp:free';
+    let visionModel = 'nvidia/nemotron-nano-12b-v2-vl:free';
     
     const visionRes = await fetch(visionUrl, {
       method: 'POST',
