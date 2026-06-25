@@ -240,7 +240,7 @@ async function createTransaction(amount, type, category, comment = '', accountNa
 
   const { data, error } = await db.from('finances').insert({
     user_id: user?.id,
-    amount,
+    amount: parseFloat(amount),
     type,
     category,
     description: JSON.stringify(descriptionObj),
@@ -475,7 +475,7 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          amount: { type: 'number', description: 'Amount' },
+          amount: { type: 'string', description: 'Amount (must be a number string, e.g. "32.85")' },
           type: { type: 'string', description: 'income or expense' },
           category: { type: 'string', description: 'Invent category based on text (e.g. Transport, Food, Cafe, Salary)' },
           comment: { type: 'string', description: 'Original comment text' },
