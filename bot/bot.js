@@ -1339,6 +1339,37 @@ bot.on('callback_query', async (query) => {
     } catch (e) {
       console.error('Callback query focus_start error:', e);
     }
+  } else if (data === 'lessons_refresh') {
+    try {
+      await bot.answerCallbackQuery(query.id, { text: 'Список уроков обновлен! 🔄' });
+      await sendLessonsSummary(chatId, messageId);
+    } catch (e) {
+      console.error('Callback query lessons_refresh error:', e);
+    }
+  } else if (data && data.startsWith('lesson_pay:')) {
+    const lessonId = data.split(':')[1];
+    try {
+      const { data: lesson, error: errFetch } = await db.from('lessons')
+        .select('*, students(name, price)')
+        .eq('id', lessonId)
+        .single();
+      
+      if (errFetch || !lesson) throw new Error('Урок не найден.');
+
+      await db.from('lessons').update({ paid: true }).eq('id', lessonId);
+
+      const price = lesson.students?.price ? parseFloat(lesson.students.price) : 0;
+      const studentName = lesson.students?.name || 'Ученик';
+      if (price > 0) {
+        await createTransaction(price, 'income', 'Уроки (Английский)', `Оплата урока: ${studentName}`, 'Карта');
+      }
+
+      await bot.answerCallbackQuery(query.id, { text: `Оплата ${price} BYN успешно записана! 💰` });
+      await sendLessonsSummary(chatId, messageId);
+    } catch (e) {
+      console.error('Callback query lesson_pay error:', e);
+      bot.answerCallbackQuery(query.id, { text: '❌ Ошибка: ' + e.message, show_alert: true });
+    }
   }
 });
 
@@ -1483,6 +1514,103 @@ async function startDeepWorkMode(chatId, mins) {
       reply_markup: { inline_keyboard: keyboard }
     });
   });
+}
+
+// /lessons — список занятий и долгов (репетиторство)
+bot.onText(/\/lessons/, async (msg) => {
+  const chatId = msg.chat.id;
+  await sendLessonsSummary(chatId);
+});
+
+async function sendLessonsSummary(chatId, messageId = null) {
+  try {
+    const { data: upcoming } = await db.from('lessons')
+      .select('*, students(name, price)')
+      .eq('status', 'Запланирован')
+      .order('date', { ascending: true })
+      .limit(5);
+
+    const { data: unpaid } = await db.from('lessons')
+      .select('*, students(name, price)')
+      .eq('status', 'Проведен')
+      .eq('paid', false)
+      .order('date', { ascending: true });
+
+    let text = '📚 *Репетиторство и уроки:*\n\n';
+
+    text += '🕐 *Предстоящие занятия:*\n';
+    if (!upcoming || upcoming.length === 0) {
+      text += '  _Нет запланированных уроков._\n';
+    } else {
+      upcoming.forEach(l => {
+        const date = new Date(l.date);
+        const dateStr = date.toLocaleString('ru-RU', {
+          timeZone: 'Europe/Minsk',
+          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+        });
+        text += `  • *${l.students?.name || 'Ученик'}* — ${dateStr}\n`;
+        if (l.topic) text += `    _Тема: ${l.topic}_\n`;
+      });
+    }
+
+    text += '\n🔴 *Неоплаченные проведенные уроки:*\n';
+    const keyboard = [];
+
+    if (!unpaid || unpaid.length === 0) {
+      text += '  _Все проведенные уроки оплачены! 🎉_\n';
+    } else {
+      let totalDebt = 0;
+      unpaid.forEach(l => {
+        const date = new Date(l.date);
+        const dateStr = date.toLocaleDateString('ru-RU', {
+          timeZone: 'Europe/Minsk',
+          day: 'numeric', month: 'short'
+        });
+        const price = l.students?.price ? parseFloat(l.students.price) : 0;
+        totalDebt += price;
+        text += `  • *${l.students?.name || 'Ученик'}* (${dateStr}) — *${price} BYN*\n`;
+        
+        keyboard.push([{
+          text: `💰 Оплатить: ${l.students?.name} (${dateStr})`,
+          callback_data: `lesson_pay:${l.id}`
+        }]);
+      });
+      text += `\n💰 *Общая сумма долга:* ${totalDebt.toFixed(2)} BYN\n`;
+    }
+
+    keyboard.push([{ text: '🔄 Обновить список', callback_data: 'lessons_refresh' }]);
+
+    if (messageId) {
+      await bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard }
+      }).catch(async () => {
+        await bot.editMessageText(text, {
+          chat_id: chatId,
+          message_id: messageId,
+          reply_markup: { inline_keyboard: keyboard }
+        }).catch(e => console.error('Failed to edit lessons message:', e));
+      });
+    } else {
+      await bot.sendMessage(chatId, text, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard }
+      }).catch(() => {
+        bot.sendMessage(chatId, text, {
+          reply_markup: { inline_keyboard: keyboard }
+        });
+      });
+    }
+  } catch (e) {
+    const errorMsg = '❌ Ошибка при получении уроков: ' + e.message;
+    if (messageId) {
+      bot.sendMessage(chatId, errorMsg);
+    } else {
+      bot.sendMessage(chatId, errorMsg);
+    }
+  }
 }
 
 // /tasks — список задач
