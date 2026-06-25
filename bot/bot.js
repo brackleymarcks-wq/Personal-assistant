@@ -1151,7 +1151,7 @@ bot.on('photo', async (msg) => {
     });
     
     const visionData = await visionRes.json();
-    const receiptDescription = visionData.choices?.[0]?.message?.content;
+    let receiptDescription = visionData.choices?.[0]?.message?.content;
     
     if (!receiptDescription) {
       throw new Error(`Не удалось прочитать фотографию чека: ${JSON.stringify(visionData.error || visionData)}`);
