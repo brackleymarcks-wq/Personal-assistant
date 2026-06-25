@@ -1194,11 +1194,19 @@ ${receiptDescription}
     await saveMessage('user', userCaption + ' [Фотография чека]');
     await saveMessage('assistant', aiResponse);
     
-    bot.editMessageText(aiResponse, {
-      chat_id: msg.chat.id,
-      message_id: sentMsg.message_id,
-      parse_mode: 'Markdown'
-    });
+    try {
+      await bot.editMessageText(aiResponse, {
+        chat_id: msg.chat.id,
+        message_id: sentMsg.message_id,
+        parse_mode: 'Markdown'
+      });
+    } catch (err) {
+      console.warn('Telegram Markdown parsing failed, falling back to plain text:', err.message);
+      await bot.editMessageText(aiResponse, {
+        chat_id: msg.chat.id,
+        message_id: sentMsg.message_id
+      }).catch(e => console.error('Failed to send fallback message:', e));
+    }
   } catch (e) {
     console.error('Photo error:', e);
     bot.sendMessage(msg.chat.id, '❌ Произошла ошибка при распознавании фото: ' + e.message);
