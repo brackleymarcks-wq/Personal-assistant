@@ -76,7 +76,12 @@ const FinancesPage = {
                 <i data-lucide="settings" style="width:12px;height:12px;margin-right:4px;"></i> Настроить
               </button>
             </h3>
-            <div id="finance-analytics" style="display: flex; flex-direction: column; gap: 14px; max-height: 250px; overflow-y: auto; padding-right: 8px;"></div>
+            <div style="display: flex; gap: var(--space-lg); align-items: center; justify-content: center; flex-wrap: wrap;">
+              <div id="finance-donut-container" style="flex: 0 0 140px; width: 140px; height: 140px; display: flex; align-items: center; justify-content: center; position: relative;">
+                <!-- SVG Donut Chart dynamically populated -->
+              </div>
+              <div id="finance-analytics" style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 14px; max-height: 250px; overflow-y: auto; padding-right: 8px;"></div>
+            </div>
           </div>
 
           <!-- AI Assistant -->
@@ -196,8 +201,13 @@ const FinancesPage = {
     let expense = 0;
 
     monthTx.forEach(t => {
-      if (t.type === 'income') income += Number(t.amount);
-      if (t.type === 'expense') expense += Number(t.amount);
+      let isCorrection = false;
+      try { if (JSON.parse(t.description || '{}').text === 'Ручная корректировка баланса') isCorrection = true; } catch(e){}
+      
+      if (!isCorrection) {
+        if (t.type === 'income') income += Number(t.amount);
+        if (t.type === 'expense') expense += Number(t.amount);
+      }
     });
 
     const balance = income - expense;
@@ -267,26 +277,68 @@ const FinancesPage = {
     if (this.config.monthlyLimit && this.config.monthlyLimit > 0) {
       const limit = Number(this.config.monthlyLimit);
       const percent = Math.min(100, Math.round((expense / limit) * 100));
-      let color = 'linear-gradient(90deg, var(--accent), var(--accent-vibrant))';
-      if (percent >= 100) color = 'var(--danger)';
-      else if (percent >= 80) color = 'var(--warning)';
+      
+      let ringColor = 'var(--accent)';
+      let ringGlow = 'var(--accent-glow)';
+      if (percent >= 100) {
+        ringColor = 'var(--danger)';
+        ringGlow = 'rgba(239, 68, 68, 0.4)';
+      } else if (percent >= 80) {
+        ringColor = 'var(--warning)';
+        ringGlow = 'rgba(245, 158, 11, 0.4)';
+      }
 
       budgetHtml = `
-        <div class="finance-summary-card glass-panel" style="grid-column: 1 / -1; box-shadow: var(--shadow-sm); flex-direction: column; align-items: stretch; gap: 8px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-            <div class="finance-label" style="color:var(--text-primary); display:flex; align-items:center; gap:6px;">
-              <i data-lucide="target" style="width:14px;height:14px;color:var(--accent);"></i>
-              Бюджет на месяц
+        <div class="finance-summary-card glass-panel" style="grid-column: 1 / -1; box-shadow: var(--shadow-sm); display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-xl); padding: var(--space-xl); flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: var(--space-lg);">
+            <!-- SVG Progress Ring -->
+            <div style="position: relative; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              <svg width="80" height="80" viewBox="0 0 80 80" style="transform: rotate(-90deg);">
+                <!-- Track -->
+                <circle cx="40" cy="40" r="32" stroke="var(--bg-hover)" stroke-width="6" fill="transparent" />
+                <!-- Progress -->
+                <circle cx="40" cy="40" r="32" 
+                        stroke="${ringColor}" 
+                        stroke-width="6" 
+                        fill="transparent" 
+                        stroke-dasharray="${2 * Math.PI * 32}" 
+                        stroke-dashoffset="${(1 - percent / 100) * (2 * Math.PI * 32)}" 
+                        stroke-linecap="round"
+                        style="transition: stroke-dashoffset 0.5s ease, stroke 0.5s ease; filter: drop-shadow(0 0 6px ${ringGlow});" />
+              </svg>
+              <div style="position: absolute; font-size: 16px; font-weight: 700; color: var(--text-primary);">${percent}%</div>
             </div>
-            <div style="font-size:13px; font-weight:600; color:var(--text-secondary);">
-              <span style="color:var(--text-primary);">${expense.toLocaleString('ru-RU')}</span> / ${limit.toLocaleString('ru-RU')} BYN
+            
+            <!-- Info -->
+            <div>
+              <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                <i data-lucide="target" style="width: 18px; height: 18px; color: var(--accent);"></i>
+                Бюджет на месяц
+              </div>
+              <div style="font-size: 14px; color: var(--text-secondary);">
+                Потрачено <span style="color: var(--text-primary); font-weight: 600;">${expense.toLocaleString('ru-RU')}</span> из <span style="font-weight: 600;">${limit.toLocaleString('ru-RU')} BYN</span>
+              </div>
             </div>
           </div>
-          <div style="width: 100%; height: 8px; background: var(--bg-hover); border-radius: 4px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);">
-            <div style="width: ${percent}%; height: 100%; background: ${color}; border-radius: 4px; transition: width 0.3s ease;"></div>
+          
+          <!-- Alert Message -->
+          <div style="text-align: right; min-width: 150px;">
+            ${percent >= 100 
+              ? `<div style="font-size: 14px; font-weight: 600; color: var(--danger); display: flex; align-items: center; gap: 6px; justify-content: flex-end;">
+                   <i data-lucide="alert-triangle" style="width:16px;height:16px;"></i> Лимит превышен!
+                 </div>
+                 <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Перерасход на ${(expense - limit).toLocaleString('ru-RU')} BYN</div>`
+              : percent >= 80 
+                ? `<div style="font-size: 14px; font-weight: 600; color: var(--warning); display: flex; align-items: center; gap: 6px; justify-content: flex-end;">
+                     <i data-lucide="alert-circle" style="width:16px;height:16px;"></i> Бюджет на исходе
+                   </div>
+                   <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Осталось ${(limit - expense).toLocaleString('ru-RU')} BYN</div>`
+                : `<div style="font-size: 14px; font-weight: 600; color: var(--success); display: flex; align-items: center; gap: 6px; justify-content: flex-end;">
+                     <i data-lucide="check-circle" style="width:16px;height:16px;"></i> Всё под контролем
+                   </div>
+                   <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Свободно ${(limit - expense).toLocaleString('ru-RU')} BYN</div>`
+            }
           </div>
-          ${percent >= 100 ? `<div style="font-size:11px; color:var(--danger); text-align:right;">Бюджет превышен!</div>` : ''}
-          ${percent >= 80 && percent < 100 ? `<div style="font-size:11px; color:var(--warning); text-align:right;">Осталось ${(limit - expense).toLocaleString('ru-RU')} BYN</div>` : ''}
         </div>
       `;
     }
@@ -327,14 +379,26 @@ const FinancesPage = {
     // Render Analytics (Expenses by category)
     const expensesByCategory = {};
     monthTx.forEach(t => {
-      if (t.type === 'expense') {
+      let isCorrection = false;
+      try { if (JSON.parse(t.description || '{}').text === 'Ручная корректировка баланса') isCorrection = true; } catch(e){}
+
+      if (!isCorrection && t.type === 'expense') {
         expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + Number(t.amount);
       }
     });
 
     const analyticsEl = document.getElementById('finance-analytics');
+    const donutContainer = document.getElementById('finance-donut-container');
     if (expense === 0 && Object.keys(this.config.budgets).length === 0) {
       analyticsEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px 0;">Нет данных в этом месяце</div>';
+      if (donutContainer) {
+        donutContainer.innerHTML = `
+          <svg width="120" height="120" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="30" stroke="var(--bg-hover)" stroke-width="8" fill="transparent" />
+          </svg>
+          <div style="position: absolute; font-size: 11px; color: var(--text-muted); font-weight: 600; text-align: center;">Нет трат</div>
+        `;
+      }
     } else {
       const allCats = new Set([...Object.keys(expensesByCategory), ...Object.keys(this.config.budgets)]);
       
@@ -373,6 +437,64 @@ const FinancesPage = {
           </div>
         `;
       }).join('');
+
+      if (donutContainer) {
+        if (expense === 0) {
+          donutContainer.innerHTML = `
+            <svg width="120" height="120" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r="30" stroke="var(--bg-hover)" stroke-width="8" fill="transparent" />
+            </svg>
+            <div style="position: absolute; font-size: 11px; color: var(--text-muted); font-weight: 600; text-align: center;">Нет трат</div>
+          `;
+        } else {
+          const chartItems = items.filter(item => item.spent > 0);
+          let currentOffset = 0;
+          const radius = 30;
+          const circumference = 2 * Math.PI * radius;
+          
+          const CATEGORY_COLORS = {
+            'Продукты': '#34D399',      // Emerald green
+            'Транспорт': '#60A5FA',     // Blue
+            'Дом': '#F59E0B',           // Amber
+            'Развлечения': '#EC4899',   // Pink
+            'Здоровье': '#EF4444',      // Red
+            'Техника': '#8B5CF6',       // Purple
+            'Путешествия': '#14B8A6',   // Teal
+            'Другое': '#6B7280'         // Gray
+          };
+          const fallbackColors = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6', '#14B8A6', '#F43F5E', '#06B6D4', '#84CC16', '#A855F7'];
+          
+          let svgContent = `<svg width="120" height="120" viewBox="0 0 80 80" style="transform: rotate(-90deg); overflow: visible;">`;
+          
+          chartItems.forEach((item, index) => {
+            const percent = item.spent / expense;
+            const dashLength = percent * circumference;
+            const color = CATEGORY_COLORS[item.cat] || fallbackColors[index % fallbackColors.length];
+            
+            svgContent += `
+              <circle class="donut-segment" cx="40" cy="40" r="${radius}"
+                      stroke="${color}"
+                      stroke-width="8"
+                      fill="transparent"
+                      stroke-dasharray="${dashLength} ${circumference}"
+                      stroke-dashoffset="${-currentOffset}"
+                      style="transition: stroke-width 0.2s ease, filter 0.2s ease; cursor: pointer;"
+                      title="${this.esc(item.cat)}: ${item.spent.toLocaleString('ru-RU')} BYN" />
+            `;
+            currentOffset += dashLength;
+          });
+          
+          svgContent += `</svg>`;
+          svgContent += `
+            <div style="position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; width: 80px;">
+              <span style="font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Всего</span>
+              <span style="font-size: 13px; font-weight: 800; color: var(--text-primary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 76px;" title="${expense.toLocaleString('ru-RU')} BYN">${Math.round(expense).toLocaleString('ru-RU')}</span>
+            </div>
+          `;
+          
+          donutContainer.innerHTML = svgContent;
+        }
+      }
     }
 
     // Render List

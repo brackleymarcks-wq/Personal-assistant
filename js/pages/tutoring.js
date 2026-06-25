@@ -274,8 +274,17 @@ const TutoringPage = {
           displaySchedule = displaySchedule.split('\\n[ЗАМЕТКИ]:')[0];
         }
 
+        const borderColor = unpaidCount > 0 ? 'rgba(239, 68, 68, 0.35)' : 'var(--border-light)';
+        const glowEffect = unpaidCount > 0 ? 'box-shadow: 0 0 12px rgba(239, 68, 68, 0.05);' : '';
+        const onMouseOver = unpaidCount > 0 
+          ? "this.style.transform='translateY(-2px)';this.style.borderColor='var(--danger)';this.style.boxShadow='0 4px 16px rgba(239,68,68,0.15)';" 
+          : "this.style.transform='translateY(-2px)';this.style.borderColor='var(--accent)';this.style.boxShadow='0 4px 12px var(--accent-alpha)';";
+        const onMouseOut = unpaidCount > 0
+          ? `this.style.transform='none';this.style.borderColor='rgba(239, 68, 68, 0.35)';this.style.boxShadow='0 0 12px rgba(239, 68, 68, 0.05)';`
+          : "this.style.transform='none';this.style.borderColor='var(--border-light)';this.style.boxShadow='none';";
+
         return `
-          <div class="glass-panel" data-id="${st.id}" style="padding:20px;border-radius:16px;cursor:pointer;opacity:${opacity};transition:all 0.2s;background:var(--bg-surface);border:1px solid var(--border-light);position:relative;overflow:hidden;" onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='var(--accent)';" onmouseout="this.style.transform='none';this.style.borderColor='var(--border-light)';">
+          <div class="glass-panel" data-id="${st.id}" style="padding:20px;border-radius:16px;cursor:pointer;opacity:${opacity};transition:all 0.2s;background:var(--bg-surface);border:1px solid ${borderColor};${glowEffect}position:relative;overflow:hidden;" onmouseover="${onMouseOver}" onmouseout="${onMouseOut}">
             ${!st.active ? '<div style="position:absolute;top:12px;right:12px;font-size:10px;background:var(--bg-secondary);padding:2px 8px;border-radius:12px;font-weight:600;">АРХИВ</div>' : ''}
             <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:16px;">
               <div style="display:flex;align-items:center;gap:12px;">
@@ -298,6 +307,17 @@ const TutoringPage = {
                 ${this.escapeHtml(displaySchedule)}
               </div>
               ${debtBadge}
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-light); width: 100%;">
+              ${unpaidCount > 0 ? `
+                <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.payAllDebts('${st.id}', ${unpaidCount}, ${st.price}, '${this.escapeHtml(st.name)}')" style="color:var(--danger); border-color:rgba(239,68,68,0.2); background:rgba(239,68,68,0.05); display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;">
+                  <i data-lucide="coins" style="width:12px;height:12px;"></i> Оплатить долг
+                </button>
+              ` : ''}
+              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.openLessonModal(null, '${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;">
+                <i data-lucide="plus" style="width:12px;height:12px;"></i> Урок
+              </button>
             </div>
           </div>
         `;
@@ -453,7 +473,7 @@ const TutoringPage = {
   },
 
   // ---- LESSON MODAL ----
-  openLessonModal(id = null) {
+  openLessonModal(id = null, studentId = null) {
     if (this.students.length === 0) return UI.toast('Сначала добавьте ученика', 'warning');
     
     const ls = id ? this.lessons.find(l => l.id === id) : null;
@@ -462,6 +482,7 @@ const TutoringPage = {
     const sSelect = document.getElementById('ls-student');
     sSelect.innerHTML = this.students.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     if (ls) sSelect.value = ls.student_id;
+    else if (studentId) sSelect.value = studentId;
 
     // Set date to now if new
     const dStr = ls ? new Date(ls.date).toISOString().slice(0,16) : new Date().toLocaleString('sv-SE', {timeZone: 'Europe/Minsk'}).replace(' ', 'T').slice(0,16);
@@ -608,6 +629,38 @@ const TutoringPage = {
       UI.toast('Урок удален', 'info');
       await this.load();
     } catch(e) { UI.toast('Ошибка: ' + e.message, 'error'); }
+  },
+
+  async payAllDebts(studentId, unpaidCount, pricePerLesson, studentName) {
+    const total = unpaidCount * pricePerLesson;
+    if (!confirm(`Отметить все неоплаченные проведенные уроки (${unpaidCount} шт.) для ${studentName} как оплаченные?\nОбщая сумма: ${total} BYN`)) {
+      return;
+    }
+
+    const unpaidConductedLessons = this.lessons.filter(l => l.student_id === studentId && l.status === 'Проведен' && !l.paid);
+    if (unpaidConductedLessons.length === 0) return;
+
+    try {
+      // Update each lesson to paid = true
+      await Promise.all(unpaidConductedLessons.map(l => DB.updateLesson(l.id, { ...l, paid: true })));
+
+      // Ask user if they want to log this into Finances
+      if (confirm(`Зачислить общую сумму оплаты (${total} BYN) в Финансы (Доходы)?`)) {
+        await DB.createTransaction({
+          type: 'income',
+          amount: total,
+          category: 'Репетиторство',
+          description: `Оплата долга за ${unpaidCount} уроков: ${studentName}`
+        });
+        UI.toast('Оплата занесена в Финансы!', 'success');
+      }
+
+      UI.toast('Все уроки отмечены как оплаченные!', 'success');
+      await this.load(); // Reload and redraw content
+    } catch (e) {
+      console.error(e);
+      UI.toast('Ошибка при оплате: ' + e.message, 'error');
+    }
   },
 
   escapeHtml(str) {

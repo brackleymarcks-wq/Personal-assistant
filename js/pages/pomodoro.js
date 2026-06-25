@@ -10,6 +10,9 @@ const PomodoroPage = {
   sessionsCompleted: 0,
   currentTaskId: null,
   tasks: [],
+  ambientAudio: null,
+  ambientType: null,
+  ambientVolume: 0.5,
 
   DURATIONS: { working: 25 * 60, break: 5 * 60, longbreak: 15 * 60 },
   LABELS: { idle: 'Готов к работе', working: 'Фокус', break: 'Короткий перерыв', longbreak: 'Длинный перерыв' },
@@ -18,13 +21,13 @@ const PomodoroPage = {
   render() {
     // 283 is approx 2 * pi * 45 for stroke-dasharray
     return `
-      <div class="pomodoro-page">
+      <div class="pomodoro-page" style="overflow-y:auto; max-height:100%; width:100%; display:flex; flex-direction:column; align-items:center; padding:var(--space-xl); justify-content:flex-start; gap:8px;">
         <div style="text-align:center;margin-bottom:var(--space-md)">
           <div style="font-size:16px;color:var(--text-secondary);font-weight:600" id="pomo-state-label">Готов к работе</div>
           <div style="font-size:13px;color:var(--text-muted);margin-top:4px" id="pomo-session-count">Сессия 0 из 4</div>
         </div>
 
-        <div class="pomodoro-timer-container" id="pomo-timer-container">
+        <div class="pomodoro-timer-container" id="pomo-timer-container" style="margin: 12px 0;">
           <svg class="pomodoro-svg" viewBox="0 0 100 100">
             <circle class="pomodoro-circle-bg" cx="50" cy="50" r="45"></circle>
             <circle class="pomodoro-circle-progress" id="pomo-progress-ring" cx="50" cy="50" r="45" stroke-dasharray="283" stroke-dashoffset="0"></circle>
@@ -35,7 +38,7 @@ const PomodoroPage = {
           </div>
         </div>
 
-        <div class="pomodoro-controls">
+        <div class="pomodoro-controls" style="margin-top: 12px;">
           <button class="btn btn-secondary btn-icon" id="pomo-reset-btn" title="Сбросить">
             <i data-lucide="rotate-ccw" style="width:20px;height:20px;"></i>
           </button>
@@ -48,7 +51,7 @@ const PomodoroPage = {
         </div>
 
         <!-- Task selector -->
-        <div class="pomodoro-task-wrapper">
+        <div class="pomodoro-task-wrapper" style="margin-top: 20px; width: 100%; max-width: 480px;">
           <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:var(--space-sm);display:flex;align-items:center;gap:6px;">
             <i data-lucide="target" style="width:14px;height:14px;"></i> Привязать к задаче
           </div>
@@ -58,7 +61,7 @@ const PomodoroPage = {
         </div>
 
         <!-- Today's stats -->
-        <div class="pomodoro-stats">
+        <div class="pomodoro-stats" style="width: 100%; max-width: 480px; margin-top: var(--space-md);">
           <div class="dashboard-stat" style="flex:1;">
             <div class="stat-value" id="pomo-today-count" style="display:flex;align-items:center;gap:8px;">
               <i data-lucide="check-square" style="color:var(--success);"></i> 0
@@ -72,6 +75,35 @@ const PomodoroPage = {
             <div class="stat-label">Минут фокуса</div>
           </div>
         </div>
+
+        <!-- Background Sounds -->
+        <div class="glass-panel" style="width: 100%; max-width: 480px; padding: var(--space-lg); border-radius: var(--radius-xl); margin-top: var(--space-md); box-shadow: var(--shadow-sm); display: flex; flex-direction: column;">
+          <div style="font-size: 13.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-md); display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="headphones" style="width: 16px; height: 16px; color: var(--accent);"></i>
+              Фоновые звуки
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="volume-2" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+              <input type="range" id="pomo-ambient-volume" min="0" max="1" step="0.05" value="0.5" style="width: 70px; height: 4px; accent-color: var(--accent); cursor: pointer;" oninput="PomodoroPage.setAmbientVolume(this.value)">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;" id="pomo-ambient-grid">
+            <button class="btn btn-secondary" onclick="PomodoroPage.toggleAmbient('rain', 'https://raw.githubusercontent.com/karthiknvd/noctune/master/public/sounds/rain.mp3')" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; padding: 10px 12px; border-radius: 12px; transition: all 0.2s;" id="pomo-ambient-rain">
+              🌧 Шум дождя
+            </button>
+            <button class="btn btn-secondary" onclick="PomodoroPage.toggleAmbient('campfire', 'https://raw.githubusercontent.com/karthiknvd/noctune/master/public/sounds/campfire.mp3')" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; padding: 10px 12px; border-radius: 12px; transition: all 0.2s;" id="pomo-ambient-campfire">
+              🔥 Костер
+            </button>
+            <button class="btn btn-secondary" onclick="PomodoroPage.toggleAmbient('wind', 'https://raw.githubusercontent.com/karthiknvd/noctune/master/public/sounds/wind.mp3')" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; padding: 10px 12px; border-radius: 12px; transition: all 0.2s;" id="pomo-ambient-wind">
+              💨 Ветер
+            </button>
+            <button class="btn btn-secondary" onclick="PomodoroPage.toggleAmbient('lofi', 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3')" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; padding: 10px 12px; border-radius: 12px; transition: all 0.2s;" id="pomo-ambient-lofi">
+              🎵 Лоу-фай
+            </button>
+          </div>
+        </div>
       </div>
     `;
   },
@@ -80,6 +112,7 @@ const PomodoroPage = {
     this.bindEvents();
     await this.loadTasks();
     this.updateDisplay();
+    this.updateAmbientUI();
   },
 
   bindEvents() {
@@ -317,5 +350,51 @@ const PomodoroPage = {
         osc2.stop(ctx.currentTime + 0.8);
       }, 300);
     } catch (e) { /* Audio not supported */ }
+  },
+
+  setAmbientVolume(val) {
+    this.ambientVolume = Number(val);
+    if (this.ambientAudio) {
+      this.ambientAudio.volume = this.ambientVolume;
+    }
+  },
+
+  toggleAmbient(type, url) {
+    if (this.ambientAudio && this.ambientType === type) {
+      this.ambientAudio.pause();
+      this.ambientAudio = null;
+      this.ambientType = null;
+      this.updateAmbientUI();
+    } else {
+      if (this.ambientAudio) {
+        this.ambientAudio.pause();
+      }
+      this.ambientAudio = new Audio(url);
+      this.ambientAudio.loop = true;
+      this.ambientAudio.volume = this.ambientVolume;
+      this.ambientAudio.play().catch(err => console.error("Audio play failed:", err));
+      this.ambientType = type;
+      this.updateAmbientUI();
+    }
+  },
+
+  updateAmbientUI() {
+    const volumeInput = document.getElementById('pomo-ambient-volume');
+    if (volumeInput) volumeInput.value = this.ambientVolume;
+
+    const types = ['rain', 'campfire', 'wind', 'lofi'];
+    types.forEach(t => {
+      const btn = document.getElementById(`pomo-ambient-${t}`);
+      if (btn) {
+        if (this.ambientType === t && this.ambientAudio && !this.ambientAudio.paused) {
+          btn.style.background = 'var(--accent-dim)';
+          btn.style.borderColor = 'var(--accent)';
+          btn.style.color = 'var(--text-accent)';
+          btn.style.boxShadow = '0 0 10px var(--accent-glow)';
+        } else {
+          btn.removeAttribute('style');
+        }
+      }
+    });
   }
 };

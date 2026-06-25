@@ -4719,3 +4719,9 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
     transform: translateY(0) scale(1);
   }
 }
+
+/* Donut Chart Segments styling */
+.donut-segment:hover {
+  stroke-width: 10;
+  filter: drop-shadow(0 0 3px rgba(0,0,0,0.2));
+}
