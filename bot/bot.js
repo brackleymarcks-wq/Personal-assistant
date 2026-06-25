@@ -1213,6 +1213,114 @@ ${receiptDescription}
   }
 });
 
+// /habits — интерактивный список привычек с кнопками
+bot.onText(/\/habits/, async (msg) => {
+  const chatId = msg.chat.id;
+  try {
+    const habits = await getHabits();
+    if (habits.length === 0) {
+      return bot.sendMessage(chatId, '🌱 У тебя пока нет активных привычек. Добавь их в веб-интерфейсе!');
+    }
+
+    const todayLogs = await getHabitLogsToday();
+    const doneHabitIds = new Set(todayLogs.filter(l => l.status === 'done').map(l => l.habit_id));
+
+    let text = '🔥 *Твои привычки на сегодня:*\n\n';
+    const keyboard = [];
+
+    habits.forEach(h => {
+      const isDone = doneHabitIds.has(h.id);
+      const statusEmoji = isDone ? '✅' : '⬜';
+      text += `${statusEmoji} ${h.name}\n`;
+      keyboard.push([{
+        text: `${statusEmoji} ${h.name}`,
+        callback_data: `habit:${h.id}:${isDone ? 'undone' : 'done'}`
+      }]);
+    });
+
+    await bot.sendMessage(chatId, text, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    }).catch(() => {
+      bot.sendMessage(chatId, text, {
+        reply_markup: {
+          inline_keyboard: keyboard
+        }
+      });
+    });
+  } catch (e) {
+    bot.sendMessage(chatId, '❌ Ошибка при получении привычек: ' + e.message);
+  }
+});
+
+// Обработка кликов по кнопкам привычек
+bot.on('callback_query', async (query) => {
+  const data = query.data;
+  const chatId = query.message.chat.id;
+  const messageId = query.message.message_id;
+
+  if (data && data.startsWith('habit:')) {
+    const [_, habitId, action] = data.split(':');
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+
+    try {
+      if (action === 'done') {
+        await logHabit(habitId, today, 'done');
+      } else {
+        await logHabit(habitId, today, 'missed');
+      }
+
+      await bot.answerCallbackQuery(query.id, { 
+        text: action === 'done' ? 'Привычка выполнена! 💪' : 'Привычка отменена.' 
+      });
+
+      // Перерисовываем список привычек
+      const habits = await getHabits();
+      const todayLogs = await getHabitLogsToday();
+      const doneHabitIds = new Set(todayLogs.filter(l => l.status === 'done').map(l => l.habit_id));
+
+      let text = '🔥 *Твои привычки на сегодня:*\n\n';
+      const keyboard = [];
+
+      habits.forEach(h => {
+        const isDone = doneHabitIds.has(h.id);
+        const statusEmoji = isDone ? '✅' : '⬜';
+        text += `${statusEmoji} ${h.name}\n`;
+        keyboard.push([{
+          text: `${statusEmoji} ${h.name}`,
+          callback_data: `habit:${h.id}:${isDone ? 'undone' : 'done'}`
+        }]);
+      });
+
+      await bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: keyboard
+        }
+      }).catch(async () => {
+        await bot.editMessageText(text, {
+          chat_id: chatId,
+          message_id: messageId,
+          reply_markup: {
+            inline_keyboard: keyboard
+          }
+        }).catch(e => console.error('Failed to edit habit message:', e));
+      });
+
+    } catch (e) {
+      console.error('Callback query habit error:', e);
+      bot.answerCallbackQuery(query.id, { 
+        text: '❌ Ошибка: ' + e.message, 
+        show_alert: true 
+      });
+    }
+  }
+});
+
 // /tasks — список задач
 bot.onText(/\/tasks/, async (msg) => {
   const chatId = msg.chat.id;
