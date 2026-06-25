@@ -1255,7 +1255,7 @@ bot.onText(/\/habits/, async (msg) => {
   }
 });
 
-// Обработка кликов по кнопкам привычек
+// Обработка кликов по кнопкам (коллбеки)
 bot.on('callback_query', async (query) => {
   const data = query.data;
   const chatId = query.message.chat.id;
@@ -1318,8 +1318,91 @@ bot.on('callback_query', async (query) => {
         show_alert: true 
       });
     }
+  } else if (data === 'finance_refresh') {
+    try {
+      await bot.answerCallbackQuery(query.id, { text: 'Данные обновлены! 🔄' });
+      await sendFinanceSummary(chatId, messageId);
+    } catch (e) {
+      console.error('Callback query finance error:', e);
+    }
   }
 });
+
+// /finance и /budget — финансовый отчет за текущий месяц
+bot.onText(/\/(finance|budget)/, async (msg) => {
+  const chatId = msg.chat.id;
+  await sendFinanceSummary(chatId);
+});
+
+async function sendFinanceSummary(chatId, messageId = null) {
+  try {
+    const stats = await getMonthlyFinances();
+    const settings = await getSettings();
+    const limit = settings && settings.monthlyLimit ? parseFloat(settings.monthlyLimit) : null;
+
+    const now = new Date();
+    const monthName = now.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+    const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+
+    let text = `📊 *Финансовый отчет за ${capitalizedMonth}:*\n\n`;
+    text += `💰 *Доходы:* ${stats.income.toFixed(2)} BYN\n`;
+    text += `💸 *Расходы:* ${stats.expense.toFixed(2)} BYN\n`;
+
+    if (limit) {
+      const remaining = limit - stats.expense;
+      text += `🎯 *Лимит:* ${limit.toFixed(2)} BYN\n`;
+      if (remaining >= 0) {
+        text += `🟢 *Осталось:* ${remaining.toFixed(2)} BYN\n`;
+      } else {
+        text += `🔴 *Превышение лимита:* ${Math.abs(remaining).toFixed(2)} BYN! 🤬\n`;
+      }
+    }
+
+    text += `\n🗂 *Расходы по категориям:*\n`;
+    const sortedCategories = Object.entries(stats.categories)
+      .sort((a, b) => b[1] - a[1]);
+
+    if (sortedCategories.length === 0) {
+      text += `_Расходов в этом месяце пока нет._\n`;
+    } else {
+      sortedCategories.forEach(([cat, val]) => {
+        text += `  • ${cat}: *${val.toFixed(2)} BYN*\n`;
+      });
+    }
+
+    const keyboard = [[{ text: '🔄 Обновить данные', callback_data: 'finance_refresh' }]];
+
+    if (messageId) {
+      await bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard }
+      }).catch(async () => {
+        await bot.editMessageText(text, {
+          chat_id: chatId,
+          message_id: messageId,
+          reply_markup: { inline_keyboard: keyboard }
+        }).catch(e => console.error('Failed to edit finance message:', e));
+      });
+    } else {
+      await bot.sendMessage(chatId, text, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard }
+      }).catch(() => {
+        bot.sendMessage(chatId, text, {
+          reply_markup: { inline_keyboard: keyboard }
+        });
+      });
+    }
+  } catch (e) {
+    if (messageId) {
+      bot.sendMessage(chatId, '❌ Ошибка обновления отчета: ' + e.message);
+    } else {
+      bot.sendMessage(chatId, '❌ Ошибка формирования отчета: ' + e.message);
+    }
+  }
+}
 
 // /tasks — список задач
 bot.onText(/\/tasks/, async (msg) => {
