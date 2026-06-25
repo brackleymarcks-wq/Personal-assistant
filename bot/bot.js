@@ -478,7 +478,7 @@ const TOOLS = [
           amount: { type: 'string', description: 'Amount (must be a number string, e.g. "32.85")' },
           type: { type: 'string', description: 'income or expense' },
           category: { type: 'string', description: 'Invent category based on text (e.g. Transport, Food, Cafe, Salary)' },
-          comment: { type: 'string', description: 'Original comment text' },
+          comment: { type: 'string', description: 'List of all items and their prices (e.g. "Молоко 2x1.5, Хлеб 1x1.0")' },
           account_name: { type: 'string', description: 'Account name or "Карта"' }
         },
         required: ['amount', 'type', 'category']
@@ -718,7 +718,8 @@ async function executeFunctionCall(name, args) {
           }
         }
 
-        return { success: true, transaction: tx, message: `${verb}: ${args.amount} BYN (${args.category})${extraMsg}` };
+        let commentText = args.comment ? `\n\n📝 Детали:\n${args.comment}` : '';
+        return { success: true, transaction: tx, message: `${verb}: ${args.amount} BYN (${args.category})${commentText}${extraMsg}` };
       }
       case 'start_deep_work': {
         const mins = args.minutes || 60;
