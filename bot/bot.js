@@ -1157,9 +1157,9 @@ bot.on('photo', async (msg) => {
       throw new Error(`Не удалось прочитать фотографию чека: ${JSON.stringify(visionData.error || visionData)}`);
     }
 
-    // Если описание слишком длинное, жестко обрезаем его, чтобы гарантированно влезть в 6000 TPM лимит Groq
-    if (receiptDescription.length > 3000) {
-      receiptDescription = receiptDescription.substring(0, 3000) + '\n... (чек обрезан из-за огромного размера)';
+    // Если описание слишком длинное, жестко обрезаем его до 1000 символов, чтобы 100% влезть в 6000 TPM лимит Groq (с учетом картинки)
+    if (receiptDescription.length > 1000) {
+      receiptDescription = receiptDescription.substring(0, 1000) + '\n... (чек обрезан)';
     }
 
     // Шаг 2: Передаем извлеченный текст ОБЫЧНОЙ текстовой модели, которая идеально умеет вызывать инструменты
