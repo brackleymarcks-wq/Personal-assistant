@@ -23,6 +23,10 @@ const HabitsPage = {
           </div>
         </div>
 
+        <div id="habits-overall-heatmap-container" style="padding: 0 var(--space-xl) var(--space-md) var(--space-xl);">
+           <!-- Heatmap bento card will be injected here -->
+        </div>
+
         <div class="habits-grid" id="habits-list-body" style="flex:1;overflow-y:auto;align-content:start;">
            <!-- Habits list injected here -->
         </div>
@@ -31,9 +35,57 @@ const HabitsPage = {
   },
 
   async init() {
+    this.injectStyles();
     this.calculateDates();
     await this.load();
     this.bindEvents();
+  },
+
+  injectStyles() {
+    if (document.getElementById('habits-page-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'habits-page-styles';
+    style.textContent = `
+      .heatmap-cell {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        background: var(--bg-hover);
+        transition: background var(--transition);
+      }
+      .heatmap-cell.level-0 { background: rgba(255, 255, 255, 0.05); }
+      .heatmap-cell.level-1 { background: rgba(0, 184, 255, 0.25); }
+      .heatmap-cell.level-2 { background: rgba(0, 184, 255, 0.45); }
+      .heatmap-cell.level-3 { background: rgba(0, 184, 255, 0.7); }
+      .heatmap-cell.level-4 { background: var(--accent); box-shadow: 0 0 4px var(--accent-glow); }
+
+      body.theme-light .heatmap-cell.level-0 { background: rgba(0, 0, 0, 0.05); }
+      body.theme-light .heatmap-cell.level-1 { background: rgba(234, 88, 12, 0.2); }
+      body.theme-light .heatmap-cell.level-2 { background: rgba(234, 88, 12, 0.45); }
+      body.theme-light .heatmap-cell.level-3 { background: rgba(234, 88, 12, 0.7); }
+      body.theme-light .heatmap-cell.level-4 { background: var(--accent); }
+
+      body.theme-comfort .heatmap-cell.level-0 { background: rgba(0, 0, 0, 0.05); }
+      body.theme-comfort .heatmap-cell.level-1 { background: rgba(234, 88, 12, 0.2); }
+      body.theme-comfort .heatmap-cell.level-2 { background: rgba(234, 88, 12, 0.45); }
+      body.theme-comfort .heatmap-cell.level-3 { background: rgba(234, 88, 12, 0.7); }
+      body.theme-comfort .heatmap-cell.level-4 { background: var(--accent); }
+
+      .heatmap-grid-scroll::-webkit-scrollbar {
+        height: 6px;
+      }
+      .heatmap-grid-scroll::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .heatmap-grid-scroll::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: var(--radius-full);
+      }
+      .heatmap-grid-scroll::-webkit-scrollbar-thumb:hover {
+        background: var(--border-light);
+      }
+    `;
+    document.head.appendChild(style);
   },
 
   calculateDates() {
@@ -71,8 +123,8 @@ const HabitsPage = {
 
   async load() {
     try {
-      const startIso = this.dates[0].toISOString().split('T')[0];
-      const endIso = this.dates[6].toISOString().split('T')[0];
+      const startIso = DB.getMinskDateString(-115);
+      const endIso = DB.getMinskDateString(0);
       
       [this.habits, this.logs] = await Promise.all([
         DB.getHabits(),
@@ -202,6 +254,8 @@ const HabitsPage = {
         }
       });
     });
+
+    this.renderOverallHeatmap();
   },
 
   calculateStreak(habitId) {
@@ -238,5 +292,93 @@ const HabitsPage = {
 
   escapeHtml(str) {
     return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  },
+
+  renderOverallHeatmap() {
+    const container = document.getElementById('habits-overall-heatmap-container');
+    if (!container) return;
+
+    if (this.habits.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    const today = new Date();
+    const start = new Date();
+    start.setDate(today.getDate() - 105); 
+    const dayOfWeek = start.getDay(); 
+    const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    start.setDate(start.getDate() - diffToMonday);
+
+    const dates = [];
+    const current = new Date(start);
+    while (current <= today) {
+      dates.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+
+    const completionCounts = {};
+    this.logs.forEach(log => {
+      if (log.status === 'done') {
+        completionCounts[log.date] = (completionCounts[log.date] || 0) + 1;
+      }
+    });
+
+    let cellsHtml = '';
+    dates.forEach(date => {
+      const dateStr = date.toISOString().split('T')[0];
+      const count = completionCounts[dateStr] || 0;
+      
+      let level = 0;
+      if (count > 0 && this.habits.length > 0) {
+        const pct = count / this.habits.length;
+        if (pct <= 0.25) level = 1;
+        else if (pct <= 0.5) level = 2;
+        else if (pct <= 0.75) level = 3;
+        else level = 4;
+      }
+
+      const formattedDate = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+      const tooltip = `${formattedDate}: выполнено привычек ${count} из ${this.habits.length}`;
+
+      cellsHtml += `
+        <div class="heatmap-cell level-${level}" title="${tooltip}" data-date="${dateStr}"></div>
+      `;
+    });
+
+    container.innerHTML = `
+      <div class="glass-panel" style="padding:var(--space-md);border-radius:var(--radius-lg);margin-top:var(--space-sm);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-sm);">
+          <div style="font-size:13px;font-weight:600;color:var(--text-secondary);display:flex;align-items:center;gap:6px;">
+            <i data-lucide="activity" style="width:16px;height:16px;color:var(--accent);"></i>
+            Общая активность привычек за 15 недель
+          </div>
+          <div class="heatmap-legend" style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);">
+            <span>Меньше</span>
+            <div class="heatmap-cell level-0"></div>
+            <div class="heatmap-cell level-1"></div>
+            <div class="heatmap-cell level-2"></div>
+            <div class="heatmap-cell level-3"></div>
+            <div class="heatmap-cell level-4"></div>
+            <span>Больше</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:var(--space-sm);align-items:center;">
+          <div style="display:flex;flex-direction:column;justify-content:space-between;height:90px;font-size:10px;color:var(--text-muted);padding-bottom:4px;text-align:right;width:24px;line-height:1;">
+            <span>Пн</span>
+            <span>Ср</span>
+            <span>Пт</span>
+            <span>Вс</span>
+          </div>
+          <div class="heatmap-grid-scroll" style="flex:1;overflow-x:auto;padding-bottom:4px;">
+            <div class="heatmap-grid" style="display:grid;grid-template-rows:repeat(7, 10px);grid-auto-flow:column;gap:3px;width:max-content;">
+              ${cellsHtml}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (window.lucide) window.lucide.createIcons();
   }
 };
