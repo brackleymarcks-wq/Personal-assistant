@@ -1229,7 +1229,9 @@ bot.onText(/\/tasks/, async (msg) => {
       text += `${i+1}. ${emoji} ${t.title}${deadline}\n   _${t.direction} · ${t.status}_\n\n`;
     });
     if (tasks.length > 15) text += `... и ещё ${tasks.length - 15} задач`;
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(() => {
+      bot.sendMessage(chatId, text);
+    });
   } catch(e) {
     bot.sendMessage(chatId, '❌ Ошибка загрузки задач: ' + e.message);
   }
@@ -1261,7 +1263,9 @@ bot.onText(/\/level/, async (msg) => {
     text += `✅ *Задач выполнено:* ${stats.tasksDone}\n`;
     text += `🔥 *Привычек закрыто:* ${stats.habitsDone}`;
 
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(() => {
+      bot.sendMessage(chatId, text);
+    });
   } catch(e) {
     bot.sendMessage(chatId, '❌ Ошибка загрузки статистики: ' + e.message);
   }
@@ -1304,7 +1308,9 @@ bot.onText(/\/today/, async (msg) => {
       text += 'Сегодня чисто — ни задач, ни событий. Отдыхаем или берёмся за что-то новое? 🚀';
     }
 
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(() => {
+      bot.sendMessage(chatId, text);
+    });
   } catch(e) {
     bot.sendMessage(chatId, '❌ Ошибка: ' + e.message);
   }
@@ -1440,7 +1446,9 @@ bot.on('message', async (msg) => {
         return bot.sendMessage(chatId, '🔕 Не удалось распознать речь (тишина или шум).');
       }
       
-      bot.sendMessage(chatId, `🎤 *Распознано:* _${transcribed}_`, { parse_mode: 'Markdown' });
+      bot.sendMessage(chatId, `🎤 *Распознано:* _${transcribed}_`, { parse_mode: 'Markdown' }).catch(() => {
+        bot.sendMessage(chatId, `🎤 Распознано: ${transcribed}`);
+      });
       textToProcess = transcribed;
     }
 
