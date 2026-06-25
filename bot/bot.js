@@ -1022,7 +1022,7 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
     if (res.status === 429 && retryCount < 2) {
       if (errMsg.includes('tokens per day') || errMsg.includes('TPD') || errMsg.includes('rate limit')) {
         console.warn('Rate limit reached! Falling back to an alternative model...');
-        let fallbackModel = AI_API_URL.includes('openrouter') ? 'google/gemini-2.5-flash:free' : 'llama-3.1-8b-instant';
+        let fallbackModel = AI_API_URL.includes('openrouter') ? 'google/gemini-2.0-flash-exp:free' : 'llama-3.1-8b-instant';
         return callAPI(systemInstruction, messages, retryCount + 1, isVision, fallbackModel, disableTools);
       }
 
@@ -1034,7 +1034,7 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
       
       if (waitTime > 30) {
          console.warn(`Wait time ${waitTime}s is too long, falling back to alternative model...`);
-         let fallbackModel = AI_API_URL.includes('openrouter') ? 'google/gemini-2.5-flash:free' : 'llama-3.1-8b-instant';
+         let fallbackModel = AI_API_URL.includes('openrouter') ? 'google/gemini-2.0-flash-exp:free' : 'llama-3.1-8b-instant';
          return callAPI(systemInstruction, messages, retryCount + 1, isVision, fallbackModel, disableTools);
       }
 
@@ -1115,9 +1115,9 @@ bot.on('photo', async (msg) => {
 Напиши это просто текстом. Никаких функций не вызывай.`;
 
     // Вызываем API только для извлечения текста
-    let visionUrl = 'https://openrouter.ai/api/v1/chat/completions';
-    let visionKey = process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY;
-    let visionModel = 'google/gemini-2.5-flash:free';
+    let visionUrl = process.env.GROQ_API_KEY ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions';
+    let visionKey = process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY;
+    let visionModel = process.env.GROQ_API_KEY ? 'llama-3.2-90b-vision-preview' : 'google/gemini-2.0-flash-exp:free';
     
     const visionRes = await fetch(visionUrl, {
       method: 'POST',
