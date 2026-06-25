@@ -1136,10 +1136,10 @@ bot.on('photo', async (msg) => {
 КРИТИЧНО: Пиши МАКСИМАЛЬНО КРАТКО! Без лишних слов, пробелов и переносов строк. 
 Формат: Товар 1шт 2.50р, Товар2 2шт 5.00р. Ничего не пропускай, но экономь символы!`;
 
-    // Вызываем API только для извлечения текста
-    let visionUrl = 'https://openrouter.ai/api/v1/chat/completions';
-    let visionKey = AI_API_KEY;
-    let visionModel = 'nvidia/nemotron-nano-12b-v2-vl:free';
+    // Вызываем Groq API напрямую с новой моделью Llama 4 Scout для мгновенного и надежного извлечения текста
+    let visionUrl = 'https://api.groq.com/openai/v1/chat/completions';
+    let visionKey = GROQ_API_KEY;
+    let visionModel = 'meta-llama/llama-4-scout-17b-16e-instruct';
     
     const visionRes = await fetch(visionUrl, {
       method: 'POST',
