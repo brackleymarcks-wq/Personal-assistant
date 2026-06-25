@@ -21,8 +21,9 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const AI_API_KEY = process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY || process.env.GROQ_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY; // Для транскрибации Whisper
-const AI_API_URL = process.env.AI_API_URL || (process.env.GROQ_API_KEY ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions');
-const AI_MODEL = process.env.AI_MODEL || (process.env.GROQ_API_KEY ? 'llama-3.3-70b-versatile' : 'meta-llama/llama-3.3-70b-instruct:free');
+const isOpenRouter = process.env.OPENROUTER_API_KEY || (process.env.AI_API_KEY && process.env.AI_API_KEY.includes('sk-or'));
+const AI_API_URL = process.env.AI_API_URL || (isOpenRouter ? 'https://openrouter.ai/api/v1/chat/completions' : (process.env.GROQ_API_KEY ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions'));
+const AI_MODEL = process.env.AI_MODEL || (isOpenRouter ? 'meta-llama/llama-3.3-70b-instruct:free' : (process.env.GROQ_API_KEY ? 'llama-3.3-70b-versatile' : 'meta-llama/llama-3.3-70b-instruct:free'));
 
 if (!BOT_TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN не задан в .env'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
@@ -913,7 +914,7 @@ async function executeFunctionCall(name, args) {
   }
 }
 
-async function askAI(userMessage, context = '', imageUrl = null, disableTools = false, disableHistory = false) {
+async function askAI(userMessage, context = '', imageUrl = null, disableTools = false, disableHistory = false, allowedTools = null) {
   if (!AI_API_KEY) return 'API ключ для нейросети не настроен (AI_API_KEY).';
 
   const settings = await getSettings();
@@ -932,12 +933,18 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
         validInstructions.map((ins, i) => `${i+1}. ${ins}`).join('\n');
     }
   }
+  
+  // Если мы на Groq (жесткий лимит 6000 TPM), безжалостно обрезаем контекст
+  if (context && !isOpenRouter && context.length > 3000) {
+    context = context.substring(0, 3000) + '... (контекст обрезан из-за лимитов Groq)';
+  }
 
   const systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr}${extraCtx}${context ? '\n\n' + context : ''}`;
 
   let messages = [];
   if (!disableHistory) {
-    const history = await getRecentMessages(8); // Reduced from 20 to avoid Groq TPM 6000 token limit
+    const historyLimit = isOpenRouter ? 8 : 3; // Для Groq жестко ограничиваем историю, чтобы не выйти за 6000 токенов
+    const history = await getRecentMessages(historyLimit); 
     messages = history.map(m => ({ role: m.role, content: m.content }));
   }
   
@@ -953,10 +960,15 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
     messages.push({ role: 'user', content: userMessage });
   }
 
+  let activeTools = TOOLS;
+  if (allowedTools && allowedTools.length > 0) {
+    activeTools = TOOLS.filter(t => allowedTools.includes(t.function.name));
+  }
+
   // Сразу отправляем статус "Печатает...", чтобы не казалось, что бот завис
   bot.sendChatAction(CHAT_ID, 'typing').catch(() => {});
 
-  let response = await callAPI(systemInstruction, messages, 0, !!imageUrl, null, disableTools);
+  let response = await callAPI(systemInstruction, messages, 0, !!imageUrl, null, disableTools, activeTools);
   let maxIter = 5;
 
   while (maxIter-- > 0) {
@@ -982,13 +994,13 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
       });
     }
 
-    response = await callAPI(systemInstruction, messages, 0, !!imageUrl);
+    response = await callAPI(systemInstruction, messages, 0, !!imageUrl, null, disableTools, activeTools);
   }
 
   return response.choices?.[0]?.message?.content || 'Не удалось получить ответ';
 }
 
-async function callAPI(systemInstruction, messages, retryCount = 0, isVision = false, forceModel = null, disableTools = false) {
+async function callAPI(systemInstruction, messages, retryCount = 0, isVision = false, forceModel = null, disableTools = false, customTools = null) {
   let modelToUse = forceModel || AI_MODEL;
   if (isVision) {
     if (AI_API_URL.includes('groq')) modelToUse = 'llama-3.2-90b-vision-preview';
@@ -1008,7 +1020,7 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
         { role: 'system', content: systemInstruction },
         ...messages
       ],
-      tools: (isVision || disableTools) ? undefined : TOOLS,
+      tools: (isVision || disableTools) ? undefined : (customTools || TOOLS),
       tool_choice: (isVision || disableTools) ? undefined : 'auto',
       temperature: 0.1,
       max_tokens: 1024
@@ -1160,7 +1172,8 @@ ${receiptDescription}
 
 ПОСЛЕ успешного вызова функции, обязательно напиши пользователю красивый ответ, в котором ОБЯЗАТЕЛЬНО перечисли все купленные товары из чека списком, чтобы он видел их в чате!`;
 
-    const aiResponse = await askAI(actionPrompt);
+    // Вызываем askAI с отключенной историей и ТОЛЬКО с тремя нужными инструментами, чтобы радикально уменьшить размер запроса (Groq TPM 6000)
+    const aiResponse = await askAI(actionPrompt, '', null, false, true, ['create_transaction', 'get_habits', 'log_habit']);
     
     // Сохраняем в историю
     await saveMessage('user', userCaption + ' [Фотография чека]');
