@@ -1188,7 +1188,7 @@ ${receiptDescription}
 ПОСЛЕ успешного вызова функции, обязательно напиши пользователю красивый ответ, в котором ОБЯЗАТЕЛЬНО перечисли все купленные товары из чека списком, чтобы он видел их в чате!`;
 
     // Вызываем askAI с отключенной историей, минимальным системным промптом и ТОЛЬКО нужными инструментами (радикальное уменьшение размера запроса для Groq)
-    const aiResponse = await askAI(actionPrompt, '', null, false, true, ['create_transaction', 'get_habits', 'log_habit'], true);
+    const aiResponse = await askAI(actionPrompt, '', null, true, false, ['create_transaction', 'get_habits', 'log_habit'], true);
     
     // Сохраняем в историю
     await saveMessage('user', userCaption + ' [Фотография чека]');
