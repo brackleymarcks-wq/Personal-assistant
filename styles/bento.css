@@ -35,8 +35,11 @@
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   gap: var(--space-md);
-  max-width: 1400px;
+  max-width: 1600px;
   width: 100%;
+  padding: var(--space-xl);
+  margin: 0 auto;
+  flex: 1;
 }
 
 .bento-item {

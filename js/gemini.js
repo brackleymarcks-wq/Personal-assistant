@@ -641,8 +641,19 @@ const Gemini = {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      const errMsg = err.error?.message || `API error ${res.status}`;
+      let err;
+      try { err = await res.json(); } catch(e) { err = await res.text(); }
+      
+      let errMsg = `API error ${res.status}`;
+      if (Array.isArray(err) && err[0]?.error?.message) {
+        errMsg = err[0].error.message;
+      } else if (err?.error?.message) {
+        errMsg = err.error.message;
+      } else if (typeof err === 'string') {
+        errMsg = err;
+      } else {
+        errMsg = `API error ${res.status}: ` + JSON.stringify(err);
+      }
       
       // Handle Rate Limit by waiting and retrying (max 2 retries)
       if (res.status === 429 && retryCount < 2) {
