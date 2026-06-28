@@ -4217,7 +4217,7 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
 .tasks-list-view { display: flex; flex-direction: column; gap: var(--space-xl); padding: var(--space-xl); max-width: 900px; margin: 0 auto; }
 .tasks-group { display: flex; flex-direction: column; gap: var(--space-md); }
 .tasks-group-header { font-size: 14px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; padding-bottom: var(--space-xs); border-bottom: 1px solid var(--border-light); }
-.task-card { display: flex; gap: var(--space-md); align-items: flex-start; }
+.tasks-list-view .task-card { display: flex; gap: var(--space-md); align-items: flex-start; }
 .task-checkbox { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--text-muted); cursor: pointer; transition: all var(--transition); position: relative; flex-shrink: 0; margin-top: 2px; }
 .task-checkbox:hover { border-color: var(--accent); background: var(--bg-hover); }
 .task-checkbox.checked { background: var(--success); border-color: var(--success); }
