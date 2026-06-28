@@ -295,44 +295,11 @@ const CalendarPage = {
         const id = evEl.dataset.id;
         const type = evEl.dataset.type;
         if (type === 'task') {
-          const t = this.tasks.find(x => x.id === id);
-          if (t) {
-            const isDone = t.status === 'Готово';
-            const bodyHtml = `
-              <div style="display: flex; flex-direction: column; gap: 16px; font-size: 15px; color: var(--text-primary); margin-top: 8px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-weight: 600; min-width: 100px; color: var(--text-secondary);">Статус:</span>
-                  <span class="badge ${isDone ? 'badge-success' : 'badge-primary'}">${t.status}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-weight: 600; min-width: 100px; color: var(--text-secondary);">Приоритет:</span>
-                  <span>${t.priority}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-weight: 600; min-width: 100px; color: var(--text-secondary);">Направление:</span>
-                  <span>${t.direction || '—'}</span>
-                </div>
-                ${t.project_id ? `
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-weight: 600; min-width: 100px; color: var(--text-secondary);">Проект:</span>
-                  <span><i data-lucide="folder" style="width: 12px; height: 12px; margin-right: 4px; vertical-align: text-bottom;"></i>${this.esc(this.projects?.find(p => p.id === t.project_id)?.name || 'Неизвестный проект')}</span>
-                </div>` : ''}
-                ${t.next_step ? `
-                <div style="margin-top: 8px; padding: 12px; background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-light);">
-                  <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;">Следующий шаг:</div>
-                  <div>${this.esc(t.next_step)}</div>
-                </div>` : ''}
-              </div>
-            `;
-            const footerHtml = `
-              <button class="btn btn-secondary" onclick="UI.closeModal()">Закрыть</button>
-              <button class="btn btn-primary" onclick="App.navigateTo('tasks').then(() => TasksPage.openTaskModal('${id}')); UI.closeModal();">Перейти к задаче</button>
-            `;
-            const titleHtml = `
-              <i data-lucide="target" style="color: var(--danger); width: 24px; height: 24px;"></i>
-              <span style="font-size: 18px; font-weight: 700;">${this.esc(t.title)}</span>
-            `;
-            UI.openModal(titleHtml, bodyHtml, footerHtml);
+          if (typeof TasksPage !== 'undefined') {
+            TasksPage.openTaskModal(id).catch(err => {
+              console.error(err);
+              UI.toast('Ошибка открытия задачи: ' + err.message, 'error');
+            });
           }
         } else if (type === 'lesson') {
           App.navigateTo('tutoring').then(() => {
