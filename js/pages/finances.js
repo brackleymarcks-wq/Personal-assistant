@@ -5,8 +5,8 @@
 const FinancesPage = {
   transactions: [],
   categories: {
-    income: ['Зарплата', 'Фриланс', 'Бизнес', 'Инвестиции', 'Подарки', 'Крипта', 'Кэшбэк', 'Другое'],
-    expense: ['Продукты', 'Кафе и Рестораны', 'Транспорт', 'Авто', 'Жилье', 'Ипотека/Аренда', 'Развлечения', 'Здоровье', 'Одежда', 'Обучение', 'Подписки', 'Семья', 'Хобби', 'Техника', 'Путешествия', 'Другое'],
+    income: ['Зарплата', 'Фриланс', 'Бизнес', 'Инвестиции', 'Подарки', 'Крипта', 'Кэшбэк', 'Ставки на спорт', 'Другое'],
+    expense: ['Продукты', 'Кафе и Рестораны', 'Транспорт', 'Авто', 'Жилье', 'Ипотека/Аренда', 'Развлечения', 'Здоровье', 'Одежда', 'Обучение', 'Подписки', 'Семья', 'Хобби', 'Техника', 'Путешествия', 'Ставки на спорт', 'Другое'],
     transfer: ['Перевод']
   },
   currentViewMonth: new Date().getMonth(),
@@ -27,7 +27,7 @@ const FinancesPage = {
     'Кафе и Рестораны': 'coffee', 'Транспорт': 'bus', 'Авто': 'car', 'Жилье': 'home',
     'Ипотека/Аренда': 'key', 'Развлечения': 'film', 'Здоровье': 'heart', 'Одежда': 'shirt',
     'Обучение': 'book-open', 'Подписки': 'credit-card', 'Семья': 'users', 'Хобби': 'gamepad-2',
-    'Техника': 'smartphone', 'Путешествия': 'plane', 'Другое': 'more-horizontal'
+    'Техника': 'smartphone', 'Путешествия': 'plane', 'Ставки на спорт': 'trophy', 'Другое': 'more-horizontal'
   },
 
   render() {
@@ -1017,7 +1017,7 @@ ${JSON.stringify(historySummary, null, 2)}
       <div class="form-group" style="margin-top:var(--space-md)">
         <label class="form-label">${acc ? 'Скорректировать текущий баланс (BYN)' : 'Начальный баланс (BYN)'}</label>
         <input type="number" step="0.01" id="acc-current-balance" class="form-input" value="${currentBalance.toFixed(2)}">
-        ${acc ? '<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Если изменить эту сумму, бот автоматически создаст операцию "Корректировка", чтобы подогнать баланс.</div>' : ''}
+        ${acc ? '<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Если изменить эту сумму, баланс будет скорректирован напрямую без создания каких-либо операций в истории.</div>' : ''}
       </div>
     `;
 
@@ -1069,16 +1069,8 @@ ${JSON.stringify(historySummary, null, 2)}
 
         const diff = newBalance - currentBalance;
         if (Math.abs(diff) > 0.001) {
-          // Add correction transaction
-          const txData = {
-            amount: Math.abs(diff).toFixed(2),
-            type: diff > 0 ? 'income' : 'expense',
-            category: 'Другое',
-            date: new Date().toISOString().split('T')[0],
-            description: JSON.stringify({ account: acc.id, text: 'Ручная корректировка баланса' })
-          };
-          const created = await DB.createTransaction(txData);
-          this.transactions.unshift(created);
+          // Adjust initialBalance directly so it doesn't create any transaction and remains quiet
+          acc.initialBalance = ((Number(acc.initialBalance) || 0) + diff).toFixed(2);
         }
       }
     } else {
