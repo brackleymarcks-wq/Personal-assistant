@@ -554,7 +554,7 @@ const TasksPage = {
       let task = null;
       if (taskId) {
         task = (this.tasks || []).find(t => t.id === taskId);
-        if (!task && window.CalendarPage && CalendarPage.tasks) {
+        if (!task && typeof CalendarPage !== 'undefined' && CalendarPage.tasks) {
           task = CalendarPage.tasks.find(t => t.id === taskId);
         }
         if (!task && DB.client) {
@@ -711,7 +711,7 @@ const TasksPage = {
       document.getElementById('task-modal').classList.add('hidden');
       if (App.currentPage === 'tasks') {
         this.renderContent();
-      } else if (App.currentPage === 'calendar' && window.CalendarPage) {
+      } else if (App.currentPage === 'calendar' && typeof CalendarPage !== 'undefined') {
         CalendarPage.load();
       }
       App.refreshTasksBadge();
@@ -727,7 +727,7 @@ const TasksPage = {
     document.getElementById('task-modal').classList.add('hidden');
     if (App.currentPage === 'tasks') {
       this.renderContent();
-    } else if (App.currentPage === 'calendar' && window.CalendarPage) {
+    } else if (App.currentPage === 'calendar' && typeof CalendarPage !== 'undefined') {
       CalendarPage.load();
     }
     App.refreshTasksBadge();
