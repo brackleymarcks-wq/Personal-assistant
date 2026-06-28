@@ -551,7 +551,19 @@ const TasksPage = {
       if (!this.knowledge || this.knowledge.length === 0) {
         this.knowledge = await DB.getKnowledge() || [];
       }
-      const task = taskId ? this.tasks.find(t => t.id === taskId) : null;
+      let task = null;
+      if (taskId) {
+        task = (this.tasks || []).find(t => t.id === taskId);
+        if (!task && window.CalendarPage && CalendarPage.tasks) {
+          task = CalendarPage.tasks.find(t => t.id === taskId);
+        }
+        if (!task && DB.client) {
+          const { data, error } = await DB.client.from('tasks').select('*').eq('id', taskId).single();
+          if (!error && data) {
+            task = data;
+          }
+        }
+      }
     const modal = document.getElementById('task-modal');
     const titleEl = document.getElementById('task-modal-title');
     const bodyEl = document.getElementById('task-modal-body');
