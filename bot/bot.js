@@ -33,6 +33,23 @@ if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE
 
 // ---- Init ----
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Migration for task/event/note areas
+async function migrateNullAreas() {
+  try {
+    const { error: err1 } = await db.from('tasks').update({ area: 'Работа' }).is('area', null);
+    const { error: err2 } = await db.from('events').update({ area: 'Работа' }).is('area', null);
+    const { error: err3 } = await db.from('notes').update({ area: 'Работа' }).is('area', null);
+    if (err1 || err2 || err3) {
+      console.error('Migration warnings:', { err1, err2, err3 });
+    } else {
+      console.log('✅ Успешно перенесены пустые сферы (area: null) в "Работа".');
+    }
+  } catch (e) {
+    console.error('Ошибка миграции пустых сфер:', e);
+  }
+}
+migrateNullAreas();
 const bot = new TelegramBot(BOT_TOKEN, { 
   polling: true, 
   baseApiUrl: 'https://weathered-fire-3323.brackleymarcks.workers.dev' 

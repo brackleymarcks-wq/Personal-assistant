@@ -121,7 +121,7 @@ const DB = {
     const area = task.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
     const { data, error } = await _supabase
       .from('tasks')
-      .insert({ user_id: userId, area, ...task })
+      .insert({ user_id: userId, ...task, area })
       .select()
       .single();
     if (error) throw error;
@@ -201,7 +201,7 @@ const DB = {
     const area = event.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
     const { data, error } = await _supabase
       .from('events')
-      .insert({ user_id: userId, area, ...event })
+      .insert({ user_id: userId, ...event, area })
       .select()
       .single();
     if (error) throw error;
@@ -245,7 +245,7 @@ const DB = {
     const area = item.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
     const { data, error } = await _supabase
       .from('knowledge_base')
-      .insert({ user_id: userId, area, ...item })
+      .insert({ user_id: userId, ...item, area })
       .select()
       .single();
     if (error) throw error;
@@ -476,7 +476,7 @@ const DB = {
   async createNote(note) {
     const userId = Config.userId;
     const area = note.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
-    const { data, error } = await _supabase.from('notes').insert({ user_id: userId, area, ...note }).select().single();
+    const { data, error } = await _supabase.from('notes').insert({ user_id: userId, ...note, area }).select().single();
     if (error) throw error;
     return data;
   },
