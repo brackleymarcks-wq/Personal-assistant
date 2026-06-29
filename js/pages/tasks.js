@@ -509,13 +509,13 @@ const TasksPage = {
           ${projectBadge}
           ${directionBadge}
         </div>
-        <div class="kanban-card-title" style="font-weight:600; font-size:13.5px; margin-bottom:8px; line-height:1.4;">${this.escHtml(task.title)}</div>
+        <div class="kanban-card-title" style="font-weight:600; font-size:13.5px; margin-bottom:8px; line-height:1.4; color: var(--text-primary);">${this.escHtml(task.title)}</div>
         ${task.next_step ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><i data-lucide="corner-down-right" style="width:12px;height:12px;vertical-align:middle;"></i> ${this.escHtml(task.next_step)}</div>` : ''}
         <div class="kanban-card-meta" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
           <div style="display:flex;align-items:center;gap:6px;">
-            <span style="font-size:11px;">${prioIcons[task.priority] || ''} ${task.priority || ''}</span>
+            <span style="font-size:11px; color: var(--text-secondary);">${prioIcons[task.priority] || ''} ${task.priority || ''}</span>
             <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:12px;font-size:10px;background:${statusColor}1a;color:${statusColor};border:1px solid ${statusColor}40;">
-               <div style="width:4px;height:4px;border-radius:50%;background:${statusColor}"></div>
+               <span style="width:4px;height:4px;border-radius:50%;background:${statusColor};display:inline-block;"></span>
                ${this.escHtml(task.status)}
             </span>
           </div>

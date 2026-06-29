@@ -79,8 +79,31 @@ const DashboardPage = {
   },
 
   renderWidgets() {
-    const { tasks, events, habits, habitLogs, goals, inbox, transactions, lessons, financeConfig } = this.data;
+    const { tasks, events, habits, habitLogs, goals, inbox, transactions, lessons, financeConfig, rpg } = this.data;
     const today = new Date().toISOString().split('T')[0];
+
+    // RPG Calculations
+    const xp = rpg?.totalXp || 0;
+    const level = Math.floor(Math.sqrt(xp / 50)) + 1;
+    let rank = 'Новичок';
+    if (level >= 20) rank = 'Босс Жизни 👑';
+    else if (level >= 13) rank = 'Сеньор-Достигатор 💎';
+    else if (level >= 8) rank = 'Мастер Времени ⏳';
+    else if (level >= 4) rank = 'Джуниор 🚀';
+    else if (level >= 2) rank = 'Ученик 🌱';
+
+    const currentLevelBaseXp = Math.pow(level - 1, 2) * 50;
+    const nextLevelBaseXp = Math.pow(level, 2) * 50;
+    const xpInCurrentLevel = xp - currentLevelBaseXp;
+    const xpNeededForNextLevel = nextLevelBaseXp - currentLevelBaseXp;
+    const progressPercent = Math.min(100, Math.max(0, (xpInCurrentLevel / xpNeededForNextLevel) * 100));
+
+    // Check level up celebration
+    const lastLevel = localStorage.getItem('last_user_level');
+    if (lastLevel && Number(lastLevel) < level) {
+      setTimeout(() => this.triggerLevelUpCelebration(level, rank), 500);
+    }
+    localStorage.setItem('last_user_level', level);
 
     // Finances stats
     const finances = this.getFinanceStats(transactions || [], financeConfig || {});
