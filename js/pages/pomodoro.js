@@ -159,6 +159,7 @@ const PomodoroPage = {
     this.timeLeft = this.DURATIONS.working;
     this.totalTime = this.DURATIONS.working;
     this.startCountdown();
+    this.notifyTelegram('start');
   },
 
   startBreak() {
@@ -191,10 +192,12 @@ const PomodoroPage = {
     this.interval = null;
     document.getElementById('pomo-start-btn').innerHTML = '<i data-lucide="play" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;"></i> <span id="pomo-start-text">Продолжить</span>';
     if(window.lucide) window.lucide.createIcons();
+    this.notifyTelegram('pause');
   },
 
   resume() {
     this.startCountdown();
+    this.notifyTelegram('start');
   },
 
   reset() {
@@ -206,6 +209,7 @@ const PomodoroPage = {
     this.updateDisplay();
     document.getElementById('pomo-start-btn').innerHTML = '<i data-lucide="play" style="width:20px;height:20px;margin-right:8px;vertical-align:middle;"></i> <span id="pomo-start-text">Старт</span>';
     if(window.lucide) window.lucide.createIcons();
+    this.notifyTelegram('stop');
   },
 
   skip() {
@@ -227,6 +231,7 @@ const PomodoroPage = {
   async onComplete() {
     // Play sound
     this.playSound();
+    this.notifyTelegram('complete');
 
     if (this.state === 'working') {
       this.sessionsCompleted++;
@@ -396,5 +401,32 @@ const PomodoroPage = {
         }
       }
     });
+  },
+
+  async notifyTelegram(action) {
+    try {
+      const cfg = Config.get();
+      const botUrl = cfg.telegramBotUrl || 'https://assistante-theverysamesunday.amvera.io';
+      
+      // Get task title if selected
+      let taskTitle = '';
+      if (this.currentTaskId) {
+        const select = document.getElementById('pomo-task-select');
+        if (select) {
+          const opt = select.options[select.selectedIndex];
+          if (opt && opt.value) {
+            taskTitle = opt.text;
+          }
+        }
+      }
+
+      await fetch(`${botUrl.replace(/\/$/, '')}/api/notify-pomodoro`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, taskTitle })
+      });
+    } catch (e) {
+      console.warn('Telegram notification failed:', e);
+    }
   }
 };

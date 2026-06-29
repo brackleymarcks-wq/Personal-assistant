@@ -41,7 +41,7 @@ const DashboardPage = {
       const today = new Date().toISOString().split('T')[0];
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
 
-      const [tasks, events, habits, habitLogs, goals, inbox] = await Promise.all([
+      const [tasks, events, habits, habitLogs, goals, inbox, transactions, lessons] = await Promise.all([
         DB.getTasks(),
         DB.getEvents(
           new Date(today + 'T00:00:00').toISOString(),
@@ -50,10 +50,27 @@ const DashboardPage = {
         DB.getHabits(),
         DB.getHabitLogs(weekAgo, today),
         DB.getGoals(),
-        DB.getInbox(true)
+        DB.getInbox(true),
+        DB.getTransactions(),
+        DB.getLessons()
       ]);
 
-      this.data = { tasks, events, habits, habitLogs, goals, inbox };
+      // Fetch finance config note
+      let financeConfig = {};
+      try {
+        const { data: configNotes } = await DB.client
+          .from('notes')
+          .select('*')
+          .eq('title', 'SYSTEM_CONFIG_FINANCES')
+          .limit(1);
+        if (configNotes && configNotes.length > 0) {
+          financeConfig = JSON.parse(configNotes[0].content || '{}');
+        }
+      } catch (e) {
+        console.error('Failed to load finance config on dashboard', e);
+      }
+
+      this.data = { tasks, events, habits, habitLogs, goals, inbox, transactions, lessons, financeConfig };
       this.renderWidgets();
     } catch (e) {
       console.error('Dashboard load error:', e);
@@ -61,8 +78,16 @@ const DashboardPage = {
   },
 
   renderWidgets() {
-    const { tasks, events, habits, habitLogs, goals, inbox } = this.data;
+    const { tasks, events, habits, habitLogs, goals, inbox, transactions, lessons, financeConfig } = this.data;
     const today = new Date().toISOString().split('T')[0];
+
+    // Finances stats
+    const finances = this.getFinanceStats(transactions || [], financeConfig || {});
+
+    // Tutoring lessons
+    const upcomingLessons = (lessons || []).filter(ls => ls.status === 'Запланирован');
+    upcomingLessons.sort((a, b) => new Date(a.date) - new Date(b.date));
+    const nextLesson = upcomingLessons[0] || null;
 
     // Stats
     const todayTasks = tasks.filter(t => t.deadline === today && t.status !== 'Отменена');
@@ -217,6 +242,73 @@ const DashboardPage = {
           </div>
         `}
       </div>
+
+      <!-- Finances Bento Box (6 cols) -->
+      <div class="bento-item bento-col-6" style="cursor:pointer; display:flex; flex-direction:column; min-height:160px; background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));" onclick="App.navigateTo('finances')">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div style="font-size:16px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+            <i data-lucide="wallet" style="color:var(--success);"></i> Финансы за месяц
+          </div>
+          <span style="font-size:13px; color:var(--text-muted);">Баланс</span>
+        </div>
+        <div style="font-size:24px; font-weight:800; color:${finances.balance >= 0 ? 'var(--success)' : 'var(--danger)'}; margin-bottom:12px;">
+          ${(finances.balance >= 0 ? '+' : '')}${finances.balance.toLocaleString('ru-RU')} BYN
+        </div>
+        ${finances.monthlyLimit > 0 ? `
+          <div style="margin-top:auto; width:100%;">
+            <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px; color:var(--text-secondary);">
+              <span>Лимит трат: ${finances.monthlyLimit.toLocaleString('ru-RU')} BYN</span>
+              <span style="font-weight:700; color:${finances.expense > finances.monthlyLimit ? 'var(--danger)' : 'var(--text-primary)'};">
+                ${Math.min(100, Math.round((finances.expense / finances.monthlyLimit) * 100))}%
+              </span>
+            </div>
+            <div style="height:6px; background:var(--bg-hover); border-radius:3px; overflow:hidden; border:1px solid var(--border-light);">
+              <div style="height:100%; width:${Math.min(100, Math.round((finances.expense / finances.monthlyLimit) * 100))}%; background:${finances.expense > finances.monthlyLimit ? 'var(--danger)' : 'var(--accent)'}; border-radius:3px; box-shadow:0 0 8px ${finances.expense > finances.monthlyLimit ? 'var(--danger)' : 'var(--accent)'}40;"></div>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">
+              ${finances.expense > finances.monthlyLimit 
+                ? `Перерасход на ${(finances.expense - finances.monthlyLimit).toLocaleString('ru-RU')} BYN!` 
+                : `Осталось ${(finances.monthlyLimit - finances.expense).toLocaleString('ru-RU')} BYN трат.`}
+            </div>
+          </div>
+        ` : `
+          <div style="margin-top:auto; font-size:13px; color:var(--text-muted);">
+            Доходы: <span style="color:var(--success); font-weight:600;">+${finances.income.toLocaleString('ru-RU')} BYN</span><br/>
+            Расходы: <span style="color:var(--danger); font-weight:600;">-${finances.expense.toLocaleString('ru-RU')} BYN</span>
+          </div>
+        `}
+      </div>
+
+      <!-- Tutoring Bento Box (6 cols) -->
+      <div class="bento-item bento-col-6" style="cursor:pointer; display:flex; flex-direction:column; min-height:160px; background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));" onclick="App.navigateTo('tutoring')">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div style="font-size:16px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+            <i data-lucide="book-open" style="color:var(--accent-vibrant);"></i> Ближайший урок
+          </div>
+        </div>
+        ${nextLesson ? `
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+            <div style="width:40px; height:40px; border-radius:10px; background:var(--accent-dim); color:var(--accent-vibrant); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              <i data-lucide="user" style="width:20px; height:20px;"></i>
+            </div>
+            <div>
+              <div style="font-size:15px; font-weight:700; color:var(--text-primary);">${this.esc(nextLesson.students?.name || 'Ученик')}</div>
+              <div style="font-size:13px; color:var(--accent-vibrant); font-weight:600;">
+                ${this.formatLessonTime(nextLesson.date)}
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:auto; font-size:13px; line-height:1.4; color:var(--text-secondary);">
+            ${nextLesson.topic ? `📚 <b>Тема:</b> ${this.esc(nextLesson.topic)}<br/>` : ''}
+            ${nextLesson.homework ? `✏️ <b>ДЗ:</b> ${this.esc(nextLesson.homework)}` : ''}
+          </div>
+        ` : `
+          <div style="margin-top:auto; margin-bottom:auto; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:var(--text-muted); width:100%;">
+            <i data-lucide="smile" style="width:24px; height:24px; color:var(--success);"></i>
+            <div style="font-size:14px; font-weight:500;">Нет запланированных уроков</div>
+          </div>
+        `}
+      </div>
     `;
   },
 
@@ -254,5 +346,84 @@ const DashboardPage = {
 
   esc(str) {
     return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+
+  formatLessonTime(dateStr) {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const todayStr = now.toDateString();
+    
+    const tomorrow = new Date(now.getTime() + 86400000);
+    const tomorrowStr = tomorrow.toDateString();
+    
+    const timeStr = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    
+    if (d.toDateString() === todayStr) {
+      return `Сегодня в ${timeStr}`;
+    } else if (d.toDateString() === tomorrowStr) {
+      return `Завтра в ${timeStr}`;
+    } else {
+      const datePart = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+      return `${datePart} в ${timeStr}`;
+    }
+  },
+
+  getFinanceStats(transactions, financeConfig) {
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    const monthTx = transactions.filter(t => {
+      const d = new Date(t.date);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+
+    let income = 0;
+    let expense = 0;
+
+    monthTx.forEach(t => {
+      let isCorrection = false;
+      try { if (JSON.parse(t.description || '{}').text === 'Ручная корректировка баланса') isCorrection = true; } catch(e){}
+      
+      if (!isCorrection) {
+        if (t.type === 'income') income += Number(t.amount);
+        if (t.type === 'expense') expense += Number(t.amount);
+      }
+    });
+
+    const balance = income - expense;
+
+    // Calculate total balance across accounts
+    const accountBalances = {};
+    const accounts = financeConfig.accounts || [];
+    accounts.forEach(a => accountBalances[a.id] = Number(a.initialBalance) || 0);
+
+    transactions.forEach(t => {
+      try {
+        const descData = JSON.parse(t.description || '{}');
+        const amt = Number(t.amount);
+        let accId = descData.account;
+        if (!accId && accounts.length > 0) {
+          const defaultAcc = accounts.find(a => a.name.toLowerCase().includes('карта')) || accounts[0];
+          accId = defaultAcc.id;
+        }
+
+        if (t.type === 'income' && accId && accountBalances[accId] !== undefined) {
+          accountBalances[accId] += amt;
+        } else if (t.type === 'expense' && accId && accountBalances[accId] !== undefined) {
+          accountBalances[accId] -= amt;
+        } else if (t.type === 'transfer' && descData.fromAccount && descData.toAccount) {
+          if (accountBalances[descData.fromAccount] !== undefined) accountBalances[descData.fromAccount] -= amt;
+          if (accountBalances[descData.toAccount] !== undefined) accountBalances[descData.toAccount] += amt;
+        }
+      } catch(e) {}
+    });
+
+    return {
+      income,
+      expense,
+      balance,
+      monthlyLimit: Number(financeConfig.monthlyLimit) || 0
+    };
   }
 };

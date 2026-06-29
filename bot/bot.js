@@ -417,6 +417,58 @@ async function getRecentMessages(limit = 6) {
   });
 }
 
+async function getProjects() {
+  const user = await getUser();
+  const { data } = await db.from('projects').select('*').eq('user_id', user?.id).order('created_at', { ascending: false });
+  return data || [];
+}
+
+async function createProject(name, color = '#6366f1') {
+  const user = await getUser();
+  const { data, error } = await db.from('projects').insert({
+    user_id: user?.id,
+    name,
+    color,
+    status: 'Активен'
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+async function getGoals() {
+  const user = await getUser();
+  const { data } = await db.from('goals').select('*').eq('user_id', user?.id).order('created_at', { ascending: false });
+  return data || [];
+}
+
+async function createGoal(title, targetValue = 100, unit = '%', deadline = null) {
+  const user = await getUser();
+  const { data, error } = await db.from('goals').insert({
+    user_id: user?.id,
+    title,
+    current_value: 0,
+    target_value: targetValue,
+    unit,
+    status: 'В работе',
+    deadline: deadline || null
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+async function getInbox() {
+  const user = await getUser();
+  const { data } = await db.from('inbox').select('*').eq('user_id', user?.id).eq('processed', false).order('created_at', { ascending: false });
+  return data || [];
+}
+
+async function completeTask(taskId) {
+  const user = await getUser();
+  const { data, error } = await db.from('tasks').update({ status: 'Готово' }).eq('id', taskId).eq('user_id', user?.id).select().single();
+  if (error) throw error;
+  return data;
+}
+
 // ============================================
 // STATE AND TIMERS
 // ============================================
@@ -674,6 +726,76 @@ const TOOLS = [
           area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Area' }
         },
         required: ['title', 'start_at', 'area']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_projects',
+      description: 'Получить список активных проектов',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_project',
+      description: 'Создать новый проект',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Название проекта' },
+          color: { type: 'string', description: 'HEX цвет проекта (по умолчанию #6366f1)' }
+        },
+        required: ['name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_goals',
+      description: 'Получить список личных и рабочих целей',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_goal',
+      description: 'Создать новую цель',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Формулировка цели' },
+          target_value: { type: 'number', description: 'Целевое значение (например, 100)' },
+          unit: { type: 'string', description: 'Единица измерения (например, %, рублей, книг) (по умолчанию %)' },
+          deadline: { type: 'string', description: 'Дедлайн в формате YYYY-MM-DD (опционально)' }
+        },
+        required: ['title']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_inbox',
+      description: 'Получить неразобранные мысли и идеи из Inbox',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'archive_task',
+      description: 'Отметить задачу как выполненную (завершить/архивировать)',
+      parameters: {
+        type: 'object',
+        properties: {
+          task_id: { type: 'string', description: 'ID задачи для завершения' }
+        },
+        required: ['task_id']
       }
     }
   }
@@ -962,6 +1084,36 @@ async function executeFunctionCall(name, args) {
         } catch (e) {
           return { success: false, error: 'Ошибка генерации выжимки или сохранения: ' + e.message };
         }
+      }
+      case 'get_projects': {
+        const projects = await getProjects();
+        return { success: true, projects, count: projects.length };
+      }
+      case 'create_project': {
+        const { name, color } = args;
+        if (!name) return { success: false, error: 'Имя проекта не указано' };
+        const project = await createProject(name, color);
+        return { success: true, project, message: `Проект "${name}" успешно создан!` };
+      }
+      case 'get_goals': {
+        const goals = await getGoals();
+        return { success: true, goals, count: goals.length };
+      }
+      case 'create_goal': {
+        const { title, target_value, unit, deadline } = args;
+        if (!title) return { success: false, error: 'Заголовок цели не указан' };
+        const goal = await createGoal(title, target_value, unit, deadline);
+        return { success: true, goal, message: `Цель "${title}" успешно добавлена!` };
+      }
+      case 'get_inbox': {
+        const inbox = await getInbox();
+        return { success: true, inbox, count: inbox.length };
+      }
+      case 'archive_task': {
+        const { task_id } = args;
+        if (!task_id) return { success: false, error: 'ID задачи не передан' };
+        const task = await completeTask(task_id);
+        return { success: true, task, message: `Задача "${task.title}" успешно отмечена выполненной!` };
       }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
@@ -2208,10 +2360,57 @@ cron.schedule('* * * * *', async () => {
   }
 }, { timezone: 'UTC' });
 
-// ---- HTTP Server for Render Health Checks ----
+// ---- HTTP Server for Render Health Checks & Notifications ----
 const http = require('http');
 const PORT = process.env.PORT || 80;
 http.createServer((req, res) => {
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/notify-pomodoro') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body);
+        const { action, taskTitle } = payload;
+        
+        let message = '';
+        if (action === 'start') {
+          message = `🍅 **Помодоро запущен!**\nФокус: "${taskTitle || 'Без названия'}"\nУдачи! Не отвлекайся 🚀`;
+        } else if (action === 'pause') {
+          message = `⏸️ **Помодоро на паузе.**\nФокус: "${taskTitle || 'Без названия'}"`;
+        } else if (action === 'complete') {
+          message = `🎉 **Помодоро завершен!**\nФокус: "${taskTitle || 'Без названия'}"\nВремя отдохнуть! ☕`;
+        } else if (action === 'stop') {
+          message = `⏹️ **Помодоро остановлен.**\nФокус: "${taskTitle || 'Без названия'}"`;
+        }
+
+        if (message && CHAT_ID) {
+          await bot.sendMessage(CHAT_ID, message, { parse_mode: 'Markdown' });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true }));
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'CHAT_ID not set or action unknown' }));
+        }
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // Default Health-Check
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('🤖 Бот Игоря работает в штатном режиме!');
 }).listen(PORT, () => {

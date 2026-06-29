@@ -170,6 +170,10 @@ const SettingsModule = {
             <label class="form-label">Модель ИИ</label>
             <input id="key-ai-model" type="text" class="form-input" value="${this.esc(cfg.aiModel || 'meta-llama/llama-3.3-70b-instruct:free')}" placeholder="gemini-1.5-pro" />
           </div>
+          <div class="form-group">
+            <label class="form-label">Telegram Bot URL (для Pomodoro уведомлений)</label>
+            <input id="key-bot-url" type="text" class="form-input" value="${this.esc(cfg.telegramBotUrl || 'https://assistante-theverysamesunday.amvera.io')}" placeholder="https://xxxx.amvera.io" />
+          </div>
           <div style="margin-top:var(--space-md)">
             <a href="https://aistudio.google.com/app/apikey" target="_blank" class="btn btn-secondary btn-sm">
               🔑 Получить Gemini API Key
@@ -229,7 +233,8 @@ const SettingsModule = {
         supabaseKey: document.getElementById('key-supabase-key')?.value.trim(),
         geminiKey: document.getElementById('key-gemini')?.value.trim(),
         aiApiUrl: document.getElementById('key-ai-url')?.value.trim(),
-        aiModel: document.getElementById('key-ai-model')?.value.trim()
+        aiModel: document.getElementById('key-ai-model')?.value.trim(),
+        telegramBotUrl: document.getElementById('key-bot-url')?.value.trim()
       });
       UI.toast('API ключи сохранены. Перезагрузи страницу.', 'success');
       this.close();
