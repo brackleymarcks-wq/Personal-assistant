@@ -8,13 +8,38 @@ const SETTINGS_KEY = 'pa_settings';
 const Config = {
   get() {
     try {
-      return JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
-    } catch { return {}; }
+      const local = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+      const env = window.ENV_CONFIG || {};
+
+      // If local storage has OpenRouter key or is empty, and env has Groq credentials, prefer env!
+      const isLocalOrFree = !local.geminiKey || local.geminiKey.startsWith('sk-or-');
+      const finalKey = (isLocalOrFree && env.geminiKey) ? env.geminiKey : (local.geminiKey || '');
+      const finalUrl = (isLocalOrFree && env.aiApiUrl) ? env.aiApiUrl : (local.aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions');
+      const finalModel = (isLocalOrFree && env.aiModel) ? env.aiModel : (local.aiModel || 'meta-llama/llama-3.3-70b-instruct:free');
+
+      return {
+        supabaseUrl: local.supabaseUrl || env.supabaseUrl || '',
+        supabaseKey: local.supabaseKey || env.supabaseKey || '',
+        geminiKey: finalKey,
+        aiApiUrl: finalUrl,
+        aiModel: finalModel,
+        userName: local.userName || env.userName || 'Пользователь',
+        userId: local.userId || env.userId || null,
+        theme: local.theme || env.theme || 'dark',
+        glassEnabled: local.glassEnabled !== undefined ? local.glassEnabled : (env.glassEnabled !== undefined ? env.glassEnabled : true)
+      };
+    } catch { 
+      return window.ENV_CONFIG || {}; 
+    }
   },
 
   save(data) {
-    const current = this.get();
-    localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...current, ...data }));
+    try {
+      const local = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+      localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...local, ...data }));
+    } catch (e) {
+      console.error(e);
+    }
   },
 
   isConfigured() {
@@ -26,10 +51,7 @@ const Config = {
   get supabaseKey() { return this.get().supabaseKey || ''; },
   get geminiKey()   { return this.get().geminiKey || ''; }, // AI API Key
   get aiApiUrl()    { return this.get().aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions'; },
-  get aiModel()     { 
-    const m = this.get().aiModel;
-    return (!m || m === 'openrouter/free' || m === 'google/gemini-2.5-flash:free' || m === 'google/gemini-2.0-flash-exp:free') ? 'meta-llama/llama-3.3-70b-instruct:free' : m;
-  },
+  get aiModel()     { return this.get().aiModel || 'meta-llama/llama-3.3-70b-instruct:free'; },
   get userName()    { return this.get().userName || 'Пользователь'; },
   get userId()      { return this.get().userId || null; },
 };

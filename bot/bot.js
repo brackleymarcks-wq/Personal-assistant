@@ -19,11 +19,12 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 let CHAT_ID = '521675050';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
-const AI_API_KEY = process.env.OPENROUTER_API_KEY || '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';
-const GROQ_API_KEY = process.env.GROQ_API_KEY; // Для транскрибации Whisper
-const isOpenRouter = true;
-const AI_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const AI_MODEL = 'openrouter/free';
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const useGroq = !!GROQ_API_KEY;
+const AI_API_KEY = useGroq ? GROQ_API_KEY : (process.env.OPENROUTER_API_KEY || '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');
+const isOpenRouter = !useGroq;
+const AI_API_URL = useGroq ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions';
+const AI_MODEL = useGroq ? 'llama-3.3-70b-versatile' : 'meta-llama/llama-3.3-70b-instruct:free';
 
 if (!BOT_TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN не задан в .env'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
