@@ -41,7 +41,7 @@ const DashboardPage = {
       const today = new Date().toISOString().split('T')[0];
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
 
-      const [tasks, events, habits, habitLogs, goals, inbox, transactions, lessons] = await Promise.all([
+      const [tasks, events, habits, habitLogs, goals, inbox, transactions, lessons, rpg] = await Promise.all([
         DB.getTasks(),
         DB.getEvents(
           new Date(today + 'T00:00:00').toISOString(),
@@ -52,7 +52,8 @@ const DashboardPage = {
         DB.getGoals(),
         DB.getInbox(true),
         DB.getTransactions(),
-        DB.getLessons()
+        DB.getLessons(),
+        DB.getGamificationStats()
       ]);
 
       // Fetch finance config note
@@ -70,7 +71,7 @@ const DashboardPage = {
         console.error('Failed to load finance config on dashboard', e);
       }
 
-      this.data = { tasks, events, habits, habitLogs, goals, inbox, transactions, lessons, financeConfig };
+      this.data = { tasks, events, habits, habitLogs, goals, inbox, transactions, lessons, financeConfig, rpg };
       this.renderWidgets();
     } catch (e) {
       console.error('Dashboard load error:', e);
@@ -243,8 +244,8 @@ const DashboardPage = {
         `}
       </div>
 
-      <!-- Finances Bento Box (6 cols) -->
-      <div class="bento-item bento-col-6" style="cursor:pointer; display:flex; flex-direction:column; min-height:160px; background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));" onclick="App.navigateTo('finances')">
+      <!-- Finances Bento Box (4 cols) -->
+      <div class="bento-item bento-col-4" style="cursor:pointer; display:flex; flex-direction:column; min-height:160px; background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));" onclick="App.navigateTo('finances')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
           <div style="font-size:16px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
             <i data-lucide="wallet" style="color:var(--success);"></i> Финансы за месяц
@@ -279,8 +280,8 @@ const DashboardPage = {
         `}
       </div>
 
-      <!-- Tutoring Bento Box (6 cols) -->
-      <div class="bento-item bento-col-6" style="cursor:pointer; display:flex; flex-direction:column; min-height:160px; background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));" onclick="App.navigateTo('tutoring')">
+      <!-- Tutoring Bento Box (4 cols) -->
+      <div class="bento-item bento-col-4" style="cursor:pointer; display:flex; flex-direction:column; min-height:160px; background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));" onclick="App.navigateTo('tutoring')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
           <div style="font-size:16px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
             <i data-lucide="book-open" style="color:var(--accent-vibrant);"></i> Ближайший урок
@@ -308,6 +309,31 @@ const DashboardPage = {
             <div style="font-size:14px; font-weight:500;">Нет запланированных уроков</div>
           </div>
         `}
+      </div>
+
+      <!-- RPG Bento Box (4 cols) -->
+      <div class="bento-item bento-col-4" style="display:flex; flex-direction:column; min-height:160px; background:linear-gradient(135deg, var(--glass-bg), var(--glass-bg-heavy));">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div style="font-size:16px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+            <i data-lucide="award" style="color:var(--warning);"></i> Прогресс RPG
+          </div>
+          <span style="font-size:13px; color:var(--warning); font-weight:800;">Ур. ${level}</span>
+        </div>
+        <div style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:12px;">
+          ${rank}
+        </div>
+        <div style="margin-top:auto; width:100%;">
+          <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px; color:var(--text-secondary);">
+            <span>Опыт: ${xp} / ${nextLevelBaseXp} XP</span>
+            <span style="font-weight:700; color:var(--accent-vibrant);">${Math.round(progressPercent)}%</span>
+          </div>
+          <div style="height:6px; background:var(--bg-hover); border-radius:3px; overflow:hidden; border:1px solid var(--border-light);">
+            <div style="height:100%; width:${progressPercent}%; background:linear-gradient(90deg, var(--accent), var(--accent-vibrant)); border-radius:3px; box-shadow:0 0 8px rgba(var(--accent-rgb), 0.4);"></div>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">
+            Выполняй задачи и привычки для повышения уровня!
+          </div>
+        </div>
       </div>
     `;
   },
@@ -425,5 +451,41 @@ const DashboardPage = {
       balance,
       monthlyLimit: Number(financeConfig.monthlyLimit) || 0
     };
+  },
+
+  triggerLevelUpCelebration(newLevel, rank) {
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'level-up-overlay';
+    overlay.style = `
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    `;
+
+    overlay.innerHTML = `
+      <div class="glass-panel" style="padding: var(--space-2xl); border-radius: 24px; max-width: 450px; text-align: center; border: 1px solid var(--accent); box-shadow: 0 0 30px var(--accent-glow); transform: scale(0.8); transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: relative; background: var(--bg-surface-glass);">
+        <div style="font-size: 64px; margin-bottom: 16px; animation: bounce 2s infinite;">👑</div>
+        <div style="font-size: 14px; font-weight: 700; color: var(--accent-vibrant); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">Новый Уровень!</div>
+        <div style="font-size: 36px; font-weight: 900; color: var(--text-primary); margin-bottom: 12px; text-shadow: 0 0 10px var(--accent-glow);">УРОВЕНЬ ${newLevel}</div>
+        <div style="font-size: 16px; font-weight: 600; color: var(--text-secondary); margin-bottom: 24px;">Твой новый ранг: <span style="color:var(--warning); font-weight:800;">${rank}</span></div>
+        <button class="btn btn-primary" style="width: 100%; border-radius: 12px; font-weight: 700;" onclick="document.getElementById('level-up-overlay').remove()">Вперёд к целям! 🚀</button>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    
+    // Trigger animations
+    setTimeout(() => {
+      overlay.style.opacity = '1';
+      overlay.querySelector('.glass-panel').style.transform = 'scale(1)';
+    }, 50);
   }
 };
