@@ -572,6 +572,8 @@ const TasksPage = {
     titleEl.textContent = task ? 'Редактировать задачу' : 'Новая задача';
     deleteBtn.style.display = task ? '' : 'none';
 
+    const defaultArea = task?.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
+
     bodyEl.innerHTML = `
       <div class="form-group">
         <label class="form-label">Название *</label>
@@ -604,9 +606,9 @@ const TasksPage = {
         <div class="form-group">
           <label class="form-label">Сфера (Workspace)</label>
           <select id="tf-area" class="form-input">
-            <option value="Работа" ${(task?.area || Config.currentArea) === 'Работа' ? 'selected' : ''}>🏢 Работа</option>
-            <option value="Репетиторство" ${(task?.area || Config.currentArea) === 'Репетиторство' ? 'selected' : ''}>👨‍🏫 Репетиторство</option>
-            <option value="Личное" ${(task?.area || Config.currentArea) === 'Личное' ? 'selected' : ''}>🏠 Личное</option>
+            <option value="Работа" ${defaultArea === 'Работа' ? 'selected' : ''}>🏢 Работа</option>
+            <option value="Репетиторство" ${defaultArea === 'Репетиторство' ? 'selected' : ''}>👨‍🏫 Репетиторство</option>
+            <option value="Личное" ${defaultArea === 'Личное' ? 'selected' : ''}>🏠 Личное</option>
           </select>
         </div>
         <div class="form-group">

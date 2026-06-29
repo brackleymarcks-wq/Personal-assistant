@@ -161,8 +161,16 @@ const App = {
     // Ensure user exists
     try {
       await DB.getOrCreateUser(Config.userName);
+      
+      // Client-side migration: update any null area columns to default "Работа"
+      await Promise.all([
+        DB.client.from('tasks').update({ area: 'Работа' }).is('area', null),
+        DB.client.from('events').update({ area: 'Работа' }).is('area', null),
+        DB.client.from('notes').update({ area: 'Работа' }).is('area', null)
+      ]);
+      console.log('✅ Client-side area migration completed.');
     } catch (e) {
-      console.error('User init error:', e);
+      console.error('User init or migration error:', e);
     }
 
     // Show main layout

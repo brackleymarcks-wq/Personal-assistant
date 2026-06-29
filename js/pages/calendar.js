@@ -406,6 +406,8 @@ const CalendarPage = {
       ? `${defaultDate}T11:00`
       : event ? event.end_at?.slice(0, 16) : new Date(Date.now() + 3600000).toISOString().slice(0, 16);
 
+    const defaultArea = event?.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
+
     document.getElementById('event-modal-body').innerHTML = `
       <div class="form-group">
         <label class="form-label">Название *</label>
@@ -431,9 +433,9 @@ const CalendarPage = {
         <div class="form-group">
           <label class="form-label">Сфера (Workspace)</label>
           <select id="ef-area" class="form-input">
-            <option value="Работа" ${(event?.area || Config.currentArea === 'Работа' ? 'Работа' : '') === 'Работа' ? 'selected' : ''}>🏢 Работа</option>
-            <option value="Репетиторство" ${(event?.area || Config.currentArea === 'Репетиторство' ? 'Репетиторство' : '') === 'Репетиторство' ? 'selected' : ''}>👨‍🏫 Репетиторство</option>
-            <option value="Личное" ${(event?.area || Config.currentArea === 'Личное' ? 'Личное' : '') === 'Личное' ? 'selected' : ''}>🏠 Личное</option>
+            <option value="Работа" ${defaultArea === 'Работа' ? 'selected' : ''}>🏢 Работа</option>
+            <option value="Репетиторство" ${defaultArea === 'Репетиторство' ? 'selected' : ''}>👨‍🏫 Репетиторство</option>
+            <option value="Личное" ${defaultArea === 'Личное' ? 'selected' : ''}>🏠 Личное</option>
           </select>
         </div>
       </div>
