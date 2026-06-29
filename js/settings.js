@@ -168,7 +168,7 @@ const SettingsModule = {
           </div>
           <div class="form-group">
             <label class="form-label">Модель ИИ</label>
-            <input id="key-ai-model" type="text" class="form-input" value="${this.esc(cfg.aiModel || 'google/gemini-2.0-flash-exp:free')}" placeholder="gemini-1.5-pro" />
+            <input id="key-ai-model" type="text" class="form-input" value="${this.esc(cfg.aiModel || 'meta-llama/llama-3.3-70b-instruct:free')}" placeholder="gemini-1.5-pro" />
           </div>
           <div style="margin-top:var(--space-md)">
             <a href="https://aistudio.google.com/app/apikey" target="_blank" class="btn btn-secondary btn-sm">

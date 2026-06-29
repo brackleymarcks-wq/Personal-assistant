@@ -28,7 +28,7 @@ const Config = {
   get aiApiUrl()    { return this.get().aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions'; },
   get aiModel()     { 
     const m = this.get().aiModel;
-    return (!m || m === 'openrouter/free' || m === 'google/gemini-2.5-flash:free') ? 'google/gemini-2.0-flash-exp:free' : m;
+    return (!m || m === 'openrouter/free' || m === 'google/gemini-2.5-flash:free' || m === 'google/gemini-2.0-flash-exp:free') ? 'meta-llama/llama-3.3-70b-instruct:free' : m;
   },
   get userName()    { return this.get().userName || 'Пользователь'; },
   get userId()      { return this.get().userId || null; },
