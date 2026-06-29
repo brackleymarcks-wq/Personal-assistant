@@ -331,6 +331,17 @@ const TasksPage = {
       'Низкий': '<i data-lucide="arrow-down-circle" style="color:var(--success);width:12px;height:12px;vertical-align:middle;margin-right:2px;"></i>'
     };
       
+    let areaBadge = '';
+    if (task.area) {
+      const areaIcons = {
+        'Работа': 'briefcase',
+        'Репетиторство': 'book-open',
+        'Личное': 'home'
+      };
+      const icon = areaIcons[task.area] || 'globe';
+      areaBadge = `<span class="task-project-badge" style="background:var(--accent-dim);border-color:var(--border-accent);color:var(--accent);"><i data-lucide="${icon}" style="width:10px;height:10px;margin-right:2px;vertical-align:middle;"></i>${this.escHtml(task.area)}</span>`;
+    }
+
     let projectBadge = '';
     if (task.project_id) {
       const project = this.projects.find(p => p.id === task.project_id);
@@ -354,13 +365,14 @@ const TasksPage = {
           <i data-lucide="check" style="width: 14px; height: 14px; opacity: ${isDone ? 1 : 0}"></i>
         </div>
         <div class="task-content">
-          <div class="task-title" style="${isDone ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${window.PeekView ? window.PeekView.parseLinks(task.title) : this.escHtml(task.title)}</div>
+          <div class="task-title" style="${isDone ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${window.PeekView ? window.PeekView.parseLinks(task.title || 'Без названия') : this.escHtml(task.title || 'Без названия')}</div>
           ${task.next_step ? `<div class="task-next-step" style="${isDone ? 'color: var(--text-muted);' : ''}"><i data-lucide="corner-down-right" style="width: 12px; height: 12px;"></i> ${window.PeekView ? window.PeekView.parseLinks(task.next_step) : this.escHtml(task.next_step)}</div>` : ''}
           <div class="task-meta">
             ${deadline ? `<span style="display:inline-flex;align-items:center;gap:4px;color:${deadline < new Date() && !isDone ? 'var(--danger)' : 'var(--text-muted)'};font-weight:500;margin-right:4px;"><i data-lucide="calendar" style="width:12px;height:12px;"></i> ${deadline.toLocaleDateString('ru-RU', {day:'numeric', month:'short'})}</span>` : ''}
+            ${areaBadge}
             ${projectBadge}
             ${directionBadge}
-            <span>${prioIcons[task.priority] || ''} ${task.priority || ''}</span>
+            <span style="color:var(--text-secondary);">${prioIcons[task.priority] || ''} ${task.priority || ''}</span>
             <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:11px;background:${statusColor}1a;color:${statusColor};border:1px solid ${statusColor}40;margin-left:4px;">
                <div style="width:6px;height:6px;border-radius:50%;background:${statusColor}"></div>
                ${this.escHtml(task.status)}
@@ -486,6 +498,17 @@ const TasksPage = {
       'Низкий': '<i data-lucide="arrow-down-circle" style="color:var(--success);width:12px;height:12px;vertical-align:middle;margin-right:2px;"></i>'
     };
 
+    let areaBadge = '';
+    if (task.area) {
+      const areaIcons = {
+        'Работа': 'briefcase',
+        'Репетиторство': 'book-open',
+        'Личное': 'home'
+      };
+      const icon = areaIcons[task.area] || 'globe';
+      areaBadge = `<span style="display:inline-flex;align-items:center;background:var(--accent-dim);border:1px solid var(--border-accent);padding:2px 6px;border-radius:var(--radius-full);font-size:10px;color:var(--accent);"><i data-lucide="${icon}" style="width:10px;height:10px;margin-right:2px;"></i> ${this.escHtml(task.area)}</span>`;
+    }
+
     let projectBadge = '';
     if (task.project_id) {
       const project = this.projects.find(p => p.id === task.project_id);
@@ -506,10 +529,11 @@ const TasksPage = {
     return `
       <div class="kanban-card task-card" data-id="${task.id}" style="position:relative; display:flex; flex-direction:column; ${borderStyle}" draggable="true">
         <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px;">
+          ${areaBadge}
           ${projectBadge}
           ${directionBadge}
         </div>
-        <div class="kanban-card-title" style="font-weight:600; font-size:13.5px; margin-bottom:8px; line-height:1.4; color: var(--text-primary);">${this.escHtml(task.title)}</div>
+        <div class="kanban-card-title" style="font-weight:600; font-size:13.5px; margin-bottom:8px; line-height:1.4; color: var(--text-primary);">${this.escHtml(task.title || 'Без названия')}</div>
         ${task.next_step ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><i data-lucide="corner-down-right" style="width:12px;height:12px;vertical-align:middle;"></i> ${this.escHtml(task.next_step)}</div>` : ''}
         <div class="kanban-card-meta" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
           <div style="display:flex;align-items:center;gap:6px;">
@@ -526,7 +550,7 @@ const TasksPage = {
           ${(task.linked_notes && task.linked_notes.length > 0) ? `<span style="font-size:11px;color:var(--accent);display:flex;align-items:center;gap:2px;" title="Прикрепленные документы"><i data-lucide="paperclip" style="width:10px;height:10px;"></i> ${task.linked_notes.length}</span>` : ''}
         </div>
         <div class="task-actions-overlay" style="right:var(--space-sm);">
-          <button class="task-action-btn start-pomodoro-btn" data-id="${task.id}" data-title="${this.escHtml(task.title)}" title="Начать Помодоро для этой задачи">
+          <button class="task-action-btn start-pomodoro-btn" data-id="${task.id}" data-title="${this.escHtml(task.title || 'Без названия')}" title="Начать Помодоро для этой задачи">
             <i data-lucide="timer" style="width:14px;height:14px;"></i>
           </button>
         </div>
