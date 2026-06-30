@@ -1368,10 +1368,10 @@ bot.on('photo', async (msg) => {
 КРИТИЧНО: Пиши МАКСИМАЛЬНО КРАТКО! Без лишних слов, пробелов и переносов строк. 
 Формат: Товар 1шт 2.50р, Товар2 2шт 5.00р. Ничего не пропускай, но экономь символы!`;
 
-    // Вызываем Groq API напрямую с новой моделью Llama 4 Scout для мгновенного и надежного извлечения текста
-    let visionUrl = 'https://api.groq.com/openai/v1/chat/completions';
-    let visionKey = GROQ_API_KEY;
-    let visionModel = 'meta-llama/llama-4-scout-17b-16e-instruct';
+    // Вызываем OpenRouter API с Gemini 2.0 Flash, так как она идеально читает русские чеки без галлюцинаций (в отличие от Llama 3.2 Vision)
+    let visionUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    let visionKey = process.env.OPENROUTER_API_KEY || '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';
+    let visionModel = 'google/gemini-2.0-flash-exp:free';
     
     const visionRes = await fetch(visionUrl, {
       method: 'POST',
@@ -1379,7 +1379,7 @@ bot.on('photo', async (msg) => {
       body: JSON.stringify({
         model: visionModel,
         messages: [{ role: 'user', content: [{ type: 'text', text: visionPrompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
-        max_tokens: 1000
+        max_tokens: 1500
       })
     });
     
@@ -1388,11 +1388,6 @@ bot.on('photo', async (msg) => {
     
     if (!receiptDescription) {
       throw new Error(`Не удалось прочитать фотографию чека: ${JSON.stringify(visionData.error || visionData)}`);
-    }
-
-    // Если описание слишком длинное, жестко обрезаем его до 1000 символов, чтобы 100% влезть в 6000 TPM лимит Groq (с учетом картинки)
-    if (receiptDescription.length > 1000) {
-      receiptDescription = receiptDescription.substring(0, 1000) + '\n... (чек обрезан)';
     }
 
     // Шаг 2: Передаем извлеченный текст ОБЫЧНОЙ текстовой модели, которая идеально умеет вызывать инструменты
@@ -1406,9 +1401,9 @@ ${receiptDescription}
 Проанализируй описание фото и выбери ОДНО из действий:
 
 1. Если на фото кассовый чек, счет из ресторана или квитанция об оплате:
-   ОБЯЗАН вызвать встроенный инструмент create_transaction для сохранения расхода!
-   - amount: возьми сумму из чека
-   - category: логичная категория
+   ТЫ СТРОГО ОБЯЗАН ВЫЗВАТЬ ФУНКЦИЮ create_transaction! ЗАПРЕЩЕНО отвечать просто текстом!
+   - amount: возьми итоговую сумму из чека
+   - category: логичная категория (Продукты, Ресторан, Транспорт, Аптека и т.д.)
    - comment: перечисли ВСЕ купленные товары из чека через запятую, включая их количество и стоимость/цену каждого (например: "Молоко 2шт - 5.00р, Хлеб - 2.50р")
 
 2. Если на фото изображено что-то, подтверждающее полезную привычку пользователя (например: беговые кроссовки на улице, еда для здорового питания, коврик для фитнеса, раскрытая книга, гантели, витамины):
