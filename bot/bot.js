@@ -824,7 +824,12 @@ async function executeFunctionCall(name, args) {
       }
       case 'create_tasks': {
         if (!args.tasks || !Array.isArray(args.tasks)) {
-          return { success: false, error: 'Параметр tasks должен быть массивом' };
+          // Fallback: if LLM forgets the 'tasks' array and passes properties directly
+          if (args.title) {
+            args.tasks = [args];
+          } else {
+            return { success: false, error: 'Параметр tasks должен быть массивом, или передайте title' };
+          }
         }
         const created = [];
         for (const t of args.tasks) {
