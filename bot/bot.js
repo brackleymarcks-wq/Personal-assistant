@@ -872,7 +872,20 @@ async function executeFunctionCall(name, args) {
       case 'add_to_inbox': {
         const user = await getUser();
         if(!user) return { success: false, error: 'User not found' };
-        const { data, error } = await db.from('inbox').insert({ user_id: user.id, content: args.content }).select().single();
+        const content = (args.content || '').trim();
+        // Guard: block bot-generated text from being saved to inbox
+        const BOT_PHRASES = [
+          'пожалуйста, предоставь', 'пожалуйста, укажи', 'уточните', 'уточни',
+          'предоставьте сумму', 'предоставьте категорию', 'какая сумма',
+          'не могли бы вы', 'чтобы я мог', 'для того чтобы',
+          'могу ли я', 'можешь ли ты', 'пожалуйста, сообщи'
+        ];
+        const isLikelyBotText = BOT_PHRASES.some(phrase => content.toLowerCase().includes(phrase));
+        if (isLikelyBotText) {
+          console.warn(`[add_to_inbox] Blocked bot-generated text from being saved: "${content.substring(0, 80)}"`);
+          return { success: false, error: 'Это похоже на текст бота, а не пользователя. Не сохраняем во входящие.' };
+        }
+        const { data, error } = await db.from('inbox').insert({ user_id: user.id, content }).select().single();
         if(error) return { success: false, error: error.message };
         return { success: true, item: data, message: 'Мысль записана во входящие' };
       }
