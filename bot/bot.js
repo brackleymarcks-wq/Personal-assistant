@@ -1363,15 +1363,17 @@ bot.on('photo', async (msg) => {
     let userCaption = msg.caption ? `Комментарий пользователя: ${msg.caption}\n` : '';
     
     // Шаг 1: Просим Vision-модель (которая может не уметь вызывать инструменты) просто подробно описать чек
-    const visionPrompt = `Ты профессиональный бухгалтер. Изучи этот чек. 
-Извлеки: 1) Итоговую сумму, 2) Способ оплаты, 3) ПОЛНЫЙ список покупок с указанием количества и цен/стоимости каждого товара. 
-КРИТИЧНО: Пиши МАКСИМАЛЬНО КРАТКО! Без лишних слов, пробелов и переносов строк. 
-Формат: Товар 1шт 2.50р, Товар2 2шт 5.00р. Ничего не пропускай, но экономь символы!`;
+    const visionPrompt = `You are a precise OCR system. Examine this Russian receipt.
+CRITICAL RULES:
+1. DO NOT translate anything to English. Keep all item names in original Russian/Belarusian.
+2. DO NOT invent or hallucinate any products. Read ONLY the exact characters visible on the receipt.
+3. Extract: 1) Total Amount (Итог/Оплата), 2) Payment method, 3) FULL list of items with quantities and prices.
+Format exactly like this: Товар 1шт 2.50р, Товар2 2шт 5.00р. Be extremely concise.`;
 
-    // Вызываем OpenRouter API с Gemini 2.0 Flash, так как она идеально читает русские чеки без галлюцинаций (в отличие от Llama 3.2 Vision)
-    let visionUrl = 'https://openrouter.ai/api/v1/chat/completions';
-    let visionKey = process.env.OPENROUTER_API_KEY || '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';
-    let visionModel = 'google/gemini-2.0-flash-exp:free';
+    // Возвращаемся на мощную Llama 3.2 90B Vision от Groq, но с жестким английским промптом, чтобы она не галлюцинировала на кириллице
+    let visionUrl = 'https://api.groq.com/openai/v1/chat/completions';
+    let visionKey = GROQ_API_KEY;
+    let visionModel = 'llama-3.2-90b-vision-preview';
     
     const visionRes = await fetch(visionUrl, {
       method: 'POST',
