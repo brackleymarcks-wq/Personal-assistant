@@ -131,6 +131,7 @@ const DashboardPage = {
     const rhythm = this.getCurrentRhythmBlock();
 
     const grid = document.getElementById('dashboard-grid');
+    if (!grid) return; // Prevent crash if navigated away before load completes
     grid.className = 'bento-grid';
 
     grid.innerHTML = `
