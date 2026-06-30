@@ -495,12 +495,12 @@ const DashboardPage = {
     `;
 
     overlay.innerHTML = `
-      <div class="glass-panel" style="padding: var(--space-2xl); border-radius: 24px; max-width: 450px; text-align: center; border: 1px solid var(--accent); box-shadow: 0 0 30px var(--accent-glow); transform: scale(0.8); transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: relative; background: var(--bg-surface-glass);">
+      <div class="glass-panel" style="padding: var(--space-2xl); border-radius: 24px; max-width: 450px; text-align: center; border: 1px solid var(--accent); box-shadow: 0 0 40px rgba(255,107,43,0.3); transform: scale(0.8); transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: relative; background: linear-gradient(145deg, #2a2a2e, #1a1a1c); color: #fff;">
         <div style="font-size: 64px; margin-bottom: 16px; animation: bounce 2s infinite;">👑</div>
-        <div style="font-size: 14px; font-weight: 700; color: var(--accent-vibrant); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">Новый Уровень!</div>
-        <div style="font-size: 36px; font-weight: 900; color: var(--text-primary); margin-bottom: 12px; text-shadow: 0 0 10px var(--accent-glow);">УРОВЕНЬ ${newLevel}</div>
-        <div style="font-size: 16px; font-weight: 600; color: var(--text-secondary); margin-bottom: 24px;">Твой новый ранг: <span style="color:var(--warning); font-weight:800;">${rank}</span></div>
-        <button class="btn btn-primary" style="width: 100%; border-radius: 12px; font-weight: 700;" onclick="document.getElementById('level-up-overlay').remove()">Вперёд к целям! 🚀</button>
+        <div style="font-size: 14px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;">Новый Уровень!</div>
+        <div style="font-size: 42px; font-weight: 900; color: #ffffff; margin-bottom: 12px; text-shadow: 0 0 15px var(--accent-glow);">УРОВЕНЬ ${newLevel}</div>
+        <div style="font-size: 16px; font-weight: 600; color: #a0a0a5; margin-bottom: 24px;">Твой новый ранг: <span style="color:var(--accent-vibrant); font-weight:800;">${rank}</span></div>
+        <button class="btn btn-primary" style="width: 100%; border-radius: 12px; font-weight: 700; padding: 12px; font-size: 16px; box-shadow: 0 4px 15px rgba(255,107,43,0.4);" onclick="document.getElementById('level-up-overlay').remove()">Вперёд к целям! 🚀</button>
       </div>
     `;
 
