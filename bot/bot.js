@@ -1266,31 +1266,32 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
     
     if (res.status === 429 && retryCount < 2) {
       if (errMsg.includes('tokens per day') || errMsg.includes('TPD') || errMsg.includes('rate limit')) {
-        console.warn('Rate limit reached! Falling back to an alternative model...');
-        let fallbackModel = AI_API_URL.includes('openrouter') ? 'openrouter/free' : 'llama-3.1-8b-instant';
-        return callAPI(systemInstruction, messages, retryCount + 1, isVision, fallbackModel, disableTools);
-      }
+        let waitTime = 20;
+        const matchM = errMsg.match(/try again in ([\d\.]+)m/);
+        const matchS = errMsg.match(/try again in ([\d\.]+)s/);
+        if (matchM && matchM[1]) waitTime = parseFloat(matchM[1]) * 60 + 1;
+        else if (matchS && matchS[1]) waitTime = parseFloat(matchS[1]) + 1;
+        
+        // If wait time is reasonable for a bot (<60s), just wait
+        if (waitTime <= 60 && !errMsg.includes('tokens per day')) {
+          console.warn(`Rate limit hit. Waiting ${waitTime}s...`);
+          await new Promise(r => setTimeout(r, waitTime * 1000));
+          return callAPI(systemInstruction, messages, retryCount + 1, isVision, forceModel, disableTools, customTools);
+        }
 
-      let waitTime = 20;
-      const matchM = errMsg.match(/try again in ([\d\.]+)m/);
-      const matchS = errMsg.match(/try again in ([\d\.]+)s/);
-      if (matchM && matchM[1]) waitTime = parseFloat(matchM[1]) * 60 + 1;
-      else if (matchS && matchS[1]) waitTime = parseFloat(matchS[1]) + 1;
-      
-      if (waitTime > 30) {
-         console.warn(`Wait time ${waitTime}s is too long, falling back to alternative model...`);
-         let fallbackModel = AI_API_URL.includes('openrouter') ? 'openrouter/free' : 'llama-3.1-8b-instant';
-         return callAPI(systemInstruction, messages, retryCount + 1, isVision, fallbackModel, disableTools);
+        console.warn(`Wait time ${waitTime}s is too long or daily limit hit, falling back to alternative model...`);
+        let fallbackModel = AI_API_URL.includes('openrouter') ? 'openrouter/free' : 'mixtral-8x7b-32768';
+        return callAPI(systemInstruction, messages, retryCount + 1, isVision, fallbackModel, disableTools, customTools);
       }
-
-      console.warn(`Rate limit hit. Waiting ${waitTime}s...`);
-      await new Promise(r => setTimeout(r, waitTime * 1000));
-      return callAPI(systemInstruction, messages, retryCount + 1, isVision, forceModel, disableTools);
     }
     
     // Fallback if model fails to generate valid tool call JSON
     if (errMsg.includes('failed_generation') && retryCount < 1) {
       console.warn('Groq failed_generation. Retrying without tools...');
+      
+      // Filter out tool calls from messages to prevent API errors when tools are omitted
+      const cleanMessages = messages.filter(m => m.role !== 'tool' && !m.tool_calls);
+      
       const fallbackRes = await fetch(AI_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AI_API_KEY}` },
@@ -1298,13 +1299,17 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
           model: modelToUse,
           messages: [
             { role: 'system', content: systemInstruction + '\nОТВЕЧАЙ ТОЛЬКО ТЕКСТОМ, НЕ ВЫЗЫВАЙ ФУНКЦИИ.' },
-            ...messages
+            ...cleanMessages
           ],
           temperature: 0.1,
           max_tokens: 1024
         })
       });
       if (fallbackRes.ok) return fallbackRes.json();
+      
+      // If fallback also fails, parse and throw its error
+      const fallbackErr = await fallbackRes.json().catch(() => ({}));
+      throw new Error(`Fallback failed: ${fallbackErr.error?.message || fallbackRes.statusText || errMsg}`);
     }
     
     throw new Error(errMsg);
