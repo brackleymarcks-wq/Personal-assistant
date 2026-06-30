@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test DB</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="output">Loading...</div>
+  <script>
+    async function main() {
+      try {
+        // Retrieve keys from all possible localStorage variations
+        const url = localStorage.getItem('supabaseUrl') || localStorage.getItem('supabase_url') || localStorage.getItem('sb_url');
+        const key = localStorage.getItem('supabaseKey') || localStorage.getItem('supabase_anon_key') || localStorage.getItem('sb_key');
+        
+        if (!url || !key) {
+          document.getElementById('output').innerHTML = `
+            <h3>No credentials found in localStorage</h3>
+            <p>Available keys: ${JSON.stringify(Object.keys(localStorage))}</p>
+          `;
+          return;
+        }
+        
+        const supabase = window.supabase.createClient(url, key);
+        const { data, error } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
+        if (error) {
+          document.getElementById('output').textContent = 'Query Error: ' + JSON.stringify(error);
+          return;
+        }
+        
+        let html = `<h3>Total Tasks in DB: ${data.length}</h3><ul>`;
+        data.slice(0, 15).forEach(t => {
+          html += `<li>
+            <b>ID:</b> ${t.id}<br/>
+            <b>Title:</b> "${t.title}" (length: ${t.title ? t.title.length : 0})<br/>
+            <b>Status:</b> ${t.status}<br/>
+            <b>Area/Sphere:</b> ${t.area}<br/>
+            <b>Project ID:</b> ${t.project_id}<br/>
+            <b>Direction:</b> "${t.direction}"<br/>
+            <hr/>
+          </li>`;
+        });
+        html += '</ul>';
+        document.getElementById('output').innerHTML = html;
+      } catch (err) {
+        document.getElementById('output').textContent = 'Crash: ' + err.message;
+      }
+    }
+    main();
+  </script>
+</body>
+</html>

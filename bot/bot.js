@@ -493,7 +493,7 @@ const TOOLS = [
             items: {
               type: 'object',
               properties: {
-                title: { type: 'string', description: 'Task title' },
+                title: { type: 'string', description: 'КОНКРЕТНОЕ ДЕЙСТВИЕ с глаголом. Примеры: "Подготовить отчёт по AI-Connect", "Написать пост в ТГ-канал", "Позвонить Горшкову". НЕЛЬЗЯ использовать имена направлений (ТГ AI-Connect, Личное и т.п.) как title — это поле direction.' },
                 direction: { type: 'string', description: 'Direction tags: AI-Connect, English, Personal, etc. CSV' },
                 status: { type: 'string', description: 'Default "Ждёт меня"' },
                 priority: { type: 'string', description: 'High, Medium, Low (Высокий/Средний/Низкий)' },
