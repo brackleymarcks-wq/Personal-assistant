@@ -349,6 +349,14 @@ const App = {
       item.addEventListener('click', (e) => {
         e.preventDefault();
         this.navigateTo(item.dataset.page);
+        
+        // Close sidebar on mobile after navigation
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar && window.innerWidth <= 768) {
+          sidebar.classList.remove('mobile-open');
+          const overlay = document.getElementById('sidebar-overlay');
+          if (overlay) overlay.classList.remove('show');
+        }
       });
     });
   },
