@@ -133,6 +133,12 @@ const App = {
     document.getElementById('setup-screen').classList.remove('hidden');
     document.getElementById('main-layout').classList.add('hidden');
 
+    const currentConfig = Config.get();
+    if (currentConfig.supabaseUrl) document.getElementById('setup-supabase-url').value = currentConfig.supabaseUrl;
+    if (currentConfig.supabaseKey) document.getElementById('setup-supabase-key').value = currentConfig.supabaseKey;
+    if (currentConfig.geminiKey) document.getElementById('setup-gemini-key').value = currentConfig.geminiKey;
+    if (currentConfig.userName) document.getElementById('setup-name').value = currentConfig.userName;
+
     document.getElementById('setup-save-btn').addEventListener('click', async () => {
       const url = document.getElementById('setup-supabase-url').value.trim();
       const key = document.getElementById('setup-supabase-key').value.trim();
