@@ -140,9 +140,13 @@ const App = {
     if (currentConfig.userName) document.getElementById('setup-name').value = currentConfig.userName;
 
     document.getElementById('setup-save-btn').addEventListener('click', async () => {
-      const url = document.getElementById('setup-supabase-url').value.trim();
+      let url = document.getElementById('setup-supabase-url').value.trim();
       const key = document.getElementById('setup-supabase-key').value.trim();
       const gem = document.getElementById('setup-gemini-key').value.trim();
+      
+      // iPhone sometimes adds a trailing dot or slash. Clean it up.
+      url = url.replace(/[\.\/]+$/, '');
+      
       const name = document.getElementById('setup-name').value.trim() || 'Пользователь';
       const errEl = document.getElementById('setup-error');
 
