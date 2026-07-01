@@ -2772,6 +2772,10 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
 /* ============================================
    RESPONSIVE
    ============================================ */
+.mobile-header {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
@@ -2827,10 +2831,6 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
     border-bottom: 1px solid var(--glass-border);
     z-index: 100;
   }
-}
-
-.mobile-header {
-  display: none;
 }
 
 
