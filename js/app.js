@@ -341,6 +341,7 @@ const App = {
   initSidebar() {
     const sidebar = document.getElementById('sidebar');
     const toggle = document.getElementById('sidebar-toggle');
+    const mobileToggle = document.getElementById('mobile-sidebar-toggle');
     const collapsed = localStorage.getItem('sidebar_collapsed') === 'true';
     if (collapsed) sidebar.classList.add('collapsed');
 
@@ -348,10 +349,29 @@ const App = {
       sidebar.classList.toggle('collapsed');
       localStorage.setItem('sidebar_collapsed', sidebar.classList.contains('collapsed'));
     });
+
+    if (mobileToggle) {
+      mobileToggle.addEventListener('click', () => {
+        sidebar.classList.toggle('mobile-open');
+      });
+    }
+
+    // Close mobile sidebar on click outside
+    document.addEventListener('click', (e) => {
+      if (window.innerWidth <= 768 && sidebar.classList.contains('mobile-open')) {
+        if (!sidebar.contains(e.target) && e.target !== mobileToggle && !mobileToggle.contains(e.target)) {
+          sidebar.classList.remove('mobile-open');
+        }
+      }
+    });
   },
 
   initSettings() {
     document.getElementById('settings-btn').addEventListener('click', () => SettingsModule.open());
+    const mobileSettingsBtn = document.getElementById('mobile-settings-btn');
+    if (mobileSettingsBtn) {
+      mobileSettingsBtn.addEventListener('click', () => SettingsModule.open());
+    }
   },
 
   async navigateTo(page) {

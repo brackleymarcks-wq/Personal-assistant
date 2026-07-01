@@ -2811,7 +2811,28 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
     min-width: 100%;
     max-width: 100%;
   }
+
+  .main-layout {
+    flex-direction: column;
+  }
+
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md) var(--space-lg);
+    background: var(--glass-bg-heavy);
+    backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
+    border-bottom: 1px solid var(--glass-border);
+    z-index: 100;
+  }
 }
+
+.mobile-header {
+  display: none;
+}
+
 
 /* Helper class to hide elements */
 .hidden {
