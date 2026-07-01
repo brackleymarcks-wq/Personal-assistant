@@ -207,6 +207,11 @@ const App = {
     document.getElementById('main-layout').classList.remove('hidden');
 
     this.initNav();
+    const overlay = document.getElementById('sidebar-overlay');
+    if (overlay) overlay.addEventListener('click', () => {
+      document.querySelector('.sidebar').classList.remove('mobile-open');
+      overlay.classList.remove('show');
+    });
     this.initSidebar();
     this.initSettings();
     this.initThemeToggle();
@@ -363,6 +368,8 @@ const App = {
     if (mobileToggle) {
       mobileToggle.addEventListener('click', () => {
         sidebar.classList.toggle('mobile-open');
+        const overlay = document.getElementById('sidebar-overlay');
+        if(overlay) overlay.classList.toggle('show', sidebar.classList.contains('mobile-open'));
       });
     }
 
