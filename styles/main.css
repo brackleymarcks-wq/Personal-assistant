@@ -4884,3 +4884,37 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
   opacity: 1;
   pointer-events: auto;
 }
+
+@media (max-width: 768px) {
+  .page-header {
+    padding: var(--space-md) !important;
+  }
+  .page-title {
+    font-size: 18px !important;
+  }
+  .tasks-toolbar {
+    padding: var(--space-md) !important;
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+  .tasks-toolbar .filter-select {
+    width: 100% !important;
+  }
+  .view-toggle {
+    margin-top: var(--space-sm);
+  }
+  .kanban-board {
+    padding: var(--space-md) !important;
+  }
+  .dashboard-grid, .analytics-grid, .finance-summary, .welcome-shortcuts {
+    padding: var(--space-md) !important;
+  }
+  .pomodoro-page {
+    padding: var(--space-md) !important;
+  }
+  .calendar-controls {
+    padding: var(--space-md) !important;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+}

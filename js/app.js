@@ -365,6 +365,18 @@ const App = {
     const sidebar = document.getElementById('sidebar');
     const toggle = document.getElementById('sidebar-toggle');
     const mobileToggle = document.getElementById('mobile-sidebar-toggle');
+    const forceUpdateBtn = document.getElementById('force-update-btn');
+    if (forceUpdateBtn) {
+      forceUpdateBtn.addEventListener('click', async () => {
+        forceUpdateBtn.classList.add('spin');
+        UI.toast('Удаление кэша PWA...', 'info');
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (let r of regs) await r.unregister();
+        }
+        setTimeout(() => window.location.reload(true), 1000);
+      });
+    }
     const collapsed = localStorage.getItem('sidebar_collapsed') === 'true';
     if (collapsed) sidebar.classList.add('collapsed');
 
