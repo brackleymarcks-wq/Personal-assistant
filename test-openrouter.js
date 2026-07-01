@@ -1,4 +1,4 @@
-const GROQ_KEY = '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';
+const GROQ_KEY = 'YOUR_KEY_HERE';
 const fs = require('fs');
 
 async function run() {
