@@ -4918,3 +4918,14 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
     gap: var(--space-sm);
   }
 }
+
+#force-update-btn {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  #force-update-btn {
+    display: inline-flex !important;
+  }
+}
+
