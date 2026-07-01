@@ -1,0 +1,21 @@
+{
+  "name": "Antigravity Personal Assistant",
+  "short_name": "Antigravity",
+  "description": "Your ultimate AI-powered personal assistant.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0d0e11",
+  "theme_color": "#ea580c",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

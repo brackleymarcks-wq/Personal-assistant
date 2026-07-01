@@ -1291,11 +1291,11 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
     }
     
     // Fallback if model fails to generate valid tool call JSON
-    if (errMsg.includes('failed_generation') && retryCount < 1) {
-      console.warn('Groq failed_generation. Retrying without tools...');
+    if ((errMsg.includes('failed_generation') || errMsg.includes('Failed to call a function') || errMsg.includes('tool')) && retryCount < 1) {
+      console.warn('Groq failed_generation or tool error. Retrying safe-mode...');
       
-      // Filter out tool calls from messages to prevent API errors when tools are omitted
-      const cleanMessages = messages.filter(m => m.role !== 'tool' && !m.tool_calls);
+      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+      const safeMessages = lastUserMsg ? [lastUserMsg] : [messages[messages.length - 1]];
       
       const fallbackRes = await fetch(AI_API_URL, {
         method: 'POST',
@@ -1303,16 +1303,15 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
         body: JSON.stringify({
           model: modelToUse,
           messages: [
-            { role: 'system', content: systemInstruction + '\nОТВЕЧАЙ ТОЛЬКО ТЕКСТОМ, НЕ ВЫЗЫВАЙ ФУНКЦИИ.' },
-            ...cleanMessages
+            { role: 'system', content: systemInstruction + '\nОТВЕЧАЙ ТОЛЬКО ОБЫЧНЫМ ТЕКСТОМ, ФУНКЦИИ И ИНСТРУМЕНТЫ ОТКЛЮЧЕНЫ.' },
+            ...safeMessages
           ],
-          temperature: 0.1,
+          temperature: 0.3,
           max_tokens: 1024
         })
       });
       if (fallbackRes.ok) return fallbackRes.json();
       
-      // If fallback also fails, parse and throw its error
       const fallbackErr = await fallbackRes.json().catch(() => ({}));
       throw new Error(`Fallback failed: ${fallbackErr.error?.message || fallbackRes.statusText || errMsg}`);
     }

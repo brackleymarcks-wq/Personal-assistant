@@ -864,5 +864,33 @@ const Gemini = {
 
     const data = await res.json();
     return data.choices?.[0]?.message?.content?.trim() || '';
+  },
+
+  async transcribeAudio(audioBlob) {
+    const settings = await DB.getSettings();
+    const apiKey = settings?.api_key || Config.apiKey;
+    const apiUrl = 'https://api.groq.com/openai/v1/audio/transcriptions';
+
+    if (!apiKey) throw new Error('API ключ не настроен. Перейдите в настройки.');
+
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'audio.webm');
+    formData.append('model', 'whisper-large-v3');
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || `API error ${res.status}`);
+    }
+
+    const data = await res.json();
+    return data.text?.trim() || '';
   }
 };

@@ -155,6 +155,7 @@ const PomodoroPage = {
   },
 
   startWork() {
+    UI.requestNotificationPermission();
     this.state = 'working';
     this.timeLeft = this.DURATIONS.working;
     this.totalTime = this.DURATIONS.working;
@@ -163,6 +164,7 @@ const PomodoroPage = {
   },
 
   startBreak() {
+    UI.requestNotificationPermission();
     const isLong = this.sessionsCompleted % 4 === 0 && this.sessionsCompleted > 0;
     this.state = isLong ? 'longbreak' : 'break';
     this.timeLeft = this.DURATIONS[this.state];
@@ -236,6 +238,7 @@ const PomodoroPage = {
     if (this.state === 'working') {
       this.sessionsCompleted++;
       UI.toast(`🍅 Помодоро #${this.sessionsCompleted} завершён!`, 'success');
+      UI.sendNotification('Время вышло!', `🍅 Помодоро #${this.sessionsCompleted} завершён. Пора отдохнуть!`);
 
       // Save session to DB
       try {
@@ -271,6 +274,7 @@ const PomodoroPage = {
       this.startBreak();
     } else {
       UI.toast('☕ Перерыв окончен! Время работать.', 'info');
+      UI.sendNotification('Перерыв окончен', '☕️ Пора возвращаться к работе!');
       this.state = 'idle';
       this.timeLeft = this.DURATIONS.working;
       this.totalTime = this.DURATIONS.working;

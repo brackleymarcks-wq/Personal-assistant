@@ -1,23 +1,16 @@
-const { createClient } = require('@supabase/supabase-js');
+const url = 'https://spvnpwirojnrpgwrsch.supabase.co';
+const key = 'sb_publishable_72JuYzuHM67bNaiDcFrUTg_57MJstwC';
+const fs = require('fs');
 
-const SUPABASE_URL = 'https://xpvnpelrojnrpgwrezh.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_72JuYzuHM67bNaiDcFrUTg_57MJstwC';
-
-const db = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-async function checkTransactions() {
-  console.log('Checking recent transactions in production Supabase...');
-  try {
-    const { data, error } = await db.from('transactions').select('*').order('created_at', { ascending: false }).limit(5);
-    if (error) {
-      console.error('Error fetching transactions:', error);
-    } else {
-      console.log('Recent transactions:');
-      console.log(JSON.stringify(data, null, 2));
+async function test() {
+  const res = await fetch(`${url}/rest/v1/finances?select=*&order=date.desc&limit=5`, {
+    headers: {
+      'apikey': key,
+      'Authorization': `Bearer ${key}`
     }
-  } catch (e) {
-    console.error('Error:', e.message);
-  }
+  });
+  const data = await res.json();
+  fs.writeFileSync('C:/Users/igor.pavlovskij/.gemini/antigravity-ide/brain/095ead86-5ae2-4757-aab3-267d37a34031/scratch/db_test.json', JSON.stringify(data, null, 2));
+  console.log("Done");
 }
-
-checkTransactions();
+test();

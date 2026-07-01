@@ -7,6 +7,9 @@ window.ChatWidget = {
   isTyping: false,
   messages: [],
   historyLoaded: false,
+  mediaRecorder: null,
+  audioChunks: [],
+  isRecording: false,
 
   init() {
     this.bindEvents();
@@ -23,11 +26,16 @@ window.ChatWidget = {
     const closeBtn = document.getElementById('global-chat-close');
     const input = document.getElementById('global-chat-input');
     const sendBtn = document.getElementById('global-chat-send');
+    const micBtn = document.getElementById('global-chat-mic');
 
     if (!fab || !panel) return;
 
     fab.addEventListener('click', () => this.toggle());
     closeBtn.addEventListener('click', () => this.close());
+
+    if (micBtn) {
+      micBtn.addEventListener('click', () => this.toggleRecording());
+    }
 
     // Auto-resize textarea
     input.addEventListener('input', () => {
@@ -52,6 +60,81 @@ window.ChatWidget = {
       this.close();
     } else {
       this.open();
+    }
+  },
+
+  async toggleRecording() {
+    if (this.isRecording) {
+      this.stopRecording();
+    } else {
+      await this.startRecording();
+    }
+  },
+
+  async startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.mediaRecorder = new MediaRecorder(stream);
+      this.audioChunks = [];
+
+      this.mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) this.audioChunks.push(e.data);
+      };
+
+      this.mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+        // Release mic
+        stream.getTracks().forEach(track => track.stop());
+
+        const micBtn = document.getElementById('global-chat-mic');
+        if (micBtn) {
+          micBtn.classList.remove('recording');
+          micBtn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:18px;height:18px;"></i>';
+          if (window.lucide) window.lucide.createIcons();
+        }
+
+        try {
+          UI.toast('Распознаем речь (Whisper)...', 'info');
+          const transcribedText = await Gemini.transcribeAudio(audioBlob);
+          if (transcribedText) {
+            const input = document.getElementById('global-chat-input');
+            input.value += (input.value ? ' ' : '') + transcribedText;
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+            document.getElementById('global-chat-send').disabled = false;
+            
+            // Auto-send the message as proposed
+            this.sendMessage();
+          } else {
+            UI.toast('Не удалось распознать речь', 'warning');
+          }
+        } catch (e) {
+          console.error('Transcription error:', e);
+          UI.toast(`Ошибка микрофона: ${e.message}`, 'error');
+        } finally {
+          if (micBtn) {
+            micBtn.innerHTML = '<i data-lucide="mic" style="width: 18px; height: 18px;"></i>';
+            if (window.lucide) window.lucide.createIcons();
+          }
+        }
+      };
+
+      this.mediaRecorder.start();
+      this.isRecording = true;
+      const micBtn = document.getElementById('global-chat-mic');
+      if (micBtn) {
+        micBtn.classList.add('recording');
+      }
+    } catch (e) {
+      console.error('Mic access denied:', e);
+      UI.toast('Доступ к микрофону запрещен', 'error');
+    }
+  },
+
+  stopRecording() {
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+      this.isRecording = false;
     }
   },
 

@@ -9,6 +9,8 @@ const FinancesPage = {
     expense: ['Продукты', 'Кафе и Рестораны', 'Транспорт', 'Авто', 'Жилье', 'Ипотека/Аренда', 'Развлечения', 'Здоровье', 'Одежда', 'Обучение', 'Подписки', 'Семья', 'Хобби', 'Техника', 'Путешествия', 'Ставки на спорт', 'Другое'],
     transfer: ['Перевод']
   },
+  expenseChartInstance: null,
+  cashflowChartInstance: null,
   currentViewMonth: new Date().getMonth(),
   currentViewYear: new Date().getFullYear(),
   configNoteId: null,
@@ -107,11 +109,11 @@ const FinancesPage = {
         <div style="padding: 0 var(--space-xl); margin-bottom: var(--space-lg);">
           <div class="glass-panel" style="padding: var(--space-lg); border-radius: var(--radius-lg);">
             <h3 style="font-size: 15px; margin-bottom: var(--space-md); display: flex; align-items: center; gap: 8px; font-weight: 600;">
-              <i data-lucide="archive" style="color: var(--accent-soft); width: 18px; height: 18px;"></i>
-              История накоплений по месяцам
+              <i data-lucide="bar-chart-2" style="color: var(--accent-soft); width: 18px; height: 18px;"></i>
+              Аналитика доходов и расходов (Cashflow)
             </h3>
-            <div id="finance-monthly-archive" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-md);">
-              <div style="color:var(--text-muted);font-size:13px;text-align:center;grid-column:1/-1;padding:20px 0;">Расчет накоплений...</div>
+            <div id="finance-monthly-archive" style="width: 100%; min-height: 250px;">
+              <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px 0;">Расчет накоплений...</div>
             </div>
           </div>
         </div>
@@ -465,6 +467,10 @@ const FinancesPage = {
       }).join('');
 
       if (donutContainer) {
+        if (this.expenseChartInstance) {
+          this.expenseChartInstance.destroy();
+          this.expenseChartInstance = null;
+        }
         if (expense === 0) {
           donutContainer.innerHTML = `
             <svg width="120" height="120" viewBox="0 0 80 80">
@@ -473,52 +479,81 @@ const FinancesPage = {
             <div style="position: absolute; font-size: 11px; color: var(--text-muted); font-weight: 600; text-align: center;">Нет трат</div>
           `;
         } else {
-          const chartItems = items.filter(item => item.spent > 0);
-          let currentOffset = 0;
-          const radius = 30;
-          const circumference = 2 * Math.PI * radius;
+          donutContainer.innerHTML = `<canvas id="expenseChart" style="max-width:140px;max-height:140px;"></canvas>
+            <div style="position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; width: 80px;">
+              <span style="font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Всего</span>
+              <span style="font-size: 13px; font-weight: 800; color: var(--text-primary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 76px;" title="${expense.toLocaleString('ru-RU')} BYN">${Math.round(expense).toLocaleString('ru-RU')}</span>
+            </div>`;
           
           const CATEGORY_COLORS = {
             'Продукты': '#34D399',      // Emerald green
             'Транспорт': '#60A5FA',     // Blue
-            'Дом': '#F59E0B',           // Amber
+            'Авто': '#3B82F6',          // Darker Blue
+            'Кафе и Рестораны': '#F59E0B',// Amber
             'Развлечения': '#EC4899',   // Pink
             'Здоровье': '#EF4444',      // Red
             'Техника': '#8B5CF6',       // Purple
             'Путешествия': '#14B8A6',   // Teal
+            'Жилье': '#F97316',         // Orange
+            'Одежда': '#06B6D4',        // Cyan
+            'Обучение': '#84CC16',      // Lime
+            'Подписки': '#6366F1',      // Indigo
+            'Семья': '#D946EF',         // Fuchsia
             'Другое': '#6B7280'         // Gray
           };
           const fallbackColors = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6', '#14B8A6', '#F43F5E', '#06B6D4', '#84CC16', '#A855F7'];
-          
-          let svgContent = `<svg width="120" height="120" viewBox="0 0 80 80" style="transform: rotate(-90deg); overflow: visible;">`;
-          
-          chartItems.forEach((item, index) => {
-            const percent = item.spent / expense;
-            const dashLength = percent * circumference;
-            const color = CATEGORY_COLORS[item.cat] || fallbackColors[index % fallbackColors.length];
+
+          const chartItems = items.filter(item => item.spent > 0);
+          const labels = chartItems.map(item => item.cat);
+          const data = chartItems.map(item => item.spent);
+          const bgColors = chartItems.map((item, index) => CATEGORY_COLORS[item.cat] || fallbackColors[index % fallbackColors.length]);
+
+          setTimeout(() => {
+            const ctx = document.getElementById('expenseChart');
+            if (!ctx) return;
             
-            svgContent += `
-              <circle class="donut-segment" cx="40" cy="40" r="${radius}"
-                      stroke="${color}"
-                      stroke-width="8"
-                      fill="transparent"
-                      stroke-dasharray="${dashLength} ${circumference}"
-                      stroke-dashoffset="${-currentOffset}"
-                      style="transition: stroke-width 0.2s ease, filter 0.2s ease; cursor: pointer;"
-                      title="${this.esc(item.cat)}: ${item.spent.toLocaleString('ru-RU')} BYN" />
-            `;
-            currentOffset += dashLength;
-          });
-          
-          svgContent += `</svg>`;
-          svgContent += `
-            <div style="position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; width: 80px;">
-              <span style="font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Всего</span>
-              <span style="font-size: 13px; font-weight: 800; color: var(--text-primary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 76px;" title="${expense.toLocaleString('ru-RU')} BYN">${Math.round(expense).toLocaleString('ru-RU')}</span>
-            </div>
-          `;
-          
-          donutContainer.innerHTML = svgContent;
+            // Set Chart.js global defaults for fonts
+            Chart.defaults.font.family = "'Inter', system-ui, -apple-system, sans-serif";
+            Chart.defaults.color = 'var(--text-secondary)';
+
+            this.expenseChartInstance = new Chart(ctx, {
+              type: 'doughnut',
+              data: {
+                labels: labels,
+                datasets: [{
+                  data: data,
+                  backgroundColor: bgColors,
+                  borderWidth: 0,
+                  hoverOffset: 4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '75%',
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    backgroundColor: 'var(--bg-surface)',
+                    titleColor: 'var(--text-primary)',
+                    bodyColor: 'var(--text-secondary)',
+                    borderColor: 'var(--border-light)',
+                    borderWidth: 1,
+                    padding: 10,
+                    cornerRadius: 8,
+                    displayColors: true,
+                    callbacks: {
+                      label: function(context) {
+                        const val = context.raw || 0;
+                        return ' ' + val.toLocaleString('ru-RU') + ' BYN';
+                      }
+                    }
+                  }
+                },
+                animation: { animateScale: true, animateRotate: true }
+              }
+            });
+          }, 0);
         }
       }
     }
@@ -635,47 +670,120 @@ const FinancesPage = {
       if (sortedKeys.length === 0) {
         archiveEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;grid-column:1/-1;padding:20px 0;">Нет данных для отображения архива</div>';
       } else {
-        archiveEl.innerHTML = sortedKeys.map(key => {
+        // Show up to 6 months
+        const recentKeys = sortedKeys.slice(0, 6).reverse();
+        
+        const labels = recentKeys.map(key => {
           const item = monthlyTotals[key];
           const dateObj = new Date(item.year, item.month, 1);
-          const monthName = dateObj.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-          const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+          const monthName = dateObj.toLocaleDateString('ru-RU', { month: 'short' });
+          return monthName.charAt(0).toUpperCase() + monthName.slice(1) + " '" + String(item.year).slice(-2);
+        });
+        
+        const incomeData = recentKeys.map(key => monthlyTotals[key].income);
+        const expenseData = recentKeys.map(key => monthlyTotals[key].expense);
+        const deltaData = recentKeys.map(key => monthlyTotals[key].income - monthlyTotals[key].expense);
+
+        archiveEl.innerHTML = `
+          <div style="width: 100%; height: 250px; position: relative;">
+            <canvas id="cashflowChart"></canvas>
+          </div>
+        `;
+
+        setTimeout(() => {
+          const ctx = document.getElementById('cashflowChart');
+          if (!ctx) return;
           
-          const delta = item.income - item.expense;
-          const savingsRate = item.income > 0 ? Math.max(0, Math.round((delta / item.income) * 100)) : 0;
-          
-          const isActive = this.currentViewYear === item.year && this.currentViewMonth === item.month;
-          const activeStyle = isActive 
-            ? 'border: 1.5px solid var(--accent); box-shadow: 0 0 16px var(--accent-glow); background: var(--bg-hover);' 
-            : 'border: 1px solid var(--border-light);';
-            
-          return `
-            <div class="glass-panel interactive-card" onclick="FinancesPage.selectMonth(${item.year}, ${item.month})" style="padding: 16px; border-radius: var(--radius-md); cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; background: var(--bg-surface); min-height: 120px; ${activeStyle}">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: var(--space-xs);">
-                <div style="font-weight: 600; font-size: 13.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${capitalizedMonth}</div>
-                <div style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: ${delta >= 0 && savingsRate > 0 ? 'var(--success-dim)' : 'var(--bg-hover)'}; color: ${delta >= 0 && savingsRate > 0 ? 'var(--success)' : 'var(--text-secondary)'}; font-weight: 700; white-space: nowrap;">
-                  ${savingsRate}% сбер.
-                </div>
-              </div>
-              <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
-                <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-secondary);">
-                  <span>Доходы:</span>
-                  <span style="color: var(--success); font-weight: 600;">+${item.income.toLocaleString('ru-RU')} BYN</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-secondary);">
-                  <span>Расходы:</span>
-                  <span style="color: var(--danger); font-weight: 600;">-${item.expense.toLocaleString('ru-RU')} BYN</span>
-                </div>
-              </div>
-              <div style="border-top: 1px solid var(--border-light); padding-top: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
-                <span style="color: var(--text-muted); font-size: 11px;">Копится:</span>
-                <span style="font-weight: 700; color: ${delta >= 0 ? 'var(--success)' : 'var(--danger)'};">
-                  ${delta >= 0 ? '+' : ''}${delta.toLocaleString('ru-RU')} BYN
-                </span>
-              </div>
-            </div>
-          `;
-        }).join('');
+          if (this.cashflowChartInstance) {
+            this.cashflowChartInstance.destroy();
+          }
+
+          Chart.defaults.font.family = "'Inter', system-ui, -apple-system, sans-serif";
+          Chart.defaults.color = 'var(--text-secondary)';
+
+          this.cashflowChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: 'Доходы',
+                  data: incomeData,
+                  backgroundColor: '#10B981',
+                  borderRadius: 4,
+                  barPercentage: 0.6,
+                  categoryPercentage: 0.8,
+                  maxBarThickness: 40
+                },
+                {
+                  label: 'Расходы',
+                  data: expenseData,
+                  backgroundColor: '#EF4444',
+                  borderRadius: 4,
+                  barPercentage: 0.6,
+                  categoryPercentage: 0.8,
+                  maxBarThickness: 40
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: {
+                mode: 'index',
+                intersect: false,
+              },
+              plugins: {
+                legend: {
+                  position: 'top',
+                  align: 'end',
+                  labels: {
+                    usePointStyle: true,
+                    boxWidth: 8,
+                    color: 'var(--text-secondary)'
+                  }
+                },
+                tooltip: {
+                  backgroundColor: 'var(--bg-surface)',
+                  titleColor: 'var(--text-primary)',
+                  bodyColor: 'var(--text-secondary)',
+                  borderColor: 'var(--border-light)',
+                  borderWidth: 1,
+                  padding: 10,
+                  cornerRadius: 8,
+                  callbacks: {
+                    label: function(context) {
+                      return ' ' + context.dataset.label + ': ' + context.raw.toLocaleString('ru-RU') + ' BYN';
+                    },
+                    afterBody: function(context) {
+                      if (!context || context.length === 0) return '';
+                      const idx = context[0].dataIndex;
+                      const delta = deltaData[idx];
+                      const prefix = delta >= 0 ? '+' : '';
+                      return ['', 'Копится: ' + prefix + delta.toLocaleString('ru-RU') + ' BYN'];
+                    }
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  grid: { display: false },
+                  ticks: { color: 'var(--text-muted)' }
+                },
+                y: {
+                  grid: { color: 'var(--border-light)' },
+                  border: { display: false },
+                  ticks: {
+                    color: 'var(--text-muted)',
+                    callback: function(value) {
+                      return value >= 1000 ? (value/1000).toFixed(1) + 'k' : value;
+                    }
+                  }
+                }
+              }
+            }
+          });
+        }, 0);
       }
     }
 
@@ -1036,6 +1144,37 @@ ${JSON.stringify(historySummary, null, 2)}
       const nameInput = document.getElementById('acc-name');
       if (nameInput) nameInput.focus();
     }, 100);
+  },
+
+  async wipeTransactions() {
+    if (!confirm('Вы уверены, что хотите удалить ВСЮ историю операций? Это действие необратимо.')) return;
+    try {
+      await DB.clearTransactions();
+      UI.toast('История очищена', 'info');
+      this.load();
+    } catch (e) {
+      console.error(e);
+      UI.toast('Ошибка при очистке', 'error');
+    }
+  },
+
+  renderHeader() {
+    return `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-lg);">
+        <div>
+          <div class="page-title">Финансы</div>
+          <div class="page-subtitle" id="finances-subtitle">Обновление...</div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button id="finance-wipe-btn" class="btn btn-danger" style="display:flex; align-items:center; gap:6px;">
+            <i data-lucide="trash-2"></i> Очистить историю
+          </button>
+          <button id="finance-add-btn" class="btn btn-primary" style="display:flex; align-items:center; gap:6px;">
+            <i data-lucide="plus"></i> Добавить
+          </button>
+        </div>
+      </div>
+    `;
   },
 
   async saveAccount(id) {

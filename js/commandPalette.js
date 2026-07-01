@@ -6,6 +6,9 @@ window.CommandPalette = {
   debounceTimer: null,
   
   init() {
+    if (this._initialized) return;
+    this._initialized = true;
+
     this.modal = document.getElementById('cmd-palette-modal');
     this.input = document.getElementById('cmd-palette-input');
     this.resultsEl = document.getElementById('cmd-palette-results');
@@ -35,7 +38,7 @@ window.CommandPalette = {
       const query = e.target.value.trim();
       
       if (!query) {
-        this.resultsEl.innerHTML = `<div style="padding: 12px 20px; color: var(--text-muted); font-size: 13px; text-align: center;">Начните вводить текст...</div>`;
+        this.renderQuickActions();
         return;
       }
       
@@ -54,13 +57,63 @@ window.CommandPalette = {
     this.modal.style.display = 'flex';
     this.input.value = '';
     this.input.focus();
-    this.resultsEl.innerHTML = `<div style="padding: 12px 20px; color: var(--text-muted); font-size: 13px; text-align: center;">Начните вводить текст...</div>`;
+    this.renderQuickActions();
   },
 
   close() {
     this.isOpen = false;
     this.modal.classList.add('hidden');
     this.modal.style.display = 'none';
+  },
+
+  renderQuickActions() {
+    let html = `<div style="padding: 8px 20px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Быстрые действия</div>`;
+    
+    const actions = [
+      { id: 'new-task', icon: 'plus-circle', color: 'var(--accent)', title: 'Создать задачу', subtitle: 'Быстро добавить новую задачу' },
+      { id: 'nav-dashboard', icon: 'layout-dashboard', color: 'var(--text-primary)', title: 'Главная', subtitle: 'Перейти на дашборд' },
+      { id: 'nav-tasks', icon: 'check-square', color: 'var(--text-primary)', title: 'Задачи', subtitle: 'Перейти к списку задач' },
+      { id: 'nav-habits', icon: 'star', color: 'var(--text-primary)', title: 'Привычки', subtitle: 'Перейти к трекеру привычек' },
+      { id: 'toggle-theme', icon: 'moon', color: 'var(--text-primary)', title: 'Сменить тему', subtitle: 'Переключить светлую/темную тему' }
+    ];
+
+    actions.forEach(a => {
+      html += `
+        <div class="cmd-item" onclick="CommandPalette.executeAction('${a.id}')" style="padding: 10px 20px; cursor: pointer; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--glass-border-light);">
+          <i data-lucide="${a.icon}" style="width: 18px; height: 18px; color: ${a.color};"></i>
+          <div style="flex:1;">
+            <div style="font-size: 15px; color: var(--text-primary); font-weight: 500;">${a.title}</div>
+            <div style="font-size: 12px; color: var(--text-muted);">${a.subtitle}</div>
+          </div>
+        </div>
+      `;
+    });
+
+    this.resultsEl.innerHTML = html;
+    if (window.lucide) window.lucide.createIcons();
+    this.bindHover();
+  },
+
+  executeAction(id) {
+    this.close();
+    switch(id) {
+      case 'new-task':
+        if (window.QuickActions) QuickActions.open('task');
+        break;
+      case 'nav-dashboard':
+        if (window.app) app.navigateTo('dashboard');
+        break;
+      case 'nav-tasks':
+        if (window.app) app.navigateTo('tasks');
+        break;
+      case 'nav-habits':
+        if (window.app) app.navigateTo('habits');
+        break;
+      case 'toggle-theme':
+        const btn = document.getElementById('theme-toggle-btn');
+        if (btn) btn.click();
+        break;
+    }
   },
 
   async search(query) {
@@ -156,11 +209,13 @@ window.CommandPalette = {
 
     this.resultsEl.innerHTML = html;
     if (window.lucide) window.lucide.createIcons();
-    
-    // Add hover effect via JS since we don't have CSS class yet
+    this.bindHover();
+  },
+
+  bindHover() {
     const items = this.resultsEl.querySelectorAll('.cmd-item');
     items.forEach(item => {
-      item.addEventListener('mouseenter', () => item.style.backgroundColor = 'var(--bg-body)');
+      item.addEventListener('mouseenter', () => item.style.backgroundColor = 'var(--bg-hover)');
       item.addEventListener('mouseleave', () => item.style.backgroundColor = 'transparent');
     });
   },
@@ -181,7 +236,3 @@ window.CommandPalette = {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 };
-
-document.addEventListener('DOMContentLoaded', () => {
-  CommandPalette.init();
-});

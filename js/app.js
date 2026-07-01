@@ -46,6 +46,25 @@ const UI = {
   closeModal() {
     const modal = document.getElementById('generic-modal');
     if (modal) modal.classList.add('hidden');
+  },
+
+  requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  },
+
+  sendNotification(title, body) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body });
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          new Notification(title, { body });
+        }
+      });
+    }
   }
 };
 
@@ -207,10 +226,37 @@ const App = {
     // Initialize Global modules
     if (window.QuickActions) QuickActions.init();
     if (window.ChatWidget) window.ChatWidget.init();
+    if (window.CommandPalette) window.CommandPalette.init();
 
     console.log('App initialized.');
     this.startReminderCheck();
     this.updateUserUI();
+    this.initMagneticEffects();
+  },
+
+  initMagneticEffects() {
+    // Apply magnetic effect to key actionable items without needing explicit classes
+    document.querySelectorAll('.nav-item, .btn:not(.btn-full), .magnetic-btn').forEach(btn => {
+      // Remove old listeners to avoid duplicates on re-render
+      btn.onmousemove = null;
+      btn.onmouseleave = null;
+
+      btn.addEventListener('mousemove', (e) => {
+        const rect = btn.getBoundingClientRect();
+        const x = e.clientX - rect.left - rect.width / 2;
+        const y = e.clientY - rect.top - rect.height / 2;
+        // Limit movement to max 6px
+        const maxMove = 6;
+        const moveX = Math.max(-maxMove, Math.min(maxMove, x * 0.2));
+        const moveY = Math.max(-maxMove, Math.min(maxMove, y * 0.2));
+        
+        btn.style.transform = `translate(${moveX}px, ${moveY}px) scale(1.05)`;
+      });
+
+      btn.addEventListener('mouseleave', () => {
+        btn.style.transform = 'translate(0px, 0px) scale(1)';
+      });
+    });
   },
 
   async updateUserUI() {
@@ -317,35 +363,51 @@ const App = {
       item.classList.toggle('active', item.dataset.page === page);
     });
 
-    // Render page
-    const pageModule = PAGES[page].module();
-    const content = document.getElementById('content-area');
-    
-    content.classList.remove('page-enter');
-    void content.offsetWidth; // Force reflow to restart animation
-    content.classList.add('page-enter');
-
-    content.innerHTML = pageModule.render();
-    
-    // Only init once? No, if we re-render, we MUST re-bind events.
-    if (!pageModule._initialized) {
-      if (pageModule.init) await pageModule.init();
-      pageModule._initialized = true;
-    } else {
-      // If we re-rendered the HTML, the old listeners are dead.
-      // Many modules attach listeners in init() or bindEvents(). 
-      // If there's a bindEvents, call it.
-      if (pageModule.bindEvents) {
-        pageModule.bindEvents();
-      } else if (pageModule.init) {
-        // As a fallback, call init() again if there's no bindEvents
-        // But init might do heavy loading. We'll trust bindEvents if it exists.
-        await pageModule.init();
+    const renderDOM = () => {
+      const pageModule = PAGES[page].module();
+      const content = document.getElementById('content-area');
+      
+      content.classList.remove('page-enter');
+      if (!document.startViewTransition) {
+        void content.offsetWidth;
+        content.classList.add('page-enter');
       }
-      if (pageModule.load) await pageModule.load();
+
+      content.innerHTML = pageModule.render();
+      this.updateIcons();
+      if (this.initMagneticEffects) this.initMagneticEffects();
+    };
+
+    const loadData = async () => {
+      const pageModule = PAGES[page].module();
+      if (!pageModule._initialized) {
+        if (pageModule.init) await pageModule.init();
+        pageModule._initialized = true;
+      } else {
+        if (pageModule.bindEvents) {
+          pageModule.bindEvents();
+        } else if (pageModule.init) {
+          await pageModule.init();
+        }
+        if (pageModule.load) await pageModule.load();
+      }
+    };
+
+    try {
+      if (document.startViewTransition) {
+        const transition = document.startViewTransition(() => {
+          renderDOM();
+        });
+        await transition.updateCallbackDone;
+        await loadData();
+      } else {
+        renderDOM();
+        await loadData();
+      }
+    } catch (e) {
+      console.error('Navigation error:', e);
+      UI.toast('Ошибка загрузки страницы', 'error');
     }
-    
-    this.updateIcons();
   },
 
   async refreshTasksBadge() {
@@ -375,6 +437,7 @@ const App = {
       const reminders = await DB.getActiveReminders();
       for (const r of reminders) {
         UI.toast(`⏰ ${r.message}`, 'warning', 8000);
+        UI.sendNotification('Напоминание', r.message);
         await DB.markReminderSent(r.id);
       }
     } catch (e) {

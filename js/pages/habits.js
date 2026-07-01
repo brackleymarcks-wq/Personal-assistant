@@ -138,6 +138,8 @@ const HabitsPage = {
   },
 
   renderContent() {
+    this.renderHeatmap();
+
     const body = document.getElementById('habits-list-body');
     const countLabel = document.getElementById('habits-count-label');
     
@@ -288,6 +290,70 @@ const HabitsPage = {
     if (n === 1) return one;
     if (n >= 2 && n <= 4) return two;
     return five;
+  },
+
+  renderHeatmap() {
+    const container = document.getElementById('habits-overall-heatmap-container');
+    if (!container) return;
+
+    if (this.habits.length === 0 || this.logs.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    // Group logs by date
+    const intensityMap = {};
+    this.logs.forEach(log => {
+      if (log.status === 'done') {
+        intensityMap[log.date] = (intensityMap[log.date] || 0) + 1;
+      }
+    });
+
+    // 116 days total (from -115 to 0)
+    const dates = [];
+    const today = new Date();
+    for (let i = 115; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      dates.push(d);
+    }
+
+    const firstDate = dates[0];
+    let firstDayOfWeek = firstDate.getDay(); 
+    firstDayOfWeek = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1; // 0=Mon, ..., 6=Sun
+
+    let html = `
+      <div class="bento-card" style="margin-bottom: var(--space-md); padding: var(--space-lg);">
+        <div style="font-size:13px; font-weight:600; color:var(--text-muted); margin-bottom: 12px; text-transform:uppercase; letter-spacing:0.5px;">Активность за 4 месяца</div>
+        <div class="heatmap-grid-scroll" style="overflow-x: auto; padding-bottom: 8px;">
+          <div style="display: grid; grid-template-rows: repeat(7, 1fr); grid-auto-flow: column; gap: 4px; width: max-content;">
+    `;
+
+    // Padding cells for the first week to start on the correct day
+    for (let i = 0; i < firstDayOfWeek; i++) {
+      html += `<div class="heatmap-cell" style="background:transparent; pointer-events:none;"></div>`;
+    }
+
+    dates.forEach(d => {
+      const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+      const count = intensityMap[dateStr] || 0;
+      let level = 0;
+      if (count === 1) level = 1;
+      else if (count === 2) level = 2;
+      else if (count === 3) level = 3;
+      else if (count >= 4) level = 4;
+      
+      const tooltip = `${d.toLocaleDateString('ru-RU')}: ${count} ${this.getPlural(count, 'привычка', 'привычки', 'привычек')}`;
+      html += `<div class="heatmap-cell level-${level}" title="${tooltip}"></div>`;
+    });
+
+    html += `
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
   },
 
   escapeHtml(str) {

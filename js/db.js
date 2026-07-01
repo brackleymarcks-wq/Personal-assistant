@@ -662,5 +662,15 @@ const DB = {
 
     const xp = (tasksDone || 0) * 10 + (habitsDone || 0) * 15;
     return { tasksDone: tasksDone || 0, habitsDone: habitsDone || 0, totalXp: xp };
+  },
+
+  async clearTransactions() {
+    const userId = Config.userId;
+    if (!userId) return;
+    const { error } = await _supabase
+      .from('finances')
+      .delete()
+      .eq('user_id', userId);
+    if (error) throw error;
   }
 };

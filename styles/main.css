@@ -23,6 +23,8 @@
   --glass-highlight: rgba(255, 255, 255, 0.12);
   --glass-blur: 40px;
   --glass-blur-heavy: 64px;
+  /* Glass noise texture for premium Apple Vision Pro feel */
+  --glass-noise: url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjAwIDIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZmlsdGVyIGlkPSJub2lzZUZpbHRlciI+PGZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9IjAuNjUiIG51bU9jdGF2ZXM9IjMiIHN0aXRjaFRpbGVzPSJzdGl0Y2giLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWx0ZXI9InVybCgibm9pc2VGaWx0ZXIpIi8+PC9zdmc+');
 
   /* Accent — Neon Blue vibrant */
   --accent: #00b8ff;
@@ -248,6 +250,23 @@ body::before {
     linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
   background-size: 32px 32px;
   background-position: center center;
+}
+
+/* ============================================
+   GLASS NOISE OVERLAY
+   ============================================ */
+.sidebar::before,
+.bento-card::before,
+.modal-content::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--glass-noise);
+  opacity: 0.15;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: -1;
+  border-radius: inherit;
 }
 
 /* ============================================
@@ -598,6 +617,11 @@ body::before {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+.content-area > * {
+  flex: 1;
+  min-height: 0;
 }
 
 /* ============================================
@@ -4402,6 +4426,41 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
   transform: translateY(-2px);
 }
 
+.global-chat-mic {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+.global-chat-mic:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.global-chat-mic.recording {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border-color: var(--danger);
+  animation: mic-pulse 1.5s infinite;
+}
+
+@keyframes mic-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
 /* Chat Bubbles */
 .chat-widget-msg {
   display: flex;
@@ -4705,7 +4764,7 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
    ANIMATIONS 2026
    ============================================ */
 .page-enter {
-  animation: pageFadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: pageFadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   opacity: 0;
 }
 
@@ -4718,6 +4777,41 @@ body, .sidebar, .chat-page, .content-area, .page-header, .chat-header,
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+/* ============================================
+   MAGNETIC BUTTONS & 3D CARDS
+   ============================================ */
+.magnetic-btn {
+  transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+
+.bento-card {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
+  will-change: transform;
+}
+
+.bento-card:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--glass-border-light);
+}
+
+/* ============================================
+   VIEW TRANSITIONS API
+   ============================================ */
+::view-transition-old(root) {
+  animation: 0.3s cubic-bezier(0.4, 0, 0.2, 1) both fade-out-down;
+}
+
+::view-transition-new(root) {
+  animation: 0.4s cubic-bezier(0.16, 1, 0.3, 1) both pageFadeInUp;
+}
+
+@keyframes fade-out-down {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-8px) scale(0.99); }
 }
 
 /* Donut Chart Segments styling */
