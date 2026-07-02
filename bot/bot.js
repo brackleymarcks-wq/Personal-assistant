@@ -1215,6 +1215,14 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
     const message = choice.message;
 
     if (!message.tool_calls || message.tool_calls.length === 0) {
+      if (!message.content && messages.length > 0 && messages[messages.length - 1].role === 'tool') {
+        try {
+          const parsed = JSON.parse(messages[messages.length - 1].content);
+          if (parsed.message) return parsed.message;
+          if (parsed.success) return 'Готово!';
+        } catch(e) {}
+        return 'Сделано! (бот промолчал, но функция выполнена)';
+      }
       return message.content || 'Не удалось получить ответ';
     }
 
