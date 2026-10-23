@@ -93,7 +93,13 @@ const TutoringPage = {
                 <input id="st-schedule" type="text" class="form-input" placeholder="Например: Пн 18:00, Вс утро" />
               </div>
               <div class="form-group">
-                <label class="form-label">Заметки преподавателя (Слабые места, интересы)</label>
+                <label class="form-label">🎯 Интересы и хобби ученика (для генерации примеров Twee)</label>
+                <input id="st-interests" type="text" class="form-input" placeholder="Например: Minecraft, сериалы Netflix, футбол, путешествия" style="margin-bottom:10px;" />
+                <label class="form-label">⚠️ Типичные ошибки / Слабые места (Error Log)</label>
+                <input id="st-errors" type="text" class="form-input" placeholder="Например: путает was/were, забывает -s в Present Simple" style="margin-bottom:10px;" />
+                <label class="form-label">📚 Активный словарь (Vocabulary Bank)</label>
+                <input id="st-vocab" type="text" class="form-input" placeholder="Слова и фразы на отработку" style="margin-bottom:10px;" />
+                <label class="form-label">📝 Общие заметки и цели обучения</label>
                 <textarea id="st-notes" class="form-input" rows="2" placeholder="Например: Путает much и many, любит обсуждать игры"></textarea>
               </div>
               <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:8px;">
@@ -129,6 +135,7 @@ const TutoringPage = {
                 </div>
               </div>
               <div class="form-group">
+                <div id="ls-memory-banner" style="margin-bottom:12px;"></div>
                 <label class="form-label">Тема урока</label>
                 <input id="ls-topic" type="text" class="form-input" placeholder="Например: Past Simple" />
               </div>
@@ -137,7 +144,13 @@ const TutoringPage = {
                   <label class="form-label" style="margin-bottom:0;">Домашнее задание</label>
                   <button id="ls-generate-ai" class="btn btn-ghost" style="font-size:12px;color:var(--accent);display:flex;align-items:center;gap:4px;padding:2px 8px;min-height:auto;"><i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ</button>
                 </div>
-                <textarea id="ls-homework" class="form-input" rows="2" placeholder="Что задано на следующий раз?"></textarea>
+                <textarea id="ls-homework" class="form-input" rows="3" placeholder="Что задано на следующий раз?"></textarea>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+                  <button type="button" id="ls-ai-warmup" class="btn btn-secondary btn-xs" style="font-size:11px;padding:4px 8px;">🎲 Разминка (Warm-up 5м)</button>
+                  <button type="button" id="ls-ai-blitz" class="btn btn-secondary btn-xs" style="font-size:11px;padding:4px 8px;">🔍 Блиц-проверка прошлого ДЗ</button>
+                  <button type="button" id="ls-ai-parent" class="btn btn-secondary btn-xs" style="font-size:11px;padding:4px 8px;">📲 Текст ученику/родителям</button>
+                </div>
+                <div id="ls-ai-output-box" class="hidden" style="margin-top:8px;padding:10px 12px;background:var(--bg-primary);border:1px solid var(--accent-alpha);border-radius:10px;font-size:12px;white-space:pre-wrap;max-height:200px;overflow-y:auto;"></div>
               </div>
               <div class="form-group">
                 <label class="form-label">Материалы урока (Ссылки, PDF)</label>
@@ -270,7 +283,8 @@ const TutoringPage = {
         const debtBadge = unpaidCount > 0 ? `<div style="background:rgba(239, 68, 68, 0.1);color:var(--danger);font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;border:1px solid rgba(239,68,68,0.2);">Не оплачено: ${unpaidCount}</div>` : '';
 
         // Extract notes from schedule
-        let displaySchedule = st.schedule || 'Нет расписания';
+        const dossier = this.parseStudentDossier(st);
+        const displaySchedule = dossier.schedule || 'Нет расписания';
         if (displaySchedule.includes('\\n[ЗАМЕТКИ]:')) {
           displaySchedule = displaySchedule.split('\\n[ЗАМЕТКИ]:')[0];
         }
@@ -309,6 +323,8 @@ const TutoringPage = {
               </div>
               ${debtBadge}
             </div>
+            ${(dossier.interests || dossier.errors) ? `<div style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}${dossier.errors ? `<div style="color:var(--warning);">⚠️ <b>Ошибки:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}</div>` : ''}
+            </div>
 
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-light); width: 100%;">
               ${unpaidCount > 0 ? `
@@ -316,6 +332,9 @@ const TutoringPage = {
                   <i data-lucide="coins" style="width:12px;height:12px;"></i> Оплатить долг
                 </button>
               ` : ''}
+              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.generateMonthlyReport('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;" title="Сгенерировать ИИ-отчёт о прогрессе за месяц">
+                <i data-lucide="bar-chart-2" style="width:12px;height:12px;"></i> Отчёт
+              </button>
               <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.openLessonModal(null, '${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;">
                 <i data-lucide="plus" style="width:12px;height:12px;"></i> Урок
               </button>
@@ -360,6 +379,10 @@ const TutoringPage = {
             displayMaterials = parts[1].trim();
           }
 
+          const prevDoneLesson = ls.status === 'Запланирован' ? this.getPrevConductedLesson(ls.student_id, ls.date) : null;
+          const prevHwRaw = prevDoneLesson ? ((prevDoneLesson.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].trim()) : '';
+          const prevHwChecked = prevHwRaw.includes('[ДЗ_ПРОВЕРЕНО]');
+          const prevHwClean = prevHwRaw.replace('[ДЗ_ПРОВЕРЕНО]', '').trim();
           const hasLinks = displayMaterials.includes('http');
 
           return `
@@ -375,7 +398,8 @@ const TutoringPage = {
                 </div>
                 <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;display:flex;flex-direction:column;gap:4px;">
                   ${ls.topic ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="book" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(ls.topic)}</span></div>` : ''} 
-                  ${displayHomework ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(displayHomework)}</span></div>` : ''}
+                  ${displayHomework ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(displayHomework.replace('[ДЗ_ПРОВЕРЕНО]', '✅ '))}</span></div>` : ''}
+                  ${(ls.status === 'Запланирован' && prevDoneLesson && prevHwClean) ? `<div style="margin-top:4px;padding:6px 8px;border-radius:8px;background:${prevHwChecked ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.12)'};border:1px solid ${prevHwChecked ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.3)'};font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${prevHwChecked ? '✅ ДЗ проверено:' : '📌 <b>Проверить ДЗ:</b>'} ${this.escapeHtml(prevHwClean)}</span>${!prevHwChecked ? `<button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${prevDoneLesson.id}')">✅ Проверено</button>` : ''}</div>` : ''}
                   ${displayMaterials ? `<div style="display:flex;align-items:center;gap:6px;color:var(--accent);"><i data-lucide="paperclip" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${hasLinks ? `<a href="${displayMaterials}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:underline;">Материалы прикреплены</a>` : this.escapeHtml(displayMaterials)}</span></div>` : ''}
                 </div>
               </div>
@@ -415,6 +439,13 @@ const TutoringPage = {
     document.getElementById('st-grade').value = st ? (st.grade || '') : '';
     document.getElementById('st-price').value = st ? st.price : 0;
     
+    const dossier = st ? this.parseStudentDossier(st) : { schedule: '', interests: '', errors: '', vocab: '', notes: '' };
+    document.getElementById('st-schedule').value = dossier.schedule;
+    document.getElementById('st-interests').value = dossier.interests;
+    document.getElementById('st-errors').value = dossier.errors;
+    document.getElementById('st-vocab').value = dossier.vocab;
+    document.getElementById('st-notes').value = dossier.notes;
+    if (false) {
     let displaySchedule = st ? (st.schedule || '') : '';
     let notes = '';
     if (displaySchedule.includes('\\n[ЗАМЕТКИ]:')) {
@@ -424,6 +455,7 @@ const TutoringPage = {
     }
     document.getElementById('st-schedule').value = displaySchedule;
     document.getElementById('st-notes').value = notes;
+    }
     document.getElementById('st-active').checked = st ? st.active : true;
 
     const delBtn = document.getElementById('student-modal-delete');
@@ -441,12 +473,20 @@ const TutoringPage = {
     const name = document.getElementById('st-name').value;
     if (!name) return UI.toast('Введите имя', 'warning');
 
-    let schedule = document.getElementById('st-schedule').value;
+    let schedule = this.serializeStudentDossier(
+      document.getElementById('st-schedule').value.trim(),
+      document.getElementById('st-interests').value.trim(),
+      document.getElementById('st-errors').value.trim(),
+      document.getElementById('st-vocab').value.trim(),
+      document.getElementById('st-notes').value.trim()
+    );
+    if (false) {
     const notes = document.getElementById('st-notes').value.trim();
     if (notes) {
       schedule += '\\n[ЗАМЕТКИ]:\\n' + notes;
     }
 
+    }
     const data = {
       name,
       grade: document.getElementById('st-grade').value,
@@ -508,6 +548,42 @@ const TutoringPage = {
     delBtn.style.display = ls ? '' : 'none';
 
     // AI Generation click
+    this.renderLessonMemoryBanner(sSelect.value, ls?.date);
+    sSelect.onchange = () => this.renderLessonMemoryBanner(sSelect.value, ls?.date);
+    const outBox = document.getElementById('ls-ai-output-box');
+    if (outBox) { outBox.classList.add('hidden'); outBox.innerHTML = ''; }
+    const runTweeMode = async (mode, btnEl, label) => {
+      const student_id = document.getElementById('ls-student').value;
+      const st = this.students.find(s => s.id === student_id);
+      if (!st) return UI.toast('Выберите ученика', 'warning');
+      const topic = document.getElementById('ls-topic').value.trim();
+      const hw = document.getElementById('ls-homework').value.trim();
+      const dossier = this.parseStudentDossier(st);
+      const prevLs = this.getPrevConductedLesson(st.id, ls?.date);
+      btnEl.disabled = true;
+      btnEl.textContent = '⏳ Генерирую...';
+      try {
+        const res = await Gemini.generateTutoringAI(mode, { name: st.name, grade: st.grade, ...dossier }, { topic, homework: hw }, prevLs);
+        if (mode === 'homework') {
+          document.getElementById('ls-homework').value = res;
+          UI.toast('Персональное ДЗ сгенерировано!', 'success');
+        } else if (outBox) {
+          outBox.classList.remove('hidden');
+          outBox.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><b>${label}</b><button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.innerText);UI.toast('Скопировано в буфер!','success')">📋 Скопировать</button></div><div>${this.escapeHtml(res)}</div>`;
+        }
+      } catch (e) {
+        UI.toast('Ошибка ИИ: ' + e.message, 'error');
+      } finally {
+        btnEl.disabled = false;
+        btnEl.textContent = label;
+      }
+    };
+    const warmupBtn = document.getElementById('ls-ai-warmup');
+    if (warmupBtn) warmupBtn.onclick = () => runTweeMode('warmup', warmupBtn, '🎲 Разминка (Warm-up 5м)');
+    const blitzBtn = document.getElementById('ls-ai-blitz');
+    if (blitzBtn) blitzBtn.onclick = () => runTweeMode('blitz_check', blitzBtn, '🔍 Блиц-проверка прошлого ДЗ');
+    const parentBtn = document.getElementById('ls-ai-parent');
+    if (parentBtn) parentBtn.onclick = () => runTweeMode('parent_msg', parentBtn, '📲 Текст ученику/родителям');
     const aiBtn = document.getElementById('ls-generate-ai');
     aiBtn.onclick = async () => {
       const student_id = document.getElementById('ls-student').value;
@@ -521,7 +597,7 @@ const TutoringPage = {
       aiBtn.disabled = true;
       
       try {
-        const homework = await Gemini.generateHomework(st.name, st.grade, topic);
+        const homework = await Gemini.generateTutoringAI('homework', { name: st.name, grade: st.grade, ...this.parseStudentDossier(st) }, { topic }, this.getPrevConductedLesson(st.id, ls?.date));
         document.getElementById('ls-homework').value = homework;
         UI.toast('Домашка сгенерирована!', 'success');
       } catch (e) {
@@ -548,10 +624,11 @@ const TutoringPage = {
 
     let homework = document.getElementById('ls-homework').value;
     const materials = document.getElementById('ls-materials').value.trim();
-    if (materials) {
+    { if (materials) {
       homework += '\\n[МАТЕРИАЛЫ]:\\n' + materials;
     }
 
+    }
     const data = {
       student_id,
       date: new Date(dStr).toISOString(),
@@ -707,6 +784,93 @@ const TutoringPage = {
       UI.toast('Все уроки по расписанию на эту неделю уже созданы!', 'info');
     }
   },
+  parseStudentDossier(st) {
+    const raw = st?.schedule || '';
+    const getSec = (tag) => {
+      const idx = raw.indexOf(tag);
+      if (idx === -1) return '';
+      const rest = raw.slice(idx + tag.length);
+      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:/);
+      return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
+    };
+    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:/);
+    const schedule = (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim();
+    return {
+      schedule,
+      interests: getSec('[ИНТЕРЕСЫ]:'),
+      errors: getSec('[ОШИБКИ]:'),
+      vocab: getSec('[СЛОВАРЬ]:'),
+      notes: getSec('[ЗАМЕТКИ]:')
+    };
+  },
+
+  serializeStudentDossier(schedule, interests, errors, vocab, notes) {
+    let out = schedule || '';
+    if (interests) out += `\\n[ИНТЕРЕСЫ]:\\n${interests}`;
+    if (errors) out += `\\n[ОШИБКИ]:\\n${errors}`;
+    if (vocab) out += `\\n[СЛОВАРЬ]:\\n${vocab}`;
+    if (notes) out += `\\n[ЗАМЕТКИ]:\\n${notes}`;
+    return out;
+  },
+
+  getPrevConductedLesson(studentId, beforeDate = null) {
+    const cutoff = beforeDate ? new Date(beforeDate).getTime() : Infinity;
+    const conducted = this.lessons
+      .filter(l => l.student_id === studentId && l.status === 'Проведен' && new Date(l.date).getTime() <= cutoff)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    return conducted[0] || null;
+  },
+
+  async markPrevHwChecked(lessonId) {
+    const ls = this.lessons.find(l => l.id === lessonId);
+    if (!ls) return;
+    if ((ls.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) return;
+    const updatedHw = `[ДЗ_ПРОВЕРЕНО] ${ls.homework || ''}`.trim();
+    await DB.updateLesson(lessonId, { homework: updatedHw });
+    UI.toast('Домашнее задание отмечено как проверенное! ✅', 'success');
+    await this.load();
+  },
+
+  renderLessonMemoryBanner(studentId, lessonDate = null) {
+    const banner = document.getElementById('ls-memory-banner');
+    if (!banner) return;
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) { banner.innerHTML = ''; return; }
+    const dossier = this.parseStudentDossier(st);
+    const prev = this.getPrevConductedLesson(studentId, lessonDate);
+    const prevHwRaw = prev ? ((prev.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].trim()) : '';
+    const isChecked = prevHwRaw.includes('[ДЗ_ПРОВЕРЕНО]');
+    const cleanHw = prevHwRaw.replace('[ДЗ_ПРОВЕРЕНО]', '').trim();
+
+    banner.innerHTML = `
+      <div style="padding:10px 12px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:12px;display:flex;flex-direction:column;gap:4px;">
+        <div style="font-weight:700;color:var(--accent);display:flex;justify-content:space-between;align-items:center;">
+          <span>🧠 Память по ученику: ${this.escapeHtml(st.name)}</span>
+          ${prev ? `<span style="font-size:11px;color:var(--text-muted);">Прошлый урок: ${new Date(prev.date).toLocaleDateString('ru-RU')}</span>` : ''}
+        </div>
+        ${prev ? `<div>⏪ <b>Прошлая тема:</b> ${this.escapeHtml(prev.topic || 'Не указана')}</div>` : '<div style="color:var(--text-muted);">Проведённых уроков пока нет</div>'}
+        ${cleanHw ? `<div style="color:${isChecked ? 'var(--success)' : 'var(--warning)'};">📌 <b>Заданное ДЗ:</b> ${this.escapeHtml(cleanHw)} ${isChecked ? '✅ (Проверено)' : `<button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:1px 6px;margin-left:6px;" onclick="TutoringPage.markPrevHwChecked('${prev.id}').then(()=>TutoringPage.renderLessonMemoryBanner('${studentId}'))">✅ Отметить проверенным</button>`}</div>` : ''}
+        ${dossier.errors ? `<div>⚠️ <b>Слабые места:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}
+        ${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}
+      </div>
+    `;
+  },
+
+  async generateMonthlyReport(studentId) {
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return;
+    const dossier = this.parseStudentDossier(st);
+    const stLessons = this.lessons.filter(l => l.student_id === studentId && l.status === 'Проведен');
+    UI.toast('Генерирую ИИ-отчёт о прогрессе...', 'info');
+    try {
+      const report = await Gemini.generateTutoringAI('monthly_report', { name: st.name, grade: st.grade, ...dossier }, {}, stLessons[0], stLessons);
+      try { await navigator.clipboard.writeText(report); } catch (e) {}
+      alert(`📊 ОТЧЁТ О ПРОГРЕССЕ (${st.name}) — скопирован в буфер обмена!\n\n${report}`);
+    } catch (e) {
+      UI.toast('Ошибка генерации отчёта: ' + e.message, 'error');
+    }
+  },
+
   escapeHtml(str) {
     return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }

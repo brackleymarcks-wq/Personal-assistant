@@ -820,7 +820,49 @@ const Gemini = {
     return JSON.parse(jsonStr);
   },
 
-  async generateHomework(studentName, grade, topic) {
+  async generateTutoringAI(mode, studentCtx, currentLesson = {}, prevLesson = null, allLessons = []) {
+    const settings = await DB.getSettings();
+    const apiKey = Config.geminiKey || settings?.api_key;
+    const apiUrl = Config.aiApiUrl || settings?.api_url || DEFAULT_API_URL;
+    const model = Config.aiModel || settings?.model || DEFAULT_MODEL;
+    if (!apiKey) throw new Error('API ключ не настроен.');
+
+    const dossierText = [
+      `Ученик: ${studentCtx.name || 'Ученик'}`,
+      `Уровень/Класс: ${studentCtx.grade || 'Не указан'}`,
+      studentCtx.interests ? `Интересы и хобби ученика: ${studentCtx.interests}` : '',
+      studentCtx.errors ? `Типичные ошибки / слабые места: ${studentCtx.errors}` : '',
+      studentCtx.vocab ? `Активный словарь (Vocabulary Bank): ${studentCtx.vocab}` : '',
+      studentCtx.notes ? `Заметки учителя: ${studentCtx.notes}` : '',
+      prevLesson ? `Предыдущий урок (${new Date(prevLesson.date).toLocaleDateString('ru-RU')}): Тема "${prevLesson.topic || 'не указана'}", Заданное ДЗ: "${prevLesson.homework || 'не было'}"` : ''
+    ].filter(Boolean).join('\n');
+
+    let prompt = '';
+    if (mode === 'warmup') {
+      prompt = `Создай 5-минутную разминку (Warm-up) для начала урока английского (в стиле платформы Twee).\nТекущая тема: "${currentLesson.topic || 'Повторение и разговорная практика'}".\nВключи:\n1. 3 живых вопроса для обсуждения (Speaking), вплетая интересы ученика и лексику/грамматику прошлого урока.\n2. Короткую мини-игру на 2 минуты (например: Find the mistake / Two truths and a lie / Word association) по слабым местам ученика.\nПиши компактно, сразу к делу.`;
+    } else if (mode === 'blitz_check') {
+      prompt = `Создай 2-минутную блиц-проверку (Blitz Homework Check), чтобы быстро проверить, как ученик усвоил тему прошлого урока и сам ли он делал ДЗ.\nДай 3 устных контрольных вопроса или коротких предложения на перевод "сходу" (с правильными ответами в скобках для преподавателя), бьющих точно по прошлому ДЗ и типичным ошибкам ученика.`;
+    } else if (mode === 'homework') {
+      prompt = `Создай персональное домашнее задание (в стиле Twee) на 10-15 минут по теме "${currentLesson.topic || 'Общий английский'}".\nОбязательно используй интересы ученика в примерах и включи ловушки на его типичные ошибки!\nСтруктура:\n1. Гап-филл (вставить пропущенные формы/слова) — 4 предложения.\n2. Перевод с русского на английский — 3 предложения.\n3. Творческий мини-вопрос (2-3 предложения).\nВ самом конце добавь блок "🔑 Ключи для преподавателя" с правильными ответами.`;
+    } else if (mode === 'parent_msg') {
+      prompt = `Напиши готовое, теплое и профессиональное сообщение для ученика или его родителей в Telegram/Viber по итогам сегодняшнего урока.\nТема сегодня: "${currentLesson.topic || 'Практика английского'}".\nДомашнее задание на следующий раз: "${currentLesson.homework || 'Повторить лексику урока'}".\nСтруктура: Приветствие, что сегодня классно разобрали и за что можно похвалить, над чем ещё работаем, и чётко выделенное Домашнее задание. Без лишних вступлений, сразу текст сообщения для копирования!`;
+    } else if (mode === 'monthly_report') {
+      const historyLines = (allLessons || []).slice(0, 8).map(l => `- ${new Date(l.date).toLocaleDateString('ru-RU')}: ${l.topic || 'Практика'} (ДЗ: ${(l.homework || '—').split('\n')[0]})`).join('\n');
+      prompt = `Составь красивый "📊 Отчёт о прогрессе ученика" за последние занятия (для отправки родителям или самому ученику в Telegram).\nПройденные уроки:\n${historyLines || 'Нет записанных тем'}\n\nСтруктура отчёта:\n1. 🌟 Главные достижения и пройденные темы\n2. 📈 Над какими ошибками и навыками мы сейчас работаем\n3. 🎯 План и фокус на следующие 4 занятия\nПиши вдохновляюще, структурно, с эмодзи, готовым текстом для пересылки!`;
+    }
+
+    const data = await this._callAPI(
+      apiUrl,
+      apiKey,
+      model,
+      `Ты — топовый методист и ИИ-ассистент преподавателя английского языка (Twee + Lesson Mate AI).\nДОСЬЕ УЧЕНИКА:\n${dossierText}`,
+      [{ role: 'user', content: prompt }],
+      true
+    );
+    return data.choices?.[0]?.message?.content?.trim() || '';
+  },
+
+  async generateHomework(studentName, grade, topic, extraContext = {}) {
     const settings = await DB.getSettings();
     const apiKey = Config.geminiKey || settings?.api_key;
     const apiUrl = Config.aiApiUrl || settings?.api_url || DEFAULT_API_URL;
