@@ -35,14 +35,31 @@ window.ChatWidget = {
     const expandBtn = document.getElementById('global-chat-expand');
     if (expandBtn) {
       expandBtn.addEventListener('click', () => {
-        if (panel.style.width === '760px') {
+        const isFull = panel.dataset.fullscreen === 'true';
+        if (isFull) {
+          panel.dataset.fullscreen = 'false';
+          panel.style.top = '';
+          panel.style.left = '';
+          panel.style.right = '';
+          panel.style.bottom = '';
           panel.style.width = '';
           panel.style.height = '';
+          panel.style.maxWidth = '';
+          panel.style.maxHeight = '';
+          expandBtn.innerHTML = '<i data-lucide="maximize-2" style="width: 16px; height: 16px;"></i>';
         } else {
-          panel.style.width = '760px';
-          panel.style.height = '82vh';
-          panel.style.maxWidth = '92vw';
+          panel.dataset.fullscreen = 'true';
+          panel.style.top = '16px';
+          panel.style.left = '16px';
+          panel.style.right = '16px';
+          panel.style.bottom = '16px';
+          panel.style.width = 'calc(100vw - 32px)';
+          panel.style.height = 'calc(100vh - 32px)';
+          panel.style.maxWidth = 'none';
+          panel.style.maxHeight = 'none';
+          expandBtn.innerHTML = '<i data-lucide="minimize-2" style="width: 16px; height: 16px;"></i>';
         }
+        if (window.lucide) window.lucide.createIcons();
       });
     }
 
