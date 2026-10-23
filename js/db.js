@@ -603,8 +603,13 @@ const DB = {
   },
 
   async updateLesson(id, updates) {
-    const { data, error } = await _supabase.from('lessons').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    const cleanUpdates = { ...updates };
+    delete cleanUpdates.students;
+    const { data, error } = await _supabase.from('lessons').update({ ...cleanUpdates, updated_at: new Date().toISOString() }).eq('id', id).select().maybeSingle();
     if (error) throw error;
+    if (!data) {
+      return await this.createLesson(cleanUpdates);
+    }
     return data;
   },
 

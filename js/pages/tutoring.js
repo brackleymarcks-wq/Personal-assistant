@@ -643,7 +643,7 @@ const TutoringPage = {
 
     try {
       // Update each lesson to paid = true
-      await Promise.all(unpaidConductedLessons.map(l => DB.updateLesson(l.id, { ...l, paid: true })));
+      await Promise.all(unpaidConductedLessons.map(l => DB.updateLesson(l.id, { paid: true })));
 
       // Ask user if they want to log this into Finances
       if (confirm(`Зачислить общую сумму оплаты (${total} BYN) в Финансы (Доходы)?`)) {
