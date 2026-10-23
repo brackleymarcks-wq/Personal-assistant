@@ -6,7 +6,7 @@ const FinancesPage = {
   transactions: [],
   categories: {
     income: ['Зарплата', 'Фриланс', 'Бизнес', 'Инвестиции', 'Подарки', 'Крипта', 'Кэшбэк', 'Ставки на спорт', 'Другое'],
-    expense: ['Продукты', 'Кафе и Рестораны', 'Транспорт', 'Авто', 'Жилье', 'Ипотека/Аренда', 'Развлечения', 'Здоровье', 'Одежда', 'Обучение', 'Подписки', 'Семья', 'Хобби', 'Техника', 'Путешествия', 'Ставки на спорт', 'Другое'],
+    expense: ['Продукты', 'Кафе и Рестораны', 'Транспорт', 'Авто', 'Жилье', 'Ипотека/Аренда', 'Кредиты', 'Развлечения', 'Здоровье', 'Уход за собой', 'Одежда', 'Обучение', 'Подписки', 'Семья', 'Хобби', 'Техника', 'Путешествия', 'Ставки на спорт', 'Другое'],
     transfer: ['Перевод']
   },
   expenseChartInstance: null,
@@ -27,7 +27,7 @@ const FinancesPage = {
     'Зарплата': 'briefcase', 'Фриланс': 'laptop', 'Бизнес': 'building', 'Инвестиции': 'trending-up',
     'Подарки': 'gift', 'Крипта': 'bitcoin', 'Кэшбэк': 'percent', 'Продукты': 'shopping-cart',
     'Кафе и Рестораны': 'coffee', 'Транспорт': 'bus', 'Авто': 'car', 'Жилье': 'home',
-    'Ипотека/Аренда': 'key', 'Развлечения': 'film', 'Здоровье': 'heart', 'Одежда': 'shirt',
+    'Ипотека/Аренда': 'key', 'Кредиты': 'landmark', 'Развлечения': 'film', 'Здоровье': 'heart', 'Уход за собой': 'scissors', 'Одежда': 'shirt',
     'Обучение': 'book-open', 'Подписки': 'credit-card', 'Семья': 'users', 'Хобби': 'gamepad-2',
     'Техника': 'smartphone', 'Путешествия': 'plane', 'Ставки на спорт': 'trophy', 'Другое': 'more-horizontal'
   },
@@ -252,7 +252,7 @@ const FinancesPage = {
       if (txDate > endOfViewMonth) return; // Do not count transactions from the future relative to the selected month
 
       try {
-        const descData = JSON.parse(t.description || '{}');
+        let descData = {}; try { descData = JSON.parse(t.description || '{}'); } catch(err) { descData = { text: t.description }; }
         const amt = Number(t.amount);
         
         let accId = descData.account;
@@ -371,7 +371,7 @@ const FinancesPage = {
       `;
     }
 
-    document.getElementById('finance-summary').innerHTML = budgetHtml + `
+    const subs = this.config.subscriptions || []; const curMonthKey = `${currentYear}-${currentMonth}`; const unpaidSubsTotal = subs.filter(s => s.paidMonth !== curMonthKey).reduce((sum, s) => sum + (Number(s.amount) || 0), 0); const subsHtml = `<div class="finance-summary-card glass-panel" style="grid-column: 1 / -1; box-shadow: var(--shadow-sm); padding: var(--space-lg);"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;"><i data-lucide="calendar-clock" style="width:18px;height:18px;color:var(--accent);"></i> Регулярные платежи и подписки ${unpaidSubsTotal > 0 ? `<span style="font-size:12px;color:var(--warning);font-weight:600;">(К оплате в этом месяце: ${unpaidSubsTotal} BYN)</span>` : ''}</div><button class="btn btn-secondary btn-sm" onclick="FinancesPage.openSubscriptionModal()">+ Регулярный платёж</button></div>${subs.length === 0 ? `<div style="font-size:12px;color:var(--text-muted);">Добавь коммуналку, интернет или подписки, чтобы видеть реальный свободный остаток денег на месяц.</div>` : `<div style="display:flex;flex-wrap:wrap;gap:8px;">` + subs.map(s => { const isPaid = s.paidMonth === curMonthKey; return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:var(--bg-surface);border:1px solid ${isPaid ? 'rgba(16,185,129,0.3)' : 'var(--border-light)'};font-size:13px;"><div><b>${this.esc(s.name)}</b> · <span style="color:var(--accent);font-weight:700;">${s.amount} BYN</span> <span style="font-size:11px;color:var(--text-muted);">(до ${s.day || 15}-го числа)</span></div>${isPaid ? `<span style="color:var(--success);font-size:11px;font-weight:700;">✓ Оплачено</span>` : `<button class="btn btn-primary btn-xs" style="padding:2px 8px;font-size:11px;" onclick="FinancesPage.paySubscription('${s.id}')">Оплатить</button>`}<button class="btn btn-ghost btn-xs" style="padding:2px 4px;color:var(--text-muted);" onclick="FinancesPage.deleteSubscription('${s.id}')" title="Удалить">×</button></div>`; }).join('') + `</div>`}</div>`; document.getElementById('finance-summary').innerHTML = budgetHtml + subsHtml + `
       <div class="finance-summary-card glass-panel" style="box-shadow: var(--shadow-sm);">
         <div class="finance-label">
           <i data-lucide="trending-up" style="width:14px;height:14px;color:var(--success);"></i>
@@ -391,8 +391,8 @@ const FinancesPage = {
           <i data-lucide="wallet" style="width:14px;height:14px;"></i>
           Остаток
         </div>
-        <div class="finance-amount" style="color:${balance < 0 ? 'var(--danger)' : 'var(--text-primary)'}">
-          ${balance > 0 ? '+' : ''}${balance.toLocaleString('ru-RU')} BYN
+        <div class="finance-amount" style="color:${balance < 0 ? 'var(--danger)' : 'var(--text-primary)'}">${balance > 0 ? '+' : ''}${balance.toLocaleString('ru-RU')} BYN</div>${unpaidSubsTotal > 0 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Свободно после обяз. платежей: <b>${(balance - unpaidSubsTotal).toLocaleString('ru-RU')} BYN</b></div>` : ''}<div style="display:none"><div>
+          ${balance > 0 ? '+' : ''}${balance.toLocaleString('ru-RU')} BYN</div></div></div>
         </div>
       </div>
     `;
@@ -1083,7 +1083,7 @@ ${JSON.stringify(historySummary, null, 2)}
     if (acc) {
       this.transactions.forEach(t => {
         try {
-          const descData = JSON.parse(t.description || '{}');
+          let descData = {}; try { descData = JSON.parse(t.description || '{}'); } catch(err) { descData = { text: t.description }; }
           let accId = descData.account;
           if (!accId && this.config.accounts && this.config.accounts.length > 0) {
             const defaultAcc = this.config.accounts.find(a => a.name.toLowerCase().includes('карта')) || this.config.accounts[0];
@@ -1194,7 +1194,7 @@ ${JSON.stringify(historySummary, null, 2)}
         let currentBalance = Number(acc.initialBalance) || 0;
         this.transactions.forEach(t => {
           try {
-            const descData = JSON.parse(t.description || '{}');
+            let descData = {}; try { descData = JSON.parse(t.description || '{}'); } catch(err) { descData = { text: t.description }; }
             let accId = descData.account || (this.config.accounts.find(a => a.name.toLowerCase().includes('карта')) || this.config.accounts[0]).id;
             const amt = Number(t.amount);
             if (t.type === 'income' && accId === acc.id) currentBalance += amt;
@@ -1368,6 +1368,38 @@ ${JSON.stringify(historySummary, null, 2)}
     }
   },
 
+  openSubscriptionModal() {
+    const body = `<div class="form-group"><label class="form-label">Название (Интернет, Коммуналка, Подписка)</label><input id="sub-name" class="form-input" placeholder="Например: Домашний интернет" /></div><div class="form-row" style="margin-top:12px;"><div class="form-group"><label class="form-label">Сумма (BYN)</label><input id="sub-amount" type="number" step="0.01" class="form-input" placeholder="45" /></div><div class="form-group"><label class="form-label">День оплаты (1–31)</label><input id="sub-day" type="number" min="1" max="31" class="form-input" value="15" /></div></div>`;
+    const footer = `<button class="btn btn-secondary" onclick="UI.closeModal()">Отмена</button><button class="btn btn-primary" onclick="FinancesPage.saveSubscription()">Сохранить</button>`;
+    UI.openModal('Новый регулярный платёж', body, footer);
+  },
+  async saveSubscription() {
+    const name = document.getElementById('sub-name')?.value.trim();
+    const amount = parseFloat(document.getElementById('sub-amount')?.value) || 0;
+    const day = parseInt(document.getElementById('sub-day')?.value, 10) || 15;
+    if (!name || amount <= 0) return UI.toast('Введите название и сумму', 'warning');
+    if (!this.config.subscriptions) this.config.subscriptions = [];
+    this.config.subscriptions.push({ id: 'sub_' + Date.now(), name, amount, day, paidMonth: '' });
+    await this.saveConfig();
+    UI.closeModal();
+    UI.toast('Регулярный платёж добавлен!', 'success');
+    this.renderContent();
+  },
+  async paySubscription(subId) {
+    const sub = (this.config.subscriptions || []).find(s => s.id === subId);
+    if (!sub) return;
+    const curMonthKey = `${this.viewDate.getFullYear()}-${this.viewDate.getMonth()}`;
+    await DB.createTransaction({ type: 'expense', amount: sub.amount, category: 'Обязательные платежи', date: new Date().toISOString().split('T')[0], description: JSON.stringify({ text: `Регулярный платёж: ${sub.name}` }) });
+    sub.paidMonth = curMonthKey;
+    await this.saveConfig();
+    UI.toast(`Оплачено: ${sub.name} (${sub.amount} BYN)`, 'success');
+    await this.load();
+  },
+  async deleteSubscription(subId) {
+    this.config.subscriptions = (this.config.subscriptions || []).filter(s => s.id !== subId);
+    await this.saveConfig();
+    this.renderContent();
+  },
   esc(str) {
     return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }

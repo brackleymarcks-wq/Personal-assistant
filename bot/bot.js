@@ -16,20 +16,28 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Bypass SSL issues
 
 // ---- Config ----
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-let CHAT_ID = '521675050';
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
+let CHAT_ID = process.env.TELEGRAM_CHAT_ID || '521675050';
+const SUPABASE_URL = (process.env.SUPABASE_URL && !process.env.SUPABASE_URL.includes('spvnpwirojnrpgwrsch')) ? process.env.SUPABASE_URL : 'https://xpvnpeivrojnrpgwrezh.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_72JuYzuHM67bNaiDcFrUTg_57MJstwC';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const useGroq = !!GROQ_API_KEY;
-const AI_API_KEY = useGroq ? GROQ_API_KEY : (process.env.OPENROUTER_API_KEY || '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');
-const isOpenRouter = !useGroq;
-const AI_API_URL = useGroq ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions';
-const AI_MODEL = useGroq ? 'llama-3.3-70b-versatile' : 'meta-llama/llama-3.3-70b-instruct:free';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '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';
+
+const useOpenRouterOverride = !process.env.AI_API_URL || process.env.AI_API_URL.includes('azure.com') || process.env.AI_API_URL.includes('groq.com');
+const AI_API_URL = useOpenRouterOverride ? 'https://openrouter.ai/api/v1/chat/completions' : process.env.AI_API_URL;
+const AI_API_KEY = useOpenRouterOverride ? OPENROUTER_API_KEY : (process.env.AI_API_KEY || OPENROUTER_API_KEY);
+const AI_MODEL = (useOpenRouterOverride || process.env.AI_MODEL === 'gpt-4o') ? 'nvidia/nemotron-3-ultra-550b-a55b:free' : process.env.AI_MODEL;
+const FALLBACK_MODELS = [
+  'nvidia/nemotron-3-ultra-550b-a55b:free',
+  'google/gemma-4-31b-it:free',
+  'openrouter/free'
+];
+const recentUrls = new Map();
+const isOpenRouter = AI_API_URL.includes('openrouter');
 
 if (!BOT_TOKEN) { console.error('❌ TELEGRAM_BOT_TOKEN не задан в .env'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
 if (!AI_API_KEY) { console.warn('⚠️ AI_API_KEY не задан. Бот не сможет отвечать!'); }
-if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ SUPABASE_URL / SUPABASE_KEY не заданы'); process.exit(1); }
 
 // ---- Init ----
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -202,7 +210,7 @@ async function getGamificationStats() {
   const user = await getUser();
   if (!user) return { tasksDone: 0, habitsDone: 0, totalXp: 0 };
   const { count: tasksDone } = await db.from('tasks').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'Готово');
-  const { count: habitsDone } = await db.from('habit_logs').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'done');
+  const { count: habitsDone } = await db.from('habit_logs').select('*, habits!inner(user_id)', { count: 'exact', head: true }).eq('habits.user_id', user.id).eq('status', 'done');
   const xp = (tasksDone || 0) * 10 + (habitsDone || 0) * 15;
   return { tasksDone: tasksDone || 0, habitsDone: habitsDone || 0, totalXp: xp };
 }
@@ -268,6 +276,17 @@ async function createTask(title, opts = {}) {
 }
 
 async function createNote(title, content, tags = [], area = 'Работа') {
+  try {
+    const u = await getUser();
+    await db.from('knowledge_base').insert({
+      user_id: u?.id,
+      title,
+      content,
+      type: 'Дневник',
+      tags: Array.isArray(tags) ? tags : [],
+      source_url: ''
+    });
+  } catch (e) {}
   const user = await getUser();
   const { data, error } = await db.from('notes').insert({
     user_id: user?.id,
@@ -349,7 +368,7 @@ async function getMonthlyFinances() {
 
 async function getSettings() {
   const user = await getUser();
-  const { data } = await db.from('notes').select('content').eq('user_id', user.id).eq('title', 'SYSTEM_CONFIG_FINANCES').limit(1).single();
+  const { data: settingsRow } = await db.from('settings').select('*').eq('user_id', user.id).limit(1).single(); const { data } = await db.from('notes').select('content').eq('user_id', user.id).eq('title', 'SYSTEM_CONFIG_FINANCES').limit(1).single(); let finConfig = {}; if (data && data.content) { try { finConfig = JSON.parse(data.content); } catch(e) {} } return { ...(settingsRow || {}), ...finConfig };
   if (data && data.content) {
     try { return JSON.parse(data.content); } catch(e) { return {}; }
   }
@@ -358,11 +377,11 @@ async function getSettings() {
 
 async function getHabits() {
   const user = await getUser();
-  const { data } = await db.from('habits').select('*').eq('user_id', user.id).eq('active', true);
+  const { data } = await db.from('habits').select('*').eq('user_id', user.id).order('created_at', { ascending: true });
   return data || [];
 }
 
-async function getHabitLogs(startDate, endDate) {
+async function getHabitLogs(startDate, endDate) { const user = await getUser(); const { data } = await db.from('habit_logs').select('*, habits!inner(user_id)').eq('habits.user_id', user.id).gte('date', startDate).lte('date', endDate); return data || []; } async function _unusedHabitLogs(startDate, endDate) {
   const user = await getUser();
   const { data } = await db.from('habit_logs')
     .select('*')
@@ -382,7 +401,7 @@ async function logHabit(habitId, dateStr, status = 'done') {
     return data;
   } else {
     const { data } = await db.from('habit_logs').insert({
-      user_id: user.id, habit_id: habitId, date: dateStr, status
+      habit_id: habitId, date: dateStr, status
     }).select().single();
     return data;
   }
@@ -393,7 +412,7 @@ async function updateContext(newInstruction) {
   const context = settings.context || {};
   if (!context.custom_instructions) context.custom_instructions = [];
   context.custom_instructions.push(newInstruction);
-  await db.from('settings').update({ context }).eq('id', settings.id);
+  const user = await getUser(); if (settings.id) { await db.from('settings').update({ context, updated_at: new Date().toISOString() }).eq('id', settings.id); } else if (user) { await db.from('settings').insert({ user_id: user.id, context }); }
   return true;
 }
 
@@ -425,7 +444,7 @@ async function getProjects() {
 
 async function createProject(name, color = '#6366f1') {
   const user = await getUser();
-  const { data, error } = await db.from('projects').insert({
+  const { data, error } = await db.from('projects').insert({ user_id: user?.id, name, status: 'Активный' }).select().single(); if (error) throw error; return data; } async function _unusedProject(user, name, color) { const { data, error } = ({
     user_id: user?.id,
     name,
     color,
@@ -443,7 +462,7 @@ async function getGoals() {
 
 async function createGoal(title, targetValue = 100, unit = '%', deadline = null) {
   const user = await getUser();
-  const { data, error } = await db.from('goals').insert({
+  const { data, error } = await db.from('goals').insert({ user_id: user?.id, title, progress: 0, status: 'В работе', target_date: deadline || null }).select().single(); if (error) throw error; return data; } async function _unusedGoal(user, title, targetValue, unit, deadline) { const { data, error } = ({
     user_id: user?.id,
     title,
     current_value: 0,
@@ -483,6 +502,67 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'process_brain_dump',
+      description: 'Универсальный захват (Omni-Capture / Brain Dump): если в одном сообщении или голосовом есть сразу И задачи, И траты/доходы, И события/заметки — вызови эту функцию, чтобы сохранить всё за один раз!',
+      parameters: {
+        type: 'object',
+        properties: {
+          tasks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                priority: { type: 'string' },
+                deadline: { type: 'string' },
+                area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'] }
+              },
+              required: ['title']
+            }
+          },
+          transactions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                amount: { type: 'number' },
+                type: { type: 'string', enum: ['expense', 'income'] },
+                category: { type: 'string' },
+                comment: { type: 'string' }
+              },
+              required: ['amount', 'type', 'category']
+            }
+          },
+          events: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                start_at: { type: 'string' },
+                area: { type: 'string' }
+              },
+              required: ['title', 'start_at']
+            }
+          },
+          notes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                content: { type: 'string' }
+              },
+              required: ['title', 'content']
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_tasks',
       description: 'Создать одну или несколько новых задач',
       parameters: {
@@ -493,19 +573,39 @@ const TOOLS = [
             items: {
               type: 'object',
               properties: {
-                title: { type: 'string', description: 'КОНКРЕТНОЕ ДЕЙСТВИЕ с глаголом. Примеры: "Подготовить отчёт по AI-Connect", "Написать пост в ТГ-канал", "Позвонить Горшкову". НЕЛЬЗЯ использовать имена направлений (ТГ AI-Connect, Личное и т.п.) как title — это поле direction.' },
+                title: { type: 'string', description: 'КОНКРЕТНОЕ ДЕЙСТВИЕ с глаголом.' },
                 direction: { type: 'string', description: 'Direction tags: AI-Connect, English, Personal, etc. CSV' },
                 status: { type: 'string', description: 'Default "Ждёт меня"' },
-                priority: { type: 'string', description: 'High, Medium, Low (Высокий/Средний/Низкий)' },
-                deadline: { type: 'string', description: 'YYYY-MM-DD (must compute date)' },
+                priority: { type: 'string', description: 'High, Medium, Low' },
+                deadline: { type: 'string', description: 'YYYY-MM-DD' },
                 next_step: { type: 'string', description: 'Next step' },
-                area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Must select one: Работа, Репетиторство, Личное' }
+                area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'] }
               },
               required: ['title', 'area']
             }
           }
         },
         required: ['tasks']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_task',
+      description: 'Создать одну новую задачу (псевдоним для одиночной задачи)',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'КОНКРЕТНОЕ ДЕЙСТВИЕ с глаголом.' },
+          direction: { type: 'string', description: 'Direction tags: AI-Connect, English, Personal, etc. CSV' },
+          status: { type: 'string', description: 'Default "Ждёт меня"' },
+          priority: { type: 'string', description: 'High, Medium, Low' },
+          deadline: { type: 'string', description: 'YYYY-MM-DD' },
+          next_step: { type: 'string', description: 'Next step' },
+          area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'] }
+        },
+        required: ['title', 'area']
       }
     }
   },
@@ -722,7 +822,7 @@ const TOOLS = [
         properties: {
           title: { type: 'string', description: 'Event title' },
           description: { type: 'string', description: 'Details or links (optional)' },
-          start_at: { type: 'string', description: 'ISO 8601 date/time (e.g. 2026-06-22T14:00:00). Compute using CURRENT TIME.' },
+          start_at: { type: 'string', description: 'ISO 8601 date/time with +03:00 offset (e.g. 2026-07-09T18:00:00+03:00). Compute EXACT DATE and time using CURRENT TIME.' },
           area: { type: 'string', enum: ['Работа', 'Репетиторство', 'Личное'], description: 'Area' }
         },
         required: ['title', 'start_at', 'area']
@@ -788,14 +888,16 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'archive_task',
-      description: 'Отметить задачу как выполненную (завершить/архивировать)',
+      name: 'update_task_status',
+      description: 'Изменить статус задачи (в том числе завершить/архивировать)',
       parameters: {
         type: 'object',
         properties: {
-          task_id: { type: 'string', description: 'ID задачи для завершения' }
+          task_id: { type: 'string', description: 'ID задачи (если известен)' },
+          title_search: { type: 'string', description: 'Часть названия задачи для поиска (если ID неизвестен)' },
+          status: { type: 'string', description: 'Новый статус: "Готово", "В работе", "Ждёт меня", "Отменена"' }
         },
-        required: ['task_id']
+        required: ['status']
       }
     }
   }
@@ -804,6 +906,50 @@ const TOOLS = [
 async function executeFunctionCall(name, args) {
   try {
     switch (name) {
+      case 'process_brain_dump': {
+        const summary = [];
+        if (Array.isArray(args.tasks)) {
+          for (const t of args.tasks) {
+            await createTask(t.title, {
+              priority: t.priority || 'Средний',
+              deadline: t.deadline || null,
+              area: t.area || 'Работа'
+            });
+            summary.push(`✅ Задача: "${t.title}"`);
+          }
+        }
+        if (Array.isArray(args.transactions)) {
+          for (const tx of args.transactions) {
+            await createTransaction(tx.amount, tx.type || 'expense', tx.category || 'Другое', tx.comment || '', 'Карта');
+            summary.push(`💸 Финансы (${tx.type === 'income' ? '+' : '-'}${tx.amount} BYN): ${tx.category}`);
+          }
+        }
+        if (Array.isArray(args.events)) {
+          const user = await getUser();
+          for (const ev of args.events) {
+            if (user && ev.title && ev.start_at) {
+              await db.from('events').insert({
+                user_id: user.id,
+                title: ev.title,
+                start_at: ev.start_at,
+                end_at: ev.start_at,
+                type: 'Встреча'
+              });
+              summary.push(`📅 Событие: "${ev.title}"`);
+            }
+          }
+        }
+        if (Array.isArray(args.notes)) {
+          for (const n of args.notes) {
+            await createNote(n.title, n.content, ['brain-dump'], 'Работа');
+            summary.push(`📝 Заметка: "${n.title}"`);
+          }
+        }
+        return {
+          success: true,
+          message: `🧠 Brain Dump разобран (${summary.length} действий):\n` + summary.join('\n')
+        };
+      }
       case 'create_event': {
         const { title, description, start_at, area } = args;
         if (!title || !start_at) return { success: false, error: 'Не указан title или start_at' };
@@ -811,17 +957,33 @@ async function executeFunctionCall(name, args) {
         const user = await getUser();
         if (!user) return { success: false, error: 'User not found' };
 
+        let end_at = args.end_at;
+        if (!end_at) {
+          try {
+            const startDate = new Date(start_at);
+            startDate.setHours(startDate.getHours() + 1);
+            end_at = startDate.toISOString();
+          } catch(e) {
+            end_at = start_at;
+          }
+        }
+        
+        let eventType = 'Встреча';
+        if (area === 'Личное') eventType = 'Личное';
+        
         const { data, error } = await db.from('events').insert({
           user_id: user.id,
           title: title,
-          description: description || '',
+          notes: description || '',
           start_at: start_at,
-          area: area || 'Работа'
+          end_at: end_at,
+          type: eventType
         }).select().single();
 
         if (error) return { success: false, error: error.message };
         return { success: true, event: data, message: `Напоминание/событие "${title}" успешно добавлено на ${start_at}!` };
       }
+      case 'create_task':
       case 'create_tasks': {
         if (!args.tasks || !Array.isArray(args.tasks)) {
           // Fallback: if LLM forgets the 'tasks' array and passes properties directly
@@ -977,11 +1139,11 @@ async function executeFunctionCall(name, args) {
       }
       case 'generate_lesson_plan': {
         // Мы используем Groq для генерации ответа на промпт, затем возвращаем его в цепочку
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const response = await fetch(AI_API_URL, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+          headers: { 'Authorization': `Bearer ${AI_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
+            model: AI_MODEL,
             messages: [{ role: 'system', content: 'Ты опытный и креативный преподаватель английского. Помоги составить учебный материал, план урока или вопросы по запросу.' }, { role: 'user', content: args.prompt }]
           })
         });
@@ -1023,11 +1185,11 @@ async function executeFunctionCall(name, args) {
 3. Призыв к действию: "Читайте полную статью с разбором на нашем HR-портале! 👇".
 Напиши пост живо, энергично, для сотрудников компании. Не добавляй лишних приветствий, сразу выдавай готовый текст поста.`;
 
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const response = await fetch(AI_API_URL, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+          headers: { 'Authorization': `Bearer ${AI_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
+            model: AI_MODEL,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: `Сделай пост из этого материала:\n\n${content}` }
@@ -1070,11 +1232,11 @@ async function executeFunctionCall(name, args) {
 Не пиши ничего кроме JSON!`;
 
         try {
-          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          const response = await fetch(AI_API_URL, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+            headers: { 'Authorization': `Bearer ${AI_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: 'llama-3.3-70b-versatile',
+              model: AI_MODEL,
               response_format: { type: "json_object" },
               messages: [
                 { role: 'system', content: systemPrompt },
@@ -1127,11 +1289,44 @@ async function executeFunctionCall(name, args) {
         const inbox = await getInbox();
         return { success: true, inbox, count: inbox.length };
       }
-      case 'archive_task': {
-        const { task_id } = args;
-        if (!task_id) return { success: false, error: 'ID задачи не передан' };
-        const task = await completeTask(task_id);
-        return { success: true, task, message: `Задача "${task.title}" успешно отмечена выполненной!` };
+      case 'update_task_status': {
+        const { task_id, title_search, status } = args;
+        if (!task_id && !title_search) return { success: false, error: 'Нужно передать task_id или title_search' };
+        if (!status) return { success: false, error: 'Не указан новый статус' };
+        
+        let targetId = task_id;
+        if (!targetId) {
+          const user = await getUser();
+          if (!user) return { success: false, error: 'User not found' };
+          
+          // Получаем все незавершенные задачи
+          const { data: activeTasks } = await db.from('tasks')
+            .select('*')
+            .eq('user_id', user.id)
+            .neq('status', 'Готово')
+            .neq('status', 'Отменена');
+            
+          if (!activeTasks || activeTasks.length === 0) {
+            return { success: false, error: 'У тебя нет активных задач.' };
+          }
+          
+          const searchLower = title_search.toLowerCase();
+          const found = activeTasks.find(t => t.title.toLowerCase().includes(searchLower));
+          
+          if (!found) {
+            return { success: false, error: `Задача со словами "${title_search}" не найдена среди активных.` };
+          }
+          targetId = found.id;
+        }
+
+        if (status === 'Готово') {
+          const task = await completeTask(targetId);
+          return { success: true, task, message: `Задача "${task.title}" успешно отмечена выполненной!` };
+        } else {
+          const { data, error } = await db.from('tasks').update({ status }).eq('id', targetId).select().single();
+          if (error) return { success: false, error: error.message };
+          return { success: true, task: data, message: `Статус задачи "${data.title}" изменен на "${status}"!` };
+        }
       }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
@@ -1152,6 +1347,13 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
     day: 'numeric', hour: '2-digit', minute: '2-digit'
   });
 
+  const nextDays = [];
+  for(let i=1; i<=7; i++) {
+    let d = new Date(now.getTime() + i*86400000);
+    nextDays.push(d.toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short' }) + ' (' + d.toISOString().split('T')[0] + ')');
+  }
+  const calendarContext = `\nКалендарь на ближайшие дни:\nСегодня: ${now.toISOString().split('T')[0]}\nЗавтра и далее: ${nextDays.join(', ')}`;
+
   let extraCtx = '';
   if (settings.context?.custom_instructions?.length && !minimalSystem) {
     const validInstructions = settings.context.custom_instructions.filter(i => !i.includes('ALTER TABLE tasks'));
@@ -1168,9 +1370,9 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
 
   let systemInstruction = '';
   if (minimalSystem) {
-    systemInstruction = `Ты технический ИИ-ассистент. Твоя единственная цель - вызывать нужные функции для обработки данных (например, транзакций или привычек). Никаких лишних слов.\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr}`;
+    systemInstruction = `Ты технический ИИ-ассистент. Твоя единственная цель - вызывать нужные функции для обработки данных (например, транзакций или привычек). Никаких лишних слов.\n\nТЕКУЩЕЕ ВРЕМЯ МИНСК (GMT+3): ${timeStr}${calendarContext}`;
   } else {
-    systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ: ${timeStr}${extraCtx}${context ? '\n\n' + context : ''}`;
+    systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ МИНСК (GMT+3): ${timeStr}${calendarContext}${extraCtx}${context ? '\n\n' + context : ''}`;
   }
 
   let messages = [];
@@ -1200,11 +1402,9 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
   // Сразу отправляем статус "Печатает...", чтобы не казалось, что бот завис
   bot.sendChatAction(CHAT_ID, 'typing').catch(() => {});
 
-  // Для чеков (minimalSystem = true) всегда используем Gemini Flash, так как у нее контекст 2 млн токенов, а у Llama 3.3 Free - лимит 6000 TPM
   let overrideModel = null;
-  if (minimalSystem && isOpenRouter) {
-    overrideModel = 'openrouter/free';
-  }
+  // Убрал жесткую привязку к openrouter/free для чеков, так как теперь мы используем gpt-4o, 
+  // у которой нет проблем с лимитом токенов.
 
   let response = await callAPI(systemInstruction, messages, 0, !!imageUrl, overrideModel, disableTools, activeTools);
   let maxIter = 5;
@@ -1240,7 +1440,20 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
       });
     }
 
-    response = await callAPI(systemInstruction, messages, 0, !!imageUrl, overrideModel, disableTools, activeTools);
+    const isActionOnly = message.tool_calls.every(tc => ['process_brain_dump', 'create_task', 'create_tasks', 'create_event', 'update_task_status', 'add_transaction', 'create_transaction', 'log_habit', 'update_context'].includes(tc.function.name));
+    try {
+      response = await callAPI(systemInstruction, messages, 0, !!imageUrl, overrideModel, isActionOnly ? true : disableTools, activeTools);
+    } catch (e) {
+      if (messages.length > 0 && messages[messages.length - 1].role === 'tool') {
+        try {
+          const parsed = JSON.parse(messages[messages.length - 1].content);
+          if (parsed.message) return parsed.message;
+          if (parsed.success) return 'Готово! (лимит ИИ на красивый ответ)';
+        } catch(err) {}
+        return 'Сделано! (лимит ИИ на красивый ответ)';
+      }
+      throw e;
+    }
   }
 
   return response.choices?.[0]?.message?.content || 'Не удалось получить ответ';
@@ -1249,9 +1462,9 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
 async function callAPI(systemInstruction, messages, retryCount = 0, isVision = false, forceModel = null, disableTools = false, customTools = null) {
   let modelToUse = forceModel || AI_MODEL;
   if (isVision) {
-    if (AI_API_URL.includes('groq')) modelToUse = 'llama-3.2-90b-vision-preview';
+    if (AI_API_URL.includes('groq')) modelToUse = 'llama-3.2-11b-vision-preview'; // 90b is deprecated
     else if (AI_API_URL.includes('openai')) modelToUse = 'gpt-4o-mini';
-    else if (AI_API_URL.includes('openrouter')) modelToUse = 'openrouter/free';
+    else if (AI_API_URL.includes('openrouter')) modelToUse = 'nvidia/nemotron-3.5-super-vl:free';
   }
 
   const res = await fetch(AI_API_URL, {
@@ -1266,36 +1479,49 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
         { role: 'system', content: systemInstruction },
         ...messages
       ],
-      tools: (isVision || disableTools) ? undefined : (customTools || TOOLS),
-      tool_choice: (isVision || disableTools) ? undefined : 'auto',
+      tools: disableTools ? undefined : (customTools || TOOLS),
+      tool_choice: disableTools ? undefined : 'auto',
       temperature: 0.1,
-      max_tokens: 1024
+      max_tokens: 2048
     })
   });
 
   if (!res.ok) {
-    const err = await res.json();
-    const errMsg = err.error?.message || `API error ${res.status}`;
+    const errorBody = await res.text();
+    console.error(`AI API Error (${res.status}):`, errorBody);
+    let errMsg = `Provider returned error: HTTP ${res.status} ${errorBody.substring(0, 500)}`;
+    try {
+      const errJson = JSON.parse(errorBody);
+      if (errJson.error && errJson.error.message) errMsg = errJson.error.message;
+      else if (errJson.message) errMsg = errJson.message;
+    } catch(e) {}
     
-    if (res.status === 429 && retryCount < 2) {
-      if (errMsg.includes('tokens per day') || errMsg.includes('TPD') || errMsg.includes('rate limit')) {
-        let waitTime = 20;
-        const matchM = errMsg.match(/try again in ([\d\.]+)m/);
-        const matchS = errMsg.match(/try again in ([\d\.]+)s/);
-        if (matchM && matchM[1]) waitTime = parseFloat(matchM[1]) * 60 + 1;
-        else if (matchS && matchS[1]) waitTime = parseFloat(matchS[1]) + 1;
-        
-        // If wait time is reasonable for a bot (<60s), just wait
-        if (waitTime <= 60 && !errMsg.includes('tokens per day')) {
-          console.warn(`Rate limit hit. Waiting ${waitTime}s...`);
-          await new Promise(r => setTimeout(r, waitTime * 1000));
-          return callAPI(systemInstruction, messages, retryCount + 1, isVision, forceModel, disableTools, customTools);
-        }
-
-        console.warn(`Wait time ${waitTime}s is too long or daily limit hit, falling back to alternative model...`);
-        let fallbackModel = AI_API_URL.includes('openrouter') ? 'openrouter/free' : 'mixtral-8x7b-32768';
-        return callAPI(systemInstruction, messages, retryCount + 1, isVision, fallbackModel, disableTools, customTools);
+    if ((res.status >= 500 || res.status === 429 || res.status === 404) && retryCount < 2) {
+      if (isOpenRouter && !isVision) {
+        const nextFallback = FALLBACK_MODELS[retryCount + 1] || 'openrouter/free';
+        console.warn(`Switching to fallback model: ${nextFallback} after status ${res.status}`);
+        return callAPI(systemInstruction, messages, retryCount + 1, isVision, nextFallback, disableTools, customTools);
       }
+      if (res.status >= 500) {
+        console.warn('Server error ' + res.status + '. Retrying in 2s...');
+        await new Promise(r => setTimeout(r, 2000));
+        return callAPI(systemInstruction, messages, retryCount + 1, isVision, forceModel, disableTools, customTools);
+      }
+      // OpenRouter sometimes returns "Provider returned error" for 429s, so we shouldn't strictly check the string
+      let waitTime = 20;
+      const matchM = errMsg.match(/try again in ([\d\.]+)m/);
+      const matchS = errMsg.match(/try again in ([\d\.]+)s/);
+      if (matchM && matchM[1]) waitTime = parseFloat(matchM[1]) * 60 + 1;
+      else if (matchS && matchS[1]) waitTime = parseFloat(matchS[1]) + 1;
+      
+      // If wait time is reasonable for a bot (<60s), just wait
+      if (waitTime <= 60 && !errMsg.includes('tokens per day')) {
+        console.warn(`Rate limit hit. Waiting ${waitTime}s...`);
+        await new Promise(r => setTimeout(r, waitTime * 1000));
+        return callAPI(systemInstruction, messages, retryCount + 1, isVision, forceModel, disableTools, customTools);
+      }
+      
+      throw new Error(`🛑 Лимит запросов (OpenRouter/Groq). Модели перегружены, подожди 30-60 секунд и повтори!`);
     }
     
     // Fallback if model fails to generate valid tool call JSON
@@ -1369,51 +1595,15 @@ bot.on('photo', async (msg) => {
     
     let userCaption = msg.caption ? `Комментарий пользователя: ${msg.caption}\n` : '';
     
-    // Шаг 1: Просим Vision-модель (которая может не уметь вызывать инструменты) просто подробно описать чек
-    const visionPrompt = `You are a precise OCR system. Examine this Russian receipt.
-CRITICAL RULES:
-1. DO NOT translate anything to English. Keep all item names in original Russian/Belarusian.
-2. DO NOT invent or hallucinate any products. Read ONLY the exact characters visible on the receipt.
-3. Extract: 1) Total Amount (Итог/Оплата), 2) Payment method, 3) FULL list of items with quantities and prices.
-Format exactly like this: Товар 1шт 2.50р, Товар2 2шт 5.00р. Be extremely concise.`;
-
-    // Возвращаемся на мощную Llama 3.2 90B Vision от Groq, но с жестким английским промптом, чтобы она не галлюцинировала на кириллице
-    let visionUrl = 'https://api.groq.com/openai/v1/chat/completions';
-    let visionKey = GROQ_API_KEY;
-    let visionModel = 'llama-3.2-90b-vision-preview';
-    
-    const visionRes = await fetch(visionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${visionKey}` },
-      body: JSON.stringify({
-        model: visionModel,
-        messages: [{ role: 'user', content: [{ type: 'text', text: visionPrompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
-        max_tokens: 1500
-      })
-    });
-    
-    const visionData = await visionRes.json();
-    let receiptDescription = visionData.choices?.[0]?.message?.content;
-    
-    if (!receiptDescription) {
-      throw new Error(`Не удалось прочитать фотографию чека: ${JSON.stringify(visionData.error || visionData)}`);
-    }
-
-    // Шаг 2: Передаем извлеченный текст ОБЫЧНОЙ текстовой модели, которая идеально умеет вызывать инструменты
-    const actionPrompt = `Пользователь прислал фотографию. Вот детальное описание того, что на ней (от ИИ-визуализатора):
----
-${receiptDescription}
----
-Комментарий пользователя к фото: ${userCaption}
-
-ВНИМАНИЕ! КРИТИЧЕСКОЕ ЗАДАНИЕ ПО ОБРАБОТКЕ ФОТО:
-Проанализируй описание фото и выбери ОДНО из действий:
+    // Используем gpt-4o напрямую для анализа картинки и вызова функций за один шаг
+    const actionPrompt = `ВНИМАНИЕ! КРИТИЧЕСКОЕ ЗАДАНИЕ ПО ОБРАБОТКЕ ФОТО:
+Пользователь прислал фотографию. Проанализируй её и выбери ОДНО из действий:
 
 1. Если на фото кассовый чек, счет из ресторана или квитанция об оплате:
    ТЫ СТРОГО ОБЯЗАН ВЫЗВАТЬ ФУНКЦИЮ create_transaction! ЗАПРЕЩЕНО отвечать просто текстом!
-   - amount: возьми итоговую сумму из чека
+   - amount: возьми итоговую сумму из чека (Итого к оплате)
    - category: логичная категория (Продукты, Ресторан, Транспорт, Аптека и т.д.)
-   - comment: перечисли ВСЕ купленные товары из чека через запятую, включая их количество и стоимость/цену каждого (например: "Молоко 2шт - 5.00р, Хлеб - 2.50р")
+   - comment: перечисли ВСЕ купленные товары из чека строго как они написаны на самой БУМАЖКЕ чека, включая их количество и стоимость каждого. ТЫ МОЖЕШЬ использовать физические товары на фоне как ПОДСКАЗКУ, чтобы правильно расшифровать размытый текст на чеке (например, если на фоне лежит упаковка 'Soletto' или сигареты 'Собрание', то ищи похожие по смыслу слова в чеке, чтобы не писать бред вроде 'сырная сарделька' вместо сигарет). НО ВНИМАНИЕ: цены и итоговый список бери ТОЛЬКО с бумаги!
 
 2. Если на фото изображено что-то, подтверждающее полезную привычку пользователя (например: беговые кроссовки на улице, еда для здорового питания, коврик для фитнеса, раскрытая книга, гантели, витамины):
    СНАЧАЛА вызови инструмент get_habits, чтобы узнать список привычек. ЗАТЕМ вызови инструмент log_habit для нужной привычки (чтобы поставить галочку "Выполнено" на сегодня). ОЧЕНЬ ВАЖНО: Если видишь кроссовки или улицу - это бег!
@@ -1423,8 +1613,10 @@ ${receiptDescription}
 
 ПОСЛЕ успешного вызова функции, обязательно напиши пользователю красивый ответ, в котором ОБЯЗАТЕЛЬНО перечисли все купленные товары из чека списком с ценами каждого товара, чтобы он видел их в чате!`;
 
-    // Вызываем askAI с отключенной историей, минимальным системным промптом и ТОЛЬКО нужными инструментами (радикальное уменьшение размера запроса для Groq)
-    const aiResponse = await askAI(actionPrompt, '', null, false, true, ['create_transaction', 'get_habits', 'log_habit'], true);
+    // Вызываем askAI с картинкой напрямую
+    const userPrompt = userCaption ? `Комментарий пользователя к фото: ${userCaption}` : 'Распознай фото по инструкции.';
+    const aiResponse = await askAI(actionPrompt + '\\n\\n' + userPrompt, '', imageUrl, false, true, ['create_transaction', 'get_habits', 'log_habit'], true);
+
     
     // Сохраняем в историю
     await saveMessage('user', userCaption + ' [Фотография чека]');
@@ -1589,6 +1781,85 @@ bot.on('callback_query', async (query) => {
     } catch (e) {
       console.error('Callback query lessons_refresh error:', e);
     }
+  } else if (data && data.startsWith('task_done:')) {
+    const taskId = data.split(':')[1];
+    try {
+      const t = await completeTask(taskId);
+      await bot.answerCallbackQuery(query.id, { text: `✅ Выполнено: ${t?.title || 'Задача'}!` });
+      await bot.sendMessage(chatId, `✅ Задача выполнена: *${t?.title || 'Задача'}*`, { parse_mode: 'Markdown' }).catch(() => {});
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('task_tomorrow:')) {
+    const taskId = data.split(':')[1];
+    try {
+      const tomorrow = getMinskDateString(1);
+      const { data: t } = await db.from('tasks').update({ deadline: tomorrow }).eq('id', taskId).select().single();
+      await bot.answerCallbackQuery(query.id, { text: `⏭ Перенесено на завтра (${tomorrow})` });
+      await bot.sendMessage(chatId, `⏭ Задача перенесена на завтра (${tomorrow}): *${t?.title || 'Задача'}*`, { parse_mode: 'Markdown' }).catch(() => {});
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('lesson_done_paid:')) {
+    const lessonId = data.split(':')[1];
+    try {
+      const { data: lesson } = await db.from('lessons').select('*, students(name, price)').eq('id', lessonId).single();
+      await db.from('lessons').update({ status: 'Проведен', paid: true }).eq('id', lessonId);
+      const price = lesson?.students?.price ? parseFloat(lesson.students.price) : 0;
+      const stName = lesson?.students?.name || 'Ученик';
+      if (price > 0) {
+        await createTransaction(price, 'income', 'Уроки (Английский)', `Оплата урока: ${stName}`, 'Карта');
+      }
+      await bot.answerCallbackQuery(query.id, { text: `✅ Урок проведён, +${price} BYN в доход!` });
+      await bot.editMessageText(`✅ Урок с *${stName}* отмечен как проведённый и оплаченный (+${price} BYN)!`, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }).catch(() => {});
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('lesson_done_unpaid:')) {
+    const lessonId = data.split(':')[1];
+    try {
+      const { data: lesson } = await db.from('lessons').select('*, students(name)').eq('id', lessonId).single();
+      await db.from('lessons').update({ status: 'Проведен', paid: false }).eq('id', lessonId);
+      const stName = lesson?.students?.name || 'Ученик';
+      await bot.answerCallbackQuery(query.id, { text: '⏳ Урок проведён (ждёт оплаты)' });
+      await bot.editMessageText(`⏳ Урок с *${stName}* проведён (ожидает оплаты).`, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }).catch(() => {});
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('lesson_cancel:')) {
+    const lessonId = data.split(':')[1];
+    try {
+      await db.from('lessons').update({ status: 'Отменен' }).eq('id', lessonId);
+      await bot.answerCallbackQuery(query.id, { text: '❌ Урок отменён' });
+      await bot.editMessageText('❌ Урок отменён.', { chat_id: chatId, message_id: messageId }).catch(() => {});
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('url_conveyor:')) {
+    const urlKey = data.split(':')[1];
+    const url = recentUrls.get(urlKey);
+    if (!url) return bot.answerCallbackQuery(query.id, { text: 'Ссылка устарела, отправь её ещё раз', show_alert: true });
+    await bot.answerCallbackQuery(query.id, { text: '🚀 Запускаю конвейер AI-Connect...' });
+    await bot.editMessageText(`⏳ Читаю статью и готовлю пакет контента для *AI-Connect* и *HR-портала*...`, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }).catch(() => {});
+    try {
+      const postRes = await executeFunctionCall('generate_channel_post', { url });
+      const kbRes = await executeFunctionCall('save_link_to_knowledge_base', { url });
+      const out = `📢 *Пост для Telegram-канала AI-Connect:*\n\n${postRes.post || postRes.error}\n\n━━━━━━━━━━━━━━\n🧠 *База знаний / HR-портал:* ${kbRes.message || kbRes.error}`;
+      await bot.sendMessage(chatId, out, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, out));
+    } catch (e) {
+      await bot.sendMessage(chatId, '❌ Ошибка конвейера: ' + e.message);
+    }
+  } else if (data && data.startsWith('url_kb:')) {
+    const urlKey = data.split(':')[1];
+    const url = recentUrls.get(urlKey);
+    if (!url) return bot.answerCallbackQuery(query.id, { text: 'Ссылка устарела, отправь её ещё раз', show_alert: true });
+    await bot.answerCallbackQuery(query.id, { text: '🧠 Сохраняю выжимку в Базу знаний...' });
+    try {
+      const kbRes = await executeFunctionCall('save_link_to_knowledge_base', { url });
+      await bot.editMessageText(`🧠 ${kbRes.message || kbRes.error}`, { chat_id: chatId, message_id: messageId }).catch(() => {});
+    } catch (e) {
+      await bot.sendMessage(chatId, '❌ Ошибка: ' + e.message);
+    }
   } else if (data && data.startsWith('lesson_pay:')) {
     const lessonId = data.split(':')[1];
     try {
@@ -1635,6 +1906,13 @@ async function sendFinanceSummary(chatId, messageId = null) {
     let text = `📊 *Финансовый отчет за ${capitalizedMonth}:*\n\n`;
     text += `💰 *Доходы:* ${stats.income.toFixed(2)} BYN\n`;
     text += `💸 *Расходы:* ${stats.expense.toFixed(2)} BYN\n`;
+    const curMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const subs = Array.isArray(settings?.subscriptions) ? settings.subscriptions : [];
+    const unpaidSubs = subs.filter(s => s.lastPaidMonth !== curMonthKey).reduce((acc, s) => acc + (parseFloat(s.amount) || 0), 0);
+    if (unpaidSubs > 0) {
+      text += `📅 *Обязательные платежи (осталось):* ${unpaidSubs.toFixed(2)} BYN\n`;
+      text += `🛡 *Свободный баланс (после обяз.):* ${(stats.income - stats.expense - unpaidSubs).toFixed(2)} BYN\n`;
+    }
 
     if (limit) {
       const remaining = limit - stats.expense;
@@ -1872,6 +2150,13 @@ bot.onText(/\/tasks/, async (msg) => {
       text += `${i+1}. ${emoji} ${t.title}${deadline}\n   _${t.direction} · ${t.status}_\n\n`;
     });
     if (tasks.length > 15) text += `... и ещё ${tasks.length - 15} задач`;
+    const taskButtons = tasks.slice(0, 5).map(t => ([
+      { text: `✅ ${t.title.substring(0, 18)}`, callback_data: `task_done:${t.id}` },
+      { text: `⏭ Завтра`, callback_data: `task_tomorrow:${t.id}` }
+    ]));
+    return bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: taskButtons } }).catch(() => {
+      bot.sendMessage(chatId, text, { reply_markup: { inline_keyboard: taskButtons } });
+    });
     bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(() => {
       bot.sendMessage(chatId, text);
     });
@@ -1948,6 +2233,19 @@ bot.onText(/\/today/, async (msg) => {
     }
 
     if (events.length === 0 && todayTasks.length === 0 && overdue.length === 0) {
+      text += 'Сегодня чисто — ни задач, ни событий. Отдыхаем или берёмся за что-то новое? 🚀';
+    }
+    const actionTasks = [...todayTasks, ...overdue].slice(0, 5);
+    const todayButtons = actionTasks.map(t => ([
+      { text: `✅ ${t.title.substring(0, 18)}`, callback_data: `task_done:${t.id}` },
+      { text: `⏭ Завтра`, callback_data: `task_tomorrow:${t.id}` }
+    ]));
+    todayButtons.push([{ text: '🍅 Фокус 25 мин', callback_data: 'focus_start:25' }]);
+    return bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: todayButtons } }).catch(() => {
+      bot.sendMessage(chatId, text, { reply_markup: { inline_keyboard: todayButtons } });
+    });
+    if (false) { Promise.resolve().then(() => {
+    });
       text += 'Сегодня чисто — ни задач, ни событий. Отдыхаем или берёмся за что-то новое? 🚀';
     }
 
@@ -2111,6 +2409,21 @@ bot.on('message', async (msg) => {
     // --------------------------
 
     // Сохраняем сообщение пользователя
+    const urlMatch = textToProcess.trim().match(/^https?:\/\/\S+$/i);
+    if (urlMatch) {
+      const foundUrl = urlMatch[0];
+      const urlKey = String(Date.now()).slice(-7);
+      recentUrls.set(urlKey, foundUrl);
+      return bot.sendMessage(chatId, `🔗 *Обнаружена ссылка!*\nЧто сделаем с этим материалом?`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📢 Конвейер AI-Connect (Пост + База знаний)', callback_data: `url_conveyor:${urlKey}` }],
+            [{ text: '🧠 Только выжимка в Базу знаний', callback_data: `url_kb:${urlKey}` }]
+          ]
+        }
+      });
+    }
     await saveMessage('user', textToProcess);
 
     // Показываем "печатает..."
@@ -2364,6 +2677,34 @@ cron.schedule('* * * * *', async () => {
     }
 
     // 2. Проверка Уроков (Репетиторство) - Напоминание за 15 минут
+    const finishedPast = new Date(now.getTime() - 65 * 60000);
+    const finishedFuture = new Date(now.getTime() - 55 * 60000);
+    const { data: finishedLessons } = await db.from('lessons')
+      .select('*, students(name, price)')
+      .eq('status', 'Запланирован')
+      .gte('date', finishedPast.toISOString())
+      .lte('date', finishedFuture.toISOString());
+
+    if (finishedLessons && finishedLessons.length > 0 && CHAT_ID) {
+      for (const ls of finishedLessons) {
+        const doneKey = `done_${ls.id}`;
+        if (!notifiedEvents.has(doneKey)) {
+          notifiedEvents.add(doneKey);
+          const stName = ls.students?.name || 'Ученик';
+          const price = ls.students?.price || 0;
+          bot.sendMessage(CHAT_ID, `🎓 *Урок с ${stName} завершился!*\nКак прошло занятие? Отметь в 1 клик:`, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: `✅ Проведён и оплачен (+${price} BYN)`, callback_data: `lesson_done_paid:${ls.id}` }],
+                [{ text: '⏳ Проведён (ожидает оплаты)', callback_data: `lesson_done_unpaid:${ls.id}` }],
+                [{ text: '❌ Отменён', callback_data: `lesson_cancel:${ls.id}` }]
+              ]
+            }
+          }).catch(() => {});
+        }
+      }
+    }
     const future15 = new Date(now.getTime() + 16 * 60000); // 15-16 минут вперед
     const past15 = new Date(now.getTime() + 14 * 60000);
 

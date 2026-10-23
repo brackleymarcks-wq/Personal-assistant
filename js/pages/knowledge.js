@@ -7,10 +7,10 @@ const KnowledgePage = {
   activeItemId: null,
   filters: { type: '', search: '', tag: '' },
 
-  TYPES: ['Промт', 'Инструмент', 'Статья', 'Кейс', 'Урок', 'Заметка'],
+  TYPES: ['Промт', 'Инструмент', 'Статья', 'Кейс', 'Урок', 'Заметка', 'Дневник'],
   TYPE_ICONS: {
     'Промт': 'bot', 'Инструмент': 'wrench', 'Статья': 'newspaper',
-    'Кейс': 'briefcase', 'Урок': 'graduation-cap', 'Заметка': 'edit-3'
+    'Кейс': 'briefcase', 'Урок': 'graduation-cap', 'Заметка': 'edit-3', 'Дневник': 'book-open'
   },
 
   render() {
@@ -58,7 +58,7 @@ const KnowledgePage = {
 
   async load() {
     try {
-      this.items = await DB.getKnowledge();
+      const kbItems = await DB.getKnowledge(); const legacyNotes = (await DB.getNotes()).filter(n => n.title !== 'SYSTEM_CONFIG_FINANCES').map(n => ({ ...n, content: (n.content || '').split('\\n\\n===AI_CHAT_START===\\n')[0], type: 'Дневник', folder: 'Дневник', _isLegacyNote: true })); this.items = [...kbItems, ...legacyNotes];
       this.tasks = await DB.getTasks();
       this.renderSidebar();
       if (this.activeItemId) {
@@ -462,7 +462,7 @@ const KnowledgePage = {
         this.items[itemIdx] = created;
         this.activeItemId = created.id;
       } else {
-        await DB.updateKnowledge(this.activeItemId, dataToSave);
+        if (item._isLegacyNote) { await DB.updateNote(this.activeItemId, { title, content, tags }); } else { await DB.updateKnowledge(this.activeItemId, dataToSave); }
         this.items[itemIdx] = { ...item, ...dataToSave, updated_at: new Date().toISOString() };
       }
       
@@ -503,7 +503,7 @@ const KnowledgePage = {
     if (!confirm('Удалить этот документ из Базы знаний?')) return;
     
     try {
-      await DB.deleteKnowledge(this.activeItemId);
+      if (item._isLegacyNote) { await DB.deleteNote(this.activeItemId); } else { await DB.deleteKnowledge(this.activeItemId); }
     } catch (e) {
       UI.toast('Ошибка при удалении', 'error');
       return;

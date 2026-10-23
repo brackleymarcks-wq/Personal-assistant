@@ -76,7 +76,7 @@ const TasksPage = {
             </button>
             <button class="view-toggle-btn ${this.view === 'kanban' ? 'active' : ''}" data-view="kanban">
               <i data-lucide="layout-grid" style="width:14px;height:14px;margin-right:4px;vertical-align:middle;"></i>
-              Канбан
+              Канбан</button><button class="view-toggle-btn ${this.view === 'gantt' ? 'active' : ''}" data-view="gantt"><i data-lucide="gantt-chart" style="width:14px;height:14px;margin-right:4px;vertical-align:middle;"></i>Гант</button><button class="view-toggle-btn ${this.view === 'archive' ? 'active' : ''}" data-view="archive"><i data-lucide="archive" style="width:14px;height:14px;margin-right:4px;vertical-align:middle;"></i>Архив
             </button>
           </div>
         </div>
@@ -196,7 +196,7 @@ const TasksPage = {
     document.getElementById('tasks-count-label').textContent =
       `${filtered.length} задач · ${active.length} активных`;
 
-    if (this.view === 'kanban') {
+    if (this.view === 'kanban') { this.renderKanban(filtered); } else if (this.view === 'gantt') { this.renderGanttInline(); } else if (this.view === 'archive') { this.renderArchiveInline(); } else { this.renderList(filtered); } if (false) {
       this.renderKanban(filtered);
     } else {
       this.renderList(filtered);
@@ -760,6 +760,9 @@ const TasksPage = {
     UI.toast('Задача удалена', 'info');
   },
 
+  openModal(id = null) { return this.openTaskModal(id); },
+  async renderGanttInline() { const container = document.getElementById('tasks-content'); container.className = ''; container.innerHTML = '<div id="gantt-container" class="gantt-container" style="min-height:500px;"></div><div id="gantt-subtitle" style="display:none"></div>'; if (typeof GanttPage !== 'undefined') { GanttPage.tasks = this.tasks; GanttPage.projects = this.projects; GanttPage.renderChart(); } },
+  async renderArchiveInline() { const container = document.getElementById('tasks-content'); container.className = ''; container.innerHTML = '<div id="archive-content" style="padding:16px 0;"></div><div id="archive-count-label" style="display:none"></div>'; if (typeof ArchivePage !== 'undefined') { ArchivePage.projects = this.projects; ArchivePage.tasks = this.tasks.filter(t => ['Готово', 'Отменена'].includes(t.status)).sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)); ArchivePage.renderContent(); } },
   escHtml(str) {
     return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }

@@ -46,6 +46,8 @@ const DB = {
   },
 
   // ---- SETTINGS ----
+  _cachedSettings: null,
+
   async getSettings() {
     const userId = Config.userId;
     if (!userId) return null;
@@ -54,6 +56,7 @@ const DB = {
       .select('*')
       .eq('user_id', userId)
       .single();
+    if (data) this._cachedSettings = data;
     return data;
   },
 
@@ -63,9 +66,15 @@ const DB = {
     const existing = await this.getSettings();
     if (existing) {
       await _supabase.from('settings').update({ ...settings, updated_at: new Date().toISOString() }).eq('user_id', userId);
+      this._cachedSettings = { ...existing, ...settings };
     } else {
       await _supabase.from('settings').insert({ user_id: userId, ...settings });
+      this._cachedSettings = { user_id: userId, ...settings };
     }
+  },
+
+  async updateSettings(settings) {
+    return this.saveSettings(settings);
   },
 
   // ---- MESSAGES ----
@@ -332,49 +341,6 @@ const DB = {
     return data;
   },
 
-  // ---- HABITS ----
-  async getHabits() {
-    const userId = Config.userId;
-    const { data } = await _supabase.from('habits').select('*').eq('user_id', userId).order('created_at', { ascending: true });
-    return data || [];
-  },
-
-  async createHabit(name, frequency = 'daily') {
-    const userId = Config.userId;
-    const { data, error } = await _supabase.from('habits').insert({ user_id: userId, name, frequency }).select().single();
-    if (error) throw error;
-    return data;
-  },
-
-  async deleteHabit(id) {
-    await _supabase.from('habits').delete().eq('id', id);
-  },
-
-  async getHabitLogs(startDate, endDate) {
-    const userId = Config.userId;
-    const { data } = await _supabase
-      .from('habit_logs')
-      .select('*, habits!inner(*)')
-      .eq('habits.user_id', userId)
-      .gte('date', startDate)
-      .lte('date', endDate);
-    return data || [];
-  },
-
-  async logHabit(habitId, date, status = 'done') {
-    const { data, error } = await _supabase
-      .from('habit_logs')
-      .upsert({ habit_id: habitId, date, status }, { onConflict: 'habit_id,date' })
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
-  },
-
-  async deleteHabitLog(habitId, date) {
-    await _supabase.from('habit_logs').delete().eq('habit_id', habitId).eq('date', date);
-  },
-
   // ---- GOALS ----
   async getGoals() {
     const userId = Config.userId;
@@ -500,7 +466,12 @@ const DB = {
 
   async createTransaction(tx) {
     const userId = Config.userId;
-    const { data, error } = await _supabase.from('finances').insert({ user_id: userId, ...tx }).select().single();
+    const txData = {
+      date: new Date().toISOString().split('T')[0],
+      ...tx,
+      user_id: userId
+    };
+    const { data, error } = await _supabase.from('finances').insert(txData).select().single();
     if (error) throw error;
     return data;
   },
@@ -656,8 +627,8 @@ const DB = {
     // 2. Считаем выполненные привычки
     const { count: habitsDone } = await _supabase
       .from('habit_logs')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
+      .select('*, habits!inner(user_id)', { count: 'exact', head: true })
+      .eq('habits.user_id', userId)
       .eq('status', 'done');
 
     const xp = (tasksDone || 0) * 10 + (habitsDone || 0) * 15;

@@ -11,15 +11,14 @@ const Config = {
       const local = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
       const env = window.ENV_CONFIG || {};
 
-      // If local storage has OpenRouter key or is empty, and env has Groq credentials, prefer env!
-      const isLocalOrFree = !local.geminiKey || local.geminiKey.startsWith('sk-or-');
-      const finalKey = (isLocalOrFree && env.geminiKey) ? env.geminiKey : (local.geminiKey || '');
-      const finalUrl = (isLocalOrFree && env.aiApiUrl) ? env.aiApiUrl : (local.aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions');
-      const finalModel = (isLocalOrFree && env.aiModel) ? env.aiModel : (local.aiModel || 'meta-llama/llama-3.3-70b-instruct:free');
+      // FORCIBLY PREFER ENV CONFIG (so github_pat updates work instantly for all users)
+      const finalKey = env.geminiKey || local.geminiKey || '';
+      const finalUrl = env.aiApiUrl || local.aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions';
+      const finalModel = env.aiModel || local.aiModel || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 
       return {
-        supabaseUrl: local.supabaseUrl || env.supabaseUrl || '',
-        supabaseKey: local.supabaseKey || env.supabaseKey || '',
+        supabaseUrl: env.supabaseUrl || local.supabaseUrl || '',
+        supabaseKey: env.supabaseKey || local.supabaseKey || '',
         geminiKey: finalKey,
         aiApiUrl: finalUrl,
         aiModel: finalModel,
@@ -51,7 +50,7 @@ const Config = {
   get supabaseKey() { return this.get().supabaseKey || ''; },
   get geminiKey()   { return this.get().geminiKey || ''; }, // AI API Key
   get aiApiUrl()    { return this.get().aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions'; },
-  get aiModel()     { return this.get().aiModel || 'meta-llama/llama-3.3-70b-instruct:free'; },
+  get aiModel()     { return this.get().aiModel || 'nvidia/nemotron-3-ultra-550b-a55b:free'; },
   get userName()    { return this.get().userName || 'Пользователь'; },
   get userId()      { return this.get().userId || null; },
 };

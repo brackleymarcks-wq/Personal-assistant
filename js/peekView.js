@@ -60,6 +60,7 @@ window.PeekView = {
       if (type === 'task') await this.renderTask(id);
       else if (type === 'note' || type === 'knowledge') await this.renderNote(id);
       else if (type === 'project') await this.renderProject(id);
+      else if (type === 'goal') await this.renderGoal(id);
       else {
         this.body.innerHTML = `<div style="padding:40px;text-align:center;">Неизвестный тип: ${type}</div>`;
       }
@@ -86,23 +87,28 @@ window.PeekView = {
       'task': 'tasks',
       'note': 'notes',
       'knowledge': 'knowledge',
-      'project': 'projects'
+      'project': 'projects',
+      'goal': 'goals'
     };
     
-    if (tabs[type] && typeof window.switchTab === 'function') {
-      window.switchTab(tabs[type]);
+    if (tabs[type] && typeof App !== 'undefined' && typeof App.navigateTo === 'function') {
+      App.navigateTo(tabs[type]);
     }
     
     // Wait for tab to switch then open item
     setTimeout(() => {
-      if (type === 'task' && window.TasksPage) {
-        TasksPage.editTask(id);
-      } else if ((type === 'note' || type === 'knowledge') && window.NotesPage) {
+      if (type === 'task' && typeof TasksPage !== 'undefined') {
+        TasksPage.openModal(id);
+      } else if (type === 'note' && typeof NotesPage !== 'undefined') {
         NotesPage.selectNote(id);
-      } else if (type === 'project' && window.ProjectsPage) {
-        ProjectsPage.openProject(id);
+      } else if (type === 'knowledge' && typeof KnowledgePage !== 'undefined') {
+        KnowledgePage.openItem(id);
+      } else if (type === 'project' && typeof ProjectsPage !== 'undefined') {
+        ProjectsPage.openModal(id);
+      } else if (type === 'goal' && typeof GoalsPage !== 'undefined') {
+        GoalsPage.openModal(id);
       }
-    }, 150);
+    }, 200);
   },
 
   async renderTask(id) {
@@ -190,6 +196,28 @@ window.PeekView = {
       <div style="padding: 32px 40px; display: flex; flex-direction: column; gap: 24px;">
         <div style="font-size: 24px; font-weight: 800; color: var(--text-primary); line-height: 1.3;">${this.esc(project.name)}</div>
         <div style="font-size: 14px; color: var(--text-secondary); white-space: pre-wrap;">${this.esc(project.description || 'Нет описания')}</div>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+  },
+
+  async renderGoal(id) {
+    this.typeContainer.innerHTML = `<i data-lucide="target" style="width:16px;height:16px;color:#f59e0b;"></i> Цель`;
+    
+    const goals = await DB.getGoals();
+    const goal = goals.find(g => g.id === id);
+    if (!goal) throw new Error('Цель не найдена');
+
+    this.body.innerHTML = `
+      <div style="padding: 32px 40px; display: flex; flex-direction: column; gap: 24px;">
+        <div style="font-size: 24px; font-weight: 800; color: var(--text-primary); line-height: 1.3;">${this.esc(goal.title)}</div>
+        <div style="display:flex; gap:16px; flex-wrap:wrap;">
+          <div style="background:var(--bg-hover); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; color:var(--text-secondary);">
+            Статус: ${goal.status || 'В работе'} • Прогресс: ${goal.progress || 0}%
+          </div>
+          ${goal.target_date ? `<div style="background:rgba(var(--accent-rgb),0.1); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; color:var(--accent);">Дедлайн: ${new Date(goal.target_date).toLocaleDateString('ru-RU')}</div>` : ''}
+        </div>
+        <div style="font-size: 14px; color: var(--text-secondary); white-space: pre-wrap;">${this.esc(goal.description || 'Нет описания')}</div>
       </div>
     `;
     if (window.lucide) window.lucide.createIcons();

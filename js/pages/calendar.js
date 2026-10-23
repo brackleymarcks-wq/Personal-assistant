@@ -4,7 +4,7 @@
 
 const CalendarPage = {
   currentDate: new Date(),
-  currentTab: 'events', // 'events' or 'tasks'
+  currentTab: 'all', // 'all', 'events', or 'tasks'
   events: [],
   tasks: [],
   projects: [],
@@ -41,6 +41,9 @@ const CalendarPage = {
 
         <div class="calendar-controls">
           <div style="display:flex; gap: 8px;">
+            <button class="btn btn-primary btn-sm" id="cal-tab-all" style="border-radius: 20px;">
+              <i data-lucide="layers" style="width:14px;height:14px;margin-right:6px;"></i> Все (Motion)
+            </button>
             <button class="btn btn-secondary btn-sm" id="cal-tab-events" style="border-radius: 20px;">
               <i data-lucide="clock" style="width:14px;height:14px;margin-right:6px;"></i> Встречи
             </button>
@@ -73,7 +76,7 @@ const CalendarPage = {
   async init() {
     document.getElementById('add-event-btn').addEventListener('click', () => {
       console.log("Calendar add btn clicked. Tab:", this.currentTab);
-      if (this.currentTab === 'tasks') {
+      if (this.currentTab === 'tasks' || this.currentTab === 'all') {
         const today = new Date().toISOString().slice(0, 10);
         console.log("Calling TasksPage.openTaskModal...");
         if (typeof TasksPage !== 'undefined') {
@@ -96,6 +99,13 @@ const CalendarPage = {
       this.renderCalendar();
     });
     
+    const tabAll = document.getElementById('cal-tab-all');
+    if (tabAll) {
+      tabAll.addEventListener('click', () => {
+        this.currentTab = 'all';
+        this.renderCalendar();
+      });
+    }
     document.getElementById('cal-tab-events').addEventListener('click', () => {
       this.currentTab = 'events';
       this.renderCalendar();
@@ -133,9 +143,19 @@ const CalendarPage = {
 
   renderCalendar() {
     // Update active tab styles
+    const tabAll = document.getElementById('cal-tab-all');
+    if (tabAll) {
+      if (this.currentTab === 'all') {
+        tabAll.classList.add('btn-primary');
+        tabAll.classList.remove('btn-secondary');
+      } else {
+        tabAll.classList.remove('btn-primary');
+        tabAll.classList.add('btn-secondary');
+      }
+    }
     const tabEvents = document.getElementById('cal-tab-events');
     const tabTasks = document.getElementById('cal-tab-tasks');
-    if (this.currentTab === 'events') {
+    if (this.currentTab === 'events' || this.currentTab === 'all') {
       tabEvents.classList.add('btn-primary');
       tabEvents.classList.remove('btn-secondary');
       tabTasks.classList.add('btn-secondary');
@@ -148,7 +168,7 @@ const CalendarPage = {
     }
 
     const btn = document.getElementById('add-event-btn');
-    if (this.currentTab === 'events') {
+    if (this.currentTab === 'events' || this.currentTab === 'all') {
       btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> Новое событие`;
     } else {
       btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> Новая задача`;
@@ -263,7 +283,7 @@ const CalendarPage = {
       dayEl.addEventListener('click', () => {
         const dateStr = dayEl.dataset.date;
         console.log("Day clicked:", dateStr, "Tab:", this.currentTab);
-        if (this.currentTab === 'tasks') {
+        if (this.currentTab === 'tasks' || this.currentTab === 'all') {
           console.log("Calling TasksPage.openTaskModal for date:", dateStr);
           if (typeof TasksPage !== 'undefined') {
             TasksPage.openTaskModal(null, { deadline: dateStr }).catch(err => {
@@ -345,7 +365,7 @@ const CalendarPage = {
 
     const eventsHtml = [];
     
-    if (this.currentTab === 'events') {
+    if (this.currentTab === 'events' || this.currentTab === 'all') {
       eventsHtml.push(...dayEvents.map(ev => `
         <div class="calendar-event ${this.TYPE_CLASS[ev.type] || 'event-meeting'}" data-id="${ev.id}" data-type="event" title="${this.esc(ev.title)}" draggable="true">
           <i data-lucide="${this.TYPE_ICON[ev.type] || 'calendar'}" style="width:12px;height:12px;min-width:12px;"></i>
@@ -366,7 +386,7 @@ const CalendarPage = {
       }
     }
     
-    if (this.currentTab === 'tasks') {
+    if (this.currentTab === 'tasks' || this.currentTab === 'all') {
       eventsHtml.push(...dayTaskDeadlines.map(t => {
         const isDone = t.status === 'Готово';
         let projectIcon = '';

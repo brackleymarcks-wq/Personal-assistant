@@ -12,7 +12,7 @@ const HabitsPage = {
       <div class="habits-page" style="display:flex;flex-direction:column;height:100%;">
         <div class="page-header">
           <div>
-            <div class="page-title">Трекер привычек</div>
+            <div class="page-title">Привычки и Здоровье ❤️</div>
             <div class="page-subtitle" id="habits-count-label">Загрузка привычек…</div>
           </div>
           <div style="display:flex;gap:var(--space-sm);align-items:center;">
@@ -138,7 +138,7 @@ const HabitsPage = {
   },
 
   renderContent() {
-    this.renderHeatmap();
+    // Overall heatmap is rendered below via this.renderOverallHeatmap()
 
     const body = document.getElementById('habits-list-body');
     const countLabel = document.getElementById('habits-count-label');
@@ -412,7 +412,7 @@ const HabitsPage = {
       `;
     });
 
-    container.innerHTML = `
+    const healthKeywords = ['сон', 'спать', 'бег', 'пробежк', 'спорт', 'тренир', 'пресс', 'зарядк', 'вод', 'health', 'отжиман']; const healthHabits = this.habits.filter(h => healthKeywords.some(kw => h.name.toLowerCase().includes(kw))); const todayIso = new Date().toISOString().split('T')[0]; const healthDoneToday = healthHabits.filter(h => this.logs.some(l => l.habit_id === h.id && l.date === todayIso && l.status === 'done')).length; const healthScore = healthHabits.length > 0 ? Math.round((healthDoneToday / healthHabits.length) * 100) : 0; const healthColor = healthScore >= 80 ? 'var(--success)' : (healthScore >= 50 ? 'var(--warning)' : 'var(--danger)'); container.innerHTML = `<div style="display:grid;grid-template-columns:1fr 320px;gap:var(--space-md);align-items:stretch;">` + `
       <div class="glass-panel" style="padding:var(--space-md);border-radius:var(--radius-lg);margin-top:var(--space-sm);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-sm);">
           <div style="font-size:13px;font-weight:600;color:var(--text-secondary);display:flex;align-items:center;gap:6px;">
@@ -437,7 +437,7 @@ const HabitsPage = {
             <span>Вс</span>
           </div>
           <div class="heatmap-grid-scroll" style="flex:1;overflow-x:auto;padding-bottom:4px;">
-            <div class="heatmap-grid" style="display:grid;grid-template-rows:repeat(7, 10px);grid-auto-flow:column;gap:3px;width:max-content;">
+            <div class="heatmap-grid" style="display:grid;grid-template-rows:repeat(7, 10px);grid-auto-flow:column;gap:3px;width:max-content;">${cellsHtml}</div></div></div></div><div class="glass-panel" style="padding:var(--space-md);border-radius:var(--radius-lg);margin-top:var(--space-sm);display:flex;flex-direction:column;justify-content:space-between;"><div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:13px;font-weight:600;color:var(--text-secondary);display:flex;align-items:center;gap:6px;"><i data-lucide="heart-pulse" style="width:16px;height:16px;color:var(--danger);"></i>Индекс Формы</span><span style="font-size:22px;font-weight:800;color:${healthColor};">${healthScore}%</span></div><div style="font-size:12px;color:var(--text-muted);margin:8px 0;">${healthHabits.length > 0 ? `Сегодня выполнено: <b>${healthDoneToday} из ${healthHabits.length}</b> привычек здоровья (сон, бег, зарядка, вода)` : 'Добавь привычки со словами «сон», «бег», «зарядка» или «вода»'}</div>${healthHabits.length === 0 ? `<button class="btn btn-secondary btn-sm" onclick="HealthPage.createBaseHabits().then(()=>HabitsPage.load())" style="width:100%;justify-content:center;">+ Создать базовые привычки здоровья</button>` : `<div class="progress-bar" style="height:8px;background:var(--bg-elevated);border-radius:4px;overflow:hidden;"><div style="width:${healthScore}%;height:100%;background:${healthColor};transition:width 0.3s;"></div></div>`}</div></div><div style="display:none"><div><div><div>
               ${cellsHtml}
             </div>
           </div>

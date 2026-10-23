@@ -98,16 +98,19 @@ window.CommandPalette = {
     this.close();
     switch(id) {
       case 'new-task':
-        if (window.QuickActions) QuickActions.open('task');
+        if (typeof App !== 'undefined') {
+          App.navigateTo('tasks');
+          setTimeout(() => { if (typeof TasksPage !== 'undefined') TasksPage.openModal(); }, 150);
+        }
         break;
       case 'nav-dashboard':
-        if (window.app) app.navigateTo('dashboard');
+        if (typeof App !== 'undefined') App.navigateTo('dashboard');
         break;
       case 'nav-tasks':
-        if (window.app) app.navigateTo('tasks');
+        if (typeof App !== 'undefined') App.navigateTo('tasks');
         break;
       case 'nav-habits':
-        if (window.app) app.navigateTo('habits');
+        if (typeof App !== 'undefined') App.navigateTo('habits');
         break;
       case 'toggle-theme':
         const btn = document.getElementById('theme-toggle-btn');

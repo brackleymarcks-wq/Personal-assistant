@@ -345,8 +345,8 @@ const InboxPage = {
             tags: item.tags || []
           });
           createdCount++;
-        } else if (item.type === 'project') {
-          await DB.createProject({
+        } else if (item.type === 'project') { await DB.createProject({ name: item.name, deadline: item.deadline || null }); createdCount++; } else if (item.type === 'finance') { await DB.createTransaction({ type: item.tx_type || 'expense', amount: parseFloat(item.amount) || 0, category: item.category || 'Прочее', description: JSON.stringify({ text: item.comment || content }) }); createdCount++; } if (false) {
+          if (false) await DB.createProject({
             name: item.name,
             deadline: item.deadline || null
           });

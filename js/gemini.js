@@ -4,7 +4,7 @@
 
 // Defaults, will be overridden by Config
 const DEFAULT_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
+const DEFAULT_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free';
 
 
 // Function declarations in OpenAI format
@@ -492,7 +492,7 @@ async function executeFunctionCall(name, args) {
         const context = settings.context || {};
         if (!context.custom_instructions) context.custom_instructions = [];
         context.custom_instructions.push(args.new_instruction);
-        await DB.updateSettings({ context });
+        await DB.saveSettings({ context });
         return { success: true, message: 'Новая инструкция сохранена в контексте пользователя' };
       }
       default:
@@ -621,7 +621,8 @@ const Gemini = {
 
   async _callAPI(apiKey, systemInstruction, messages, retryCount = 0) {
     const apiUrl = Config.aiApiUrl || DEFAULT_API_URL;
-    const model = Config.aiModel || DEFAULT_MODEL;
+    const FALLBACK_MODELS = [Config.aiModel || DEFAULT_MODEL, 'google/gemma-4-31b-it:free', 'openrouter/free'];
+    const model = FALLBACK_MODELS[Math.min(retryCount, FALLBACK_MODELS.length - 1)];
 
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -656,15 +657,10 @@ const Gemini = {
         errMsg = `API error ${res.status}: ` + JSON.stringify(err);
       }
       
-      // Handle Rate Limit by waiting and retrying (max 2 retries)
-      if (res.status === 429 && retryCount < 2) {
-        let waitTime = 20; // default 20s
-        const match = errMsg.match(/try again in ([\d\.]+)s/);
-        if (match && match[1]) {
-          waitTime = parseFloat(match[1]) + 1; // add 1s padding
-        }
-        console.warn(`Rate limit hit. Waiting ${waitTime}s before retry...`);
-        await new Promise(r => setTimeout(r, waitTime * 1000));
+      // Fallback chain across models on 404/429/5xx (up to 2 retries)
+      if ((res.status === 429 || res.status === 404 || res.status >= 500) && retryCount < 2) {
+        console.warn(`AI API status ${res.status} on model. Switching to fallback model #${retryCount + 1}...`);
+        await new Promise(r => setTimeout(r, 1200));
         return this._callAPI(apiKey, systemInstruction, messages, retryCount + 1);
       }
       
@@ -689,6 +685,7 @@ const Gemini = {
 - "event": { "type": "event", "title": "Название", "start_at": "ISO 8601", "end_at": "ISO 8601", "notes": "" }
 - "note": { "type": "note", "title": "Заголовок", "content": "Текст заметки", "tags": [] }
 - "project": { "type": "project", "name": "Название проекта", "deadline": "YYYY-MM-DD" или null }
+- "finance": { "type": "finance", "tx_type": "expense" или "income", "amount": 45, "category": "Продукты/Кафе/Транспорт/Репетиторство", "comment": "Описание" }
 
 Сегодняшняя дата (локальная): ${new Date().toLocaleString('ru-RU')}
 Текущая дата ISO: ${new Date().toISOString()}
@@ -825,9 +822,9 @@ const Gemini = {
 
   async generateHomework(studentName, grade, topic) {
     const settings = await DB.getSettings();
-    const apiKey = settings?.api_key || Config.apiKey;
-    const apiUrl = settings?.api_url || DEFAULT_API_URL;
-    const model = settings?.model || DEFAULT_MODEL;
+    const apiKey = Config.geminiKey || settings?.api_key;
+    const apiUrl = Config.aiApiUrl || settings?.api_url || DEFAULT_API_URL;
+    const model = Config.aiModel || settings?.model || DEFAULT_MODEL;
 
     if (!apiKey) throw new Error('API ключ не настроен. Перейдите в настройки.');
 
@@ -868,7 +865,7 @@ const Gemini = {
 
   async transcribeAudio(audioBlob) {
     const settings = await DB.getSettings();
-    const apiKey = settings?.api_key || Config.apiKey;
+    const apiKey = settings?.api_key || Config.geminiKey;
     const apiUrl = 'https://api.groq.com/openai/v1/audio/transcriptions';
 
     if (!apiKey) throw new Error('API ключ не настроен. Перейдите в настройки.');

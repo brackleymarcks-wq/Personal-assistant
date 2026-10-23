@@ -1,4 +1,4 @@
-const url = 'https://spvnpwirojnrpgwrsch.supabase.co';
+const url = 'https://xpvnpeivrojnrpgwrezh.supabase.co';
 const key = 'sb_publishable_72JuYzuHM67bNaiDcFrUTg_57MJstwC';
 const fs = require('fs');
 

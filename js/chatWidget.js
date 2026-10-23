@@ -32,6 +32,19 @@ window.ChatWidget = {
 
     fab.addEventListener('click', () => this.toggle());
     closeBtn.addEventListener('click', () => this.close());
+    const expandBtn = document.getElementById('global-chat-expand');
+    if (expandBtn) {
+      expandBtn.addEventListener('click', () => {
+        if (panel.style.width === '760px') {
+          panel.style.width = '';
+          panel.style.height = '';
+        } else {
+          panel.style.width = '760px';
+          panel.style.height = '82vh';
+          panel.style.maxWidth = '92vw';
+        }
+      });
+    }
 
     if (micBtn) {
       micBtn.addEventListener('click', () => this.toggleRecording());
@@ -209,15 +222,15 @@ window.ChatWidget = {
       }
     }
     // 2. Check if NotesPage is open and a note is being edited
-    else if (typeof window.NotesPage !== 'undefined' && window.NotesPage.activeNoteId && window.NotesPage.toastEditor) {
+    else if (typeof NotesPage !== 'undefined' && NotesPage.activeNoteId && NotesPage.toastEditor) {
       const title = document.getElementById('editor-title')?.value || 'Без названия';
-      const content = window.NotesPage.toastEditor.getMarkdown().trim();
+      const content = NotesPage.toastEditor.getMarkdown().trim();
       if (content) {
         contextStr += `[КОНТЕКСТ: Пользователь сейчас редактирует Заметку "${title}". Текст заметки:\n${content.substring(0, 4000)}\n]\n\n`;
       }
     }
     // 3. Fallback to old KnowledgePage logic just in case
-    else if (typeof App !== 'undefined' && App.currentModule && typeof KnowledgePage !== 'undefined' && App.currentModule === KnowledgePage) {
+    else if (typeof App !== 'undefined' && App.currentPage === 'knowledge' && typeof KnowledgePage !== 'undefined') {
       if (KnowledgePage.activeItemId && KnowledgePage.editorInstance) {
         const title = document.getElementById('kb-editor-title')?.value || 'Без названия';
         const content = KnowledgePage.editorInstance.getMarkdown().trim();

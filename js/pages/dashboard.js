@@ -15,7 +15,7 @@ const DashboardPage = {
             <div class="page-title">${greeting}, ${Config.userName}!</div>
             <div class="page-subtitle" id="dashboard-date">${this.formatDate()}</div>
           </div>
-          <div class="page-actions">
+          <div class="page-actions" style="display:flex;gap:10px;"><button class="btn btn-secondary" onclick="DashboardPage.openDailyRitualModal()" style="display:flex;align-items:center;gap:6px;border-color:var(--accent);color:var(--accent-vibrant);"><i data-lucide="sun" style="width:16px;height:16px;"></i> Спланировать день (Sunsama)</button>
             <button class="btn btn-primary" onclick="App.navigateTo('chat')">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               Спросить ассистента
@@ -299,7 +299,7 @@ const DashboardPage = {
         ` : `
           <div style="margin-top:auto; font-size:13px; color:var(--text-muted);">
             Доходы: <span style="color:var(--success); font-weight:600;">+${finances.income.toLocaleString('ru-RU')} BYN</span><br/>
-            Расходы: <span style="color:var(--danger); font-weight:600;">-${finances.expense.toLocaleString('ru-RU')} BYN</span>
+            Расходы: <span style="color:var(--danger); font-weight:600;">-${finances.expense.toLocaleString('ru-RU')} BYN</span>${finances.unpaidSubs > 0 ? `<br/>Обяз. платежи: <span style="color:var(--warning);font-weight:600;">-${finances.unpaidSubs.toLocaleString('ru-RU')} BYN</span>` : ''}
           </div>
         `}
       </div>
@@ -450,7 +450,7 @@ const DashboardPage = {
 
     transactions.forEach(t => {
       try {
-        const descData = JSON.parse(t.description || '{}');
+        let descData = {}; try { descData = JSON.parse(t.description || '{}'); } catch(err) { descData = { text: t.description }; }
         const amt = Number(t.amount);
         let accId = descData.account;
         if (!accId && accounts.length > 0) {
@@ -473,8 +473,83 @@ const DashboardPage = {
       income,
       expense,
       balance,
-      monthlyLimit: Number(financeConfig.monthlyLimit) || 0
+      monthlyLimit: Number(financeConfig.monthlyLimit) || 0,
+      unpaidSubs: (financeConfig.subscriptions || []).filter(s => s.paidMonth !== `${currentYear}-${currentMonth}`).reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
     };
+  },
+
+  openDailyRitualModal() {
+    const today = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const activeTasks = (this.data.tasks || []).filter(t => !['Готово', 'Отменена'].includes(t.status));
+    const todayTasks = activeTasks.filter(t => t.deadline === today);
+    const overdueTasks = activeTasks.filter(t => t.deadline && t.deadline < today);
+    const allFocusCandidates = [...overdueTasks, ...todayTasks];
+    const todayLessons = (this.data.lessons || []).filter(l => l.status === 'Запланирован' && l.date.startsWith(today));
+    const totalHours = ((allFocusCandidates.length * 0.75) + (todayLessons.length * 1) + ((this.data.events || []).length * 1)).toFixed(1);
+    const isOverloaded = totalHours > 6;
+
+    const bodyHtml = `
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div style="padding:14px 16px;border-radius:12px;background:${isOverloaded ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)'};border:1px solid ${isOverloaded ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)'};display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:700;font-size:14px;color:${isOverloaded ? 'var(--danger)' : 'var(--success)'};">${isOverloaded ? '⚠️ Внимание: перегруз дня!' : '✅ Нагрузка в норме'}</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Задач: ${allFocusCandidates.length} · Уроков: ${todayLessons.length} · Встреч: ${(this.data.events || []).length} (~${totalHours} ч работы)</div>
+          </div>
+          ${overdueTasks.length > 0 ? `<button class="btn btn-secondary btn-sm" onclick="DashboardPage.deferAllOverdue('${tomorrow}')">⏭ Все просроченные (${overdueTasks.length}) на завтра</button>` : ''}
+        </div>
+        <div style="font-size:13px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;">Задачи на сегодня и хвосты (выбери фокус на Deep Work 10:00–13:00):</div>
+        <div style="display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto;">
+          ${allFocusCandidates.length === 0 ? `<div style="text-align:center;padding:24px;color:var(--text-muted);">На сегодня нет задач! Можно взять задачу из бэклога или отдохнуть.</div>` : allFocusCandidates.map(t => {
+            const isOver = t.deadline && t.deadline < today;
+            const isFocus = t.status === 'В работе' && t.priority === 'Высокий';
+            return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--bg-surface);border:1px solid ${isFocus ? 'var(--accent)' : 'var(--border-light)'};border-radius:10px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:14px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${isFocus ? '🎯 ' : ''}${this.esc(t.title)}</div>
+                <div style="font-size:11px;color:${isOver ? 'var(--danger)' : 'var(--text-muted)'};">${isOver ? 'Просрочено: ' + t.deadline : 'Сегодня'} · ${t.area || 'Работа'}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0;">
+                <button class="btn btn-ghost btn-sm" title="Сделать главным фокусом Deep Work" onclick="DashboardPage.setDeepWorkFocus('${t.id}')" style="color:var(--accent);">🎯 В фокус</button>
+                <button class="btn btn-ghost btn-sm" title="Перенести на завтра" onclick="DashboardPage.deferTask('${t.id}', '${tomorrow}')">⏭ Завтра</button>
+                <button class="btn btn-ghost btn-sm" title="Выполнено" onclick="DashboardPage.completeTaskFromRitual('${t.id}')" style="color:var(--success);">✓</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+    const footerHtml = `<button class="btn btn-secondary" onclick="UI.closeModal()">Закрыть</button><button class="btn btn-primary" onclick="UI.closeModal(); App.navigateTo('pomodoro')">🍅 Запустить Deep Work</button>`;
+    UI.openModal('<i data-lucide="sun" style="color:var(--warning)"></i> Ритуал планирования дня', bodyHtml, footerHtml);
+  },
+
+  async setDeepWorkFocus(taskId) {
+    await DB.updateTask(taskId, { status: 'В работе', priority: 'Высокий', deadline: new Date().toISOString().split('T')[0] });
+    UI.toast('Задача назначена главным фокусом Deep Work! 🎯', 'success');
+    await this.load();
+    this.openDailyRitualModal();
+  },
+
+  async deferTask(taskId, tomorrow) {
+    await DB.updateTask(taskId, { deadline: tomorrow });
+    UI.toast('Перенесено на завтра ⏭', 'info');
+    await this.load();
+    this.openDailyRitualModal();
+  },
+
+  async deferAllOverdue(tomorrow) {
+    const today = new Date().toISOString().split('T')[0];
+    const overdue = (this.data.tasks || []).filter(t => t.deadline && t.deadline < today && !['Готово', 'Отменена'].includes(t.status));
+    await Promise.all(overdue.map(t => DB.updateTask(t.id, { deadline: tomorrow })));
+    UI.toast(`Перенесено на завтра: ${overdue.length} задач!`, 'success');
+    await this.load();
+    this.openDailyRitualModal();
+  },
+
+  async completeTaskFromRitual(taskId) {
+    await DB.updateTask(taskId, { status: 'Готово' });
+    UI.toast('Задача выполнена! ✅', 'success');
+    await this.load();
+    this.openDailyRitualModal();
   },
 
   triggerLevelUpCelebration(newLevel, rank) {

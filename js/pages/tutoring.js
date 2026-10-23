@@ -14,7 +14,7 @@ const TutoringPage = {
             <div class="page-title" style="font-size:24px;font-weight:800;background:linear-gradient(90deg, var(--accent), var(--accent-vibrant));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Репетиторство 🇬🇧</div>
             <div class="page-subtitle" id="tutoring-subtitle" style="font-size:13px;color:var(--text-secondary);margin-top:4px;">Управление учениками и финансами</div>
           </div>
-          <div class="page-actions" style="display:flex;gap:12px;">
+          <div class="page-actions" style="display:flex;gap:12px;"><button class="btn btn-secondary" id="auto-schedule-btn" style="display:flex;align-items:center;gap:6px;border-radius:12px;color:var(--accent);border-color:var(--accent-alpha);" title="Создать запланированные уроки на 7 дней вперед по расписанию учеников"><i data-lucide="calendar-plus" style="width:16px;height:16px;"></i> Авто-расписание на неделю</button>
             <button class="btn btn-secondary" id="add-student-btn" style="display:flex;align-items:center;gap:6px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
               <i data-lucide="user-plus" style="width:16px;height:16px;"></i>
               Добавить ученика
@@ -179,6 +179,7 @@ const TutoringPage = {
   bindEvents() {
     document.getElementById('add-student-btn').addEventListener('click', () => this.openStudentModal());
     document.getElementById('add-lesson-btn').addEventListener('click', () => this.openLessonModal());
+    document.getElementById('auto-schedule-btn')?.addEventListener('click', () => this.autoScheduleWeek());
   },
 
   async load() {
@@ -587,7 +588,7 @@ const TutoringPage = {
           type: 'income',
           amount: createTx.amount,
           category: 'Репетиторство',
-          description: `Оплата за урок: ${createTx.name} (${data.topic || 'Без темы'})`
+          description: JSON.stringify({ text: `Оплата за урок: ${createTx.name} (${data.topic || 'Без темы'})` })
         });
         UI.toast('Оплата добавлена в Финансы!', 'success');
       }
@@ -650,7 +651,7 @@ const TutoringPage = {
           type: 'income',
           amount: total,
           category: 'Репетиторство',
-          description: `Оплата долга за ${unpaidCount} уроков: ${studentName}`
+          description: JSON.stringify({ text: `Оплата долга за ${unpaidCount} уроков: ${studentName}` })
         });
         UI.toast('Оплата занесена в Финансы!', 'success');
       }
@@ -663,6 +664,49 @@ const TutoringPage = {
     }
   },
 
+  async autoScheduleWeek() {
+    const activeStudents = this.students.filter(s => s.active && s.schedule);
+    if (activeStudents.length === 0) return UI.toast('Нет активных учеников с заполненным расписанием', 'warning');
+    const dayMap = { 'вс': 0, 'воскр': 0, 'пн': 1, 'пон': 1, 'вт': 2, 'втор': 2, 'ср': 3, 'сред': 3, 'чт': 4, 'четв': 4, 'пт': 5, 'пятн': 5, 'сб': 6, 'суб': 6 };
+    let createdCount = 0;
+    const now = new Date();
+    for (const st of activeStudents) {
+      const schedRaw = (st.schedule || '').split('\\n[ЗАМЕТКИ]:')[0].toLowerCase();
+      const parts = schedRaw.split(/[,;]+/);
+      for (const part of parts) {
+        let targetDow = null;
+        for (const [k, dow] of Object.entries(dayMap)) {
+          if (new RegExp(`(^|[^а-яё])${k}`, 'i').test(part)) { targetDow = dow; break; }
+        }
+        if (targetDow === null) continue;
+        let hour = 18, min = 0;
+        const timeMatch = part.match(/(\d{1,2})[:.](\d{2})/);
+        if (timeMatch) { hour = parseInt(timeMatch[1], 10); min = parseInt(timeMatch[2], 10); }
+        else if (part.includes('утр')) { hour = 10; min = 0; }
+        else if (part.includes('дн') || part.includes('обед')) { hour = 14; min = 0; }
+        for (let offset = 0; offset < 7; offset++) {
+          const d = new Date(now);
+          d.setDate(now.getDate() + offset);
+          if (d.getDay() === targetDow) {
+            d.setHours(hour, min, 0, 0);
+            if (d < now) continue;
+            const dateDayStr = d.toISOString().split('T')[0];
+            const exists = this.lessons.some(l => l.student_id === st.id && l.date.startsWith(dateDayStr));
+            if (!exists) {
+              await DB.createLesson({ student_id: st.id, date: d.toISOString(), topic: '', homework: '', status: 'Запланирован', paid: false });
+              createdCount++;
+            }
+          }
+        }
+      }
+    }
+    if (createdCount > 0) {
+      UI.toast(`Сгенерировано уроков на неделю: ${createdCount}`, 'success');
+      await this.load();
+    } else {
+      UI.toast('Все уроки по расписанию на эту неделю уже созданы!', 'info');
+    }
+  },
   escapeHtml(str) {
     return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
