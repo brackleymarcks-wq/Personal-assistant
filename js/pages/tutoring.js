@@ -232,7 +232,7 @@ const TutoringPage = {
           // Find student price
           const st = this.students.find(s => s.id === ls.student_id);
           const price = st ? (st.price || 0) : 0;
-          monthlyIncome += price;
+          if (ls.paid) { monthlyIncome += price; } else if (false) { monthlyIncome += price; }
           if (!ls.paid) {
             unpaidLessonsAmount += price;
           }
@@ -256,8 +256,9 @@ const TutoringPage = {
           <i data-lucide="wallet" style="width:24px;height:24px;"></i>
         </div>
         <div>
-          <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Заработано в ${now.toLocaleString('ru', {month:'long'})}</div>
+          <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Оплачено в ${now.toLocaleString('ru', {month:'long'})}</div>
           <div style="font-size:24px;font-weight:800;color:var(--text-primary);">${monthlyIncome} <span style="font-size:14px;color:var(--text-muted);font-weight:600;">BYN</span></div>
+          ${unpaidLessonsAmount > 0 ? `<div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px;">⏳ Ждёт оплаты: ${unpaidLessonsAmount} BYN</div>` : `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Все проведённые оплачены</div>`}
         </div>
       </div>
       <div class="glass-panel" style="padding:20px;border-radius:16px;display:flex;align-items:center;gap:16px;background:linear-gradient(145deg, var(--bg-surface), var(--bg-primary));border:1px solid var(--border-light);">
@@ -394,7 +395,7 @@ const TutoringPage = {
               <div style="flex:1;border-left:1px solid var(--border-light);padding-left:16px;overflow:hidden;">
                 <div style="font-weight:700;font-size:15px;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
                   ${this.escapeHtml(studentName)}
-                  ${ls.status === 'Проведен' ? (ls.paid ? '<span style="font-size:10px;background:rgba(16,185,129,0.1);color:var(--success);padding:2px 6px;border-radius:8px;font-weight:700;">ОПЛАЧЕНО</span>' : '<span style="font-size:10px;background:rgba(239,68,68,0.1);color:var(--danger);padding:2px 6px;border-radius:8px;font-weight:700;">НЕ ОПЛАЧЕНО</span>') : ''}
+                  ${ls.status === 'Проведен' ? (ls.paid ? '<span style="font-size:10px;background:rgba(16,185,129,0.1);color:var(--success);padding:2px 6px;border-radius:8px;font-weight:700;">ОПЛАЧЕНО</span>' : `<span style="font-size:10px;background:rgba(239,68,68,0.1);color:var(--danger);padding:2px 6px;border-radius:8px;font-weight:700;">НЕ ОПЛАЧЕНО</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);" onclick="event.stopPropagation(); TutoringPage.paySingleLesson('${ls.id}')">💰 Отметить оплату</button>`) : ''}
                 </div>
                 <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;display:flex;flex-direction:column;gap:4px;">
                   ${ls.topic ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="book" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(ls.topic)}</span></div>` : ''} 
@@ -868,6 +869,29 @@ const TutoringPage = {
       alert(`📊 ОТЧЁТ О ПРОГРЕССЕ (${st.name}) — скопирован в буфер обмена!\n\n${report}`);
     } catch (e) {
       UI.toast('Ошибка генерации отчёта: ' + e.message, 'error');
+    }
+  },
+
+  async paySingleLesson(lessonId) {
+    const ls = this.lessons.find(l => l.id === lessonId);
+    if (!ls) return;
+    const st = this.students.find(s => s.id === ls.student_id);
+    const price = st ? (Number(st.price) || 0) : 0;
+    const stName = st ? st.name : 'Ученик';
+    try {
+      await DB.updateLesson(lessonId, { paid: true });
+      if (price > 0) {
+        await DB.createTransaction({
+          type: 'income',
+          amount: price,
+          category: 'Репетиторство',
+          description: JSON.stringify({ text: `Оплата за урок: ${stName} (${ls.topic || 'Без темы'})` })
+        });
+      }
+      UI.toast(`Оплата ${price} BYN зачислена в Доходы! 💰`, 'success');
+      await this.load();
+    } catch (e) {
+      UI.toast('Ошибка: ' + e.message, 'error');
     }
   },
 

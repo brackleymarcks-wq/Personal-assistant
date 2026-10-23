@@ -741,7 +741,7 @@ const TOOLS = [
           homework: { type: 'string', description: 'Homework assigned for next time' },
           student_errors: { type: 'string', description: 'Mistakes or weak spots noticed during lesson to save into student dossier' },
           new_vocab: { type: 'string', description: 'New words/phrases learned to save into student Vocabulary Bank' },
-          paid: { type: 'boolean', description: 'Is paid' }
+          paid: { type: 'boolean', description: 'По умолчанию FALSE! Ставь true ТОЛЬКО если пользователь прямо сказал, что урок уже оплачен!' }
         },
         required: ['student_name']
       }
@@ -2809,8 +2809,8 @@ cron.schedule('* * * * *', async () => {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
-                [{ text: `✅ Проведён и оплачен (+${price} BYN)`, callback_data: `lesson_done_paid:${ls.id}` }],
-                [{ text: '⏳ Проведён (ожидает оплаты)', callback_data: `lesson_done_unpaid:${ls.id}` }],
+                [{ text: '✅ Проведён (ожидает оплаты)', callback_data: `lesson_done_unpaid:${ls.id}` }],
+                [{ text: `💰 Проведён и сразу оплачен (+${price} BYN)`, callback_data: `lesson_done_paid:${ls.id}` }],
                 [{ text: '❌ Отменён', callback_data: `lesson_cancel:${ls.id}` }]
               ]
             }
