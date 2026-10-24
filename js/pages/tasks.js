@@ -582,7 +582,7 @@ const TasksPage = {
           task = CalendarPage.tasks.find(t => t.id === taskId);
         }
         if (!task && DB.client) {
-          const { data, error } = await DB.client.from('tasks').select('*').eq('id', taskId).single();
+          const { data, error } = await DB.client.from('tasks').select('*').eq('id', taskId).maybeSingle();
           if (!error && data) {
             task = data;
           }

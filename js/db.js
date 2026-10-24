@@ -26,7 +26,7 @@ const DB = {
       .from('users')
       .select('*')
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (data) {
       Config.save({ userId: data.id });
@@ -38,7 +38,7 @@ const DB = {
       .from('users')
       .insert({ name, email: `${name.toLowerCase()}@local.app` })
       .select()
-      .single();
+      .maybeSingle();
 
     if (createErr) throw createErr;
     Config.save({ userId: newUser.id });
@@ -55,7 +55,7 @@ const DB = {
       .from('settings')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
     if (data) this._cachedSettings = data;
     return data;
   },
@@ -95,7 +95,7 @@ const DB = {
       .from('messages')
       .insert({ user_id: userId, role, content, metadata })
       .select()
-      .single();
+      .maybeSingle();
     if (error) console.error('addMessage error:', error);
     return data;
   },
@@ -132,7 +132,7 @@ const DB = {
       .from('tasks')
       .insert({ user_id: userId, ...task, area })
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -143,7 +143,7 @@ const DB = {
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -169,7 +169,7 @@ const DB = {
       .from('projects')
       .insert({ user_id: userId, ...project })
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -180,7 +180,7 @@ const DB = {
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -212,7 +212,7 @@ const DB = {
       .from('events')
       .insert({ user_id: userId, ...event, area })
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -223,7 +223,7 @@ const DB = {
       .update(updates)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -256,7 +256,7 @@ const DB = {
       .from('knowledge_base')
       .insert({ user_id: userId, ...item, area })
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -267,7 +267,7 @@ const DB = {
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -303,7 +303,7 @@ const DB = {
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
     return data;
   },
 
@@ -336,7 +336,7 @@ const DB = {
       .from('reminders')
       .insert({ user_id: userId, ...reminder })
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -350,13 +350,13 @@ const DB = {
 
   async createGoal(goal) {
     const userId = Config.userId;
-    const { data, error } = await _supabase.from('goals').insert({ user_id: userId, ...goal }).select().single();
+    const { data, error } = await _supabase.from('goals').insert({ user_id: userId, ...goal }).select().maybeSingle();
     if (error) throw error;
     return data;
   },
 
   async updateGoal(id, updates) {
-    const { data, error } = await _supabase.from('goals').update(updates).eq('id', id).select().single();
+    const { data, error } = await _supabase.from('goals').update(updates).eq('id', id).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -387,13 +387,13 @@ const DB = {
     const userId = Config.userId;
     const area = areaOverride || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
     const textWithArea = `[[AREA:${area}]]${content}`;
-    const { data, error } = await _supabase.from('inbox').insert({ user_id: userId, content: textWithArea }).select().single();
+    const { data, error } = await _supabase.from('inbox').insert({ user_id: userId, content: textWithArea }).select().maybeSingle();
     if (error) throw error;
     return data;
   },
 
   async updateInboxItem(id, updates) {
-    const { data, error } = await _supabase.from('inbox').update(updates).eq('id', id).select().single();
+    const { data, error } = await _supabase.from('inbox').update(updates).eq('id', id).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -411,7 +411,7 @@ const DB = {
 
   async addUploadedFile(filename, contentType, textContent) {
     const userId = Config.userId;
-    const { data, error } = await _supabase.from('uploaded_files').insert({ user_id: userId, filename, content_type: contentType, text_content: textContent }).select().single();
+    const { data, error } = await _supabase.from('uploaded_files').insert({ user_id: userId, filename, content_type: contentType, text_content: textContent }).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -423,7 +423,7 @@ const DB = {
   // ---- POMODORO SESSIONS ----
   async savePomodoroSession(session) {
     const userId = Config.userId;
-    const { data, error } = await _supabase.from('pomodoro_sessions').insert({ user_id: userId, ...session }).select().single();
+    const { data, error } = await _supabase.from('pomodoro_sessions').insert({ user_id: userId, ...session }).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -442,13 +442,13 @@ const DB = {
   async createNote(note) {
     const userId = Config.userId;
     const area = note.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
-    const { data, error } = await _supabase.from('notes').insert({ user_id: userId, ...note, area }).select().single();
+    const { data, error } = await _supabase.from('notes').insert({ user_id: userId, ...note, area }).select().maybeSingle();
     if (error) throw error;
     return data;
   },
 
   async updateNote(id, updates) {
-    const { data, error } = await _supabase.from('notes').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    const { data, error } = await _supabase.from('notes').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -471,13 +471,13 @@ const DB = {
       ...tx,
       user_id: userId
     };
-    const { data, error } = await _supabase.from('finances').insert(txData).select().single();
+    const { data, error } = await _supabase.from('finances').insert(txData).select().maybeSingle();
     if (error) throw error;
     return data;
   },
 
   async updateTransaction(id, updates) {
-    const { data, error } = await _supabase.from('finances').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    const { data, error } = await _supabase.from('finances').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -495,13 +495,13 @@ const DB = {
 
   async createHabit(name, frequency = 'daily') {
     const userId = Config.userId;
-    const { data, error } = await _supabase.from('habits').insert({ user_id: userId, name, frequency }).select().single();
+    const { data, error } = await _supabase.from('habits').insert({ user_id: userId, name, frequency }).select().maybeSingle();
     if (error) throw error;
     return data;
   },
 
   async updateHabit(id, updates) {
-    const { data, error } = await _supabase.from('habits').update(updates).eq('id', id).select().single();
+    const { data, error } = await _supabase.from('habits').update(updates).eq('id', id).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -522,7 +522,7 @@ const DB = {
   async logHabit(habitId, dateStr, status = 'done') {
     const { data, error } = await _supabase.from('habit_logs')
       .upsert({ habit_id: habitId, date: dateStr, status }, { onConflict: 'habit_id, date' })
-      .select().single();
+      .select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -573,13 +573,13 @@ const DB = {
 
   async createStudent(student) {
     const userId = Config.userId;
-    const { data, error } = await _supabase.from('students').insert({ user_id: userId, ...student }).select().single();
+    const { data, error } = await _supabase.from('students').insert({ user_id: userId, ...student }).select().maybeSingle();
     if (error) throw error;
     return data;
   },
 
   async updateStudent(id, updates) {
-    const { data, error } = await _supabase.from('students').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    const { data, error } = await _supabase.from('students').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -597,7 +597,7 @@ const DB = {
   },
 
   async createLesson(lesson) {
-    const { data, error } = await _supabase.from('lessons').insert(lesson).select().single();
+    const { data, error } = await _supabase.from('lessons').insert(lesson).select().maybeSingle();
     if (error) throw error;
     return data;
   },
