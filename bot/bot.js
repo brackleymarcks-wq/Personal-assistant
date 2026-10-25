@@ -731,8 +731,24 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'schedule_lesson',
+      description: 'Запланировать предстоящий урок или начать урок прямо сейчас (например: "Сейчас урок с Соней Коршук, повторяем юнит 2", "Сегодня в 18:00 урок с Нелли", "Завтра в 11:00 урок с Матвеем"). Записывает урок со статусом Запланирован и присылает кнопки, а через 1 час после начала урока пришлёт напоминание отметить итог!',
+      parameters: {
+        type: 'object',
+        properties: {
+          student_name: { type: 'string', description: 'Имя или фамилия ученика (например: "Соня Коршук", "Нелли")' },
+          start_at: { type: 'string', description: 'ISO 8601 дата и время начала урока с часовым поясом +03:00 (например "2026-10-25T18:00:00+03:00"). Если пользователь говорит "сейчас урок" — передай "now".' },
+          topic: { type: 'string', description: 'Тема или план на урок (если упомянуто)' }
+        },
+        required: ['student_name', 'start_at']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'add_lesson',
-      description: 'Log an English lesson conducted',
+      description: 'Зафиксировать УЖЕ ПРОВЕДЁННЫЙ урок (когда пользователь в прошедшем времени говорит "Провёл урок с Соней, прошли Present Perfect"). Если урок только начинается ("сейчас урок") или будет в будущем — ОБЯЗАТЕЛЬНО вызывай schedule_lesson!',
       parameters: {
         type: 'object',
         properties: {
@@ -1144,6 +1160,56 @@ async function executeFunctionCall(name, args) {
         const stats = await getMonthlyFinances();
         return { success: true, stats, message: 'Статистика за текущий месяц получена. Проанализируй данные, найди категории с наибольшими тратами, дай жесткий, но полезный финансовый совет.' };
       }
+      case 'schedule_lesson': {
+        const user = await getUser();
+        const searchName = (args.student_name || '').trim();
+        const { data: allSt } = await db.from('students').select('*').eq('user_id', user.id);
+        let st = (allSt || []).find(s => s.name.toLowerCase().includes(searchName.toLowerCase()) || searchName.toLowerCase().split(/\s+/).some(w => w.length > 2 && s.name.toLowerCase().includes(w)));
+        if (!st) {
+          const { data: newSt } = await db.from('students').insert({ user_id: user.id, name: searchName || 'Ученик', price: 0 }).select().maybeSingle();
+          st = newSt;
+        }
+        let startDate = new Date();
+        if (args.start_at && args.start_at !== 'now') {
+          const parsed = new Date(args.start_at);
+          if (!isNaN(parsed.getTime())) startDate = parsed;
+        }
+        const startIso = startDate.toISOString();
+        const { data: lesson, error } = await db.from('lessons').insert({
+          student_id: st.id,
+          date: startIso,
+          topic: args.topic || '',
+          homework: '',
+          status: 'Запланирован',
+          paid: false
+        }).select().maybeSingle();
+        if (error) return { success: false, error: error.message };
+
+        const { data: prevList } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1);
+        const prev = prevList?.[0];
+        const prevHw = prev ? ((prev.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').trim()) : '';
+        const timeFormatted = startDate.toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+        if (CHAT_ID && lesson) {
+          const kb = [
+            [{ text: '🎲 Разминка + Блиц-проверка ДЗ', callback_data: `lesson_prep:${lesson.id}` }],
+            [{ text: '✅ Отметить проведённым (без оплаты)', callback_data: `lesson_done_unpaid:${lesson.id}` }]
+          ];
+          let cardText = `📅 *Урок записан в расписание!*\n👤 *Ученик:* ${st.name}\n🕒 *Время:* ${timeFormatted}\n`;
+          if (args.topic) cardText += `📚 *Тема:* ${args.topic}\n`;
+          if (prev?.topic) cardText += `⏪ *В прошлый раз:* ${prev.topic}\n`;
+          if (prevHw) cardText += `📌 *Проверить ДЗ:* ${prevHw}\n`;
+          cardText += `\n⏱ _Через 1 час после начала урока я автоматически пришлю кнопки для отметки результата и оплаты!_`;
+          bot.sendMessage(CHAT_ID, cardText, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
+            bot.sendMessage(CHAT_ID, cardText, { reply_markup: { inline_keyboard: kb } }).catch(() => {});
+          });
+        }
+        return {
+          success: true,
+          lesson,
+          message: `Урок с ${st.name} запланирован на ${timeFormatted}${args.topic ? ` (Тема: ${args.topic})` : ''}. Карточка с кнопками отправлена в чат, а через час после начала урока придет напоминание отметить итог!`
+        };
+      }
       case 'get_student_memory': {
         const user = await getUser();
         let q = db.from('students').select('*').eq('user_id', user.id);
@@ -1165,7 +1231,9 @@ async function executeFunctionCall(name, args) {
       }
       case 'add_lesson': {
         const user = await getUser();
-        let { data: st } = await db.from('students').select('*').eq('user_id', user.id).ilike('name', `%${args.student_name}%`).limit(1).maybeSingle();
+        const { data: allSt } = await db.from('students').select('*').eq('user_id', user.id);
+        const searchWords = (args.student_name || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
+        let st = (allSt || []).find(s => s.name.toLowerCase().includes((args.student_name || '').toLowerCase()) || searchWords.some(w => s.name.toLowerCase().includes(w.slice(0, -1))));
         if (!st) {
           const { data: newSt } = await db.from('students').insert({ user_id: user.id, name: args.student_name, price: 0 }).select().single();
           st = newSt;
@@ -1194,6 +1262,30 @@ async function executeFunctionCall(name, args) {
         // 2. Создать урок
         }
         const dateStr = new Date().toISOString();
+        const todayPrefix = getMinskDateString(0);
+        const { data: existingSched } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Запланирован').gte('date', todayPrefix + 'T00:00:00Z').order('date', { ascending: false }).limit(1).maybeSingle();
+        let lesson = null;
+        if (existingSched) {
+          const { data: upLs } = await db.from('lessons').update({
+            topic: args.topic || existingSched.topic || '',
+            homework: args.homework || existingSched.homework || '',
+            status: 'Проведен',
+            paid: !!args.paid
+          }).eq('id', existingSched.id).select().maybeSingle();
+          lesson = upLs;
+          notifiedEvents.add(`done_${existingSched.id}`);
+        } else {
+          const { data: newLs } = await db.from('lessons').insert({
+            student_id: st.id,
+            date: dateStr,
+            topic: args.topic || '',
+            homework: args.homework || '',
+            status: 'Проведен',
+            paid: !!args.paid
+          }).select().maybeSingle();
+          lesson = newLs;
+        }
+        if (false) {
         const { data: lesson } = await db.from('lessons').insert({
           student_id: st.id,
           date: dateStr,
@@ -1203,6 +1295,7 @@ async function executeFunctionCall(name, args) {
           paid: !!args.paid
         }).select().single();
         
+        }
         // 3. Авто-оплата в финансы
         if (args.paid && st.price > 0) {
           await createTransaction(st.price, 'income', 'Уроки (Английский)', `Оплата урока: ${st.name}`, 'Карта');
@@ -1487,6 +1580,30 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
     if (!choice) break;
     const message = choice.message;
 
+    if ((!message.tool_calls || message.tool_calls.length === 0) && message.content && message.content.includes('<function=')) {
+      const fnMatch = message.content.match(/<function=([a-zA-Z0-9_]+)>([\s\S]*?)<\/function>/);
+      if (fnMatch) {
+        const fnName = fnMatch[1].trim();
+        const fnBody = fnMatch[2];
+        const parsedArgs = {};
+        const paramRegex = /<parameter=([a-zA-Z0-9_]+)>([\s\S]*?)<\/parameter>/g;
+        let pm;
+        while ((pm = paramRegex.exec(fnBody)) !== null) {
+          const pName = pm[1].trim();
+          const pValRaw = pm[2].trim();
+          try {
+            parsedArgs[pName] = JSON.parse(pValRaw);
+          } catch (e) {
+            parsedArgs[pName] = pValRaw;
+          }
+        }
+        message.tool_calls = [{
+          id: 'xml_call_' + Date.now(),
+          type: 'function',
+          function: { name: fnName, arguments: JSON.stringify(parsedArgs) }
+        }];
+      }
+    }
     if (!message.tool_calls || message.tool_calls.length === 0) {
       if (!message.content && messages.length > 0 && messages[messages.length - 1].role === 'tool') {
         try {
@@ -1513,7 +1630,7 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
       });
     }
 
-    const isActionOnly = message.tool_calls.every(tc => ['process_brain_dump', 'create_task', 'create_tasks', 'create_event', 'update_task_status', 'add_transaction', 'create_transaction', 'log_habit', 'update_context'].includes(tc.function.name));
+    const isActionOnly = message.tool_calls.every(tc => ['process_brain_dump', 'schedule_lesson', 'add_lesson', 'create_task', 'create_tasks', 'create_event', 'update_task_status', 'add_transaction', 'create_transaction', 'log_habit', 'update_context'].includes(tc.function.name));
     try {
       response = await callAPI(systemInstruction, messages, 0, !!imageUrl, overrideModel, isActionOnly ? true : disableTools, activeTools);
     } catch (e) {
@@ -1896,9 +2013,16 @@ bot.on('callback_query', async (query) => {
       const doss = parseStudentDossierBot(st);
       const { data: prevList } = await db.from('lessons').select('*').eq('student_id', ls?.student_id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1);
       const prev = prevList?.[0];
-      const prompt = `Ученик: ${st?.name || 'Ученик'} (${st?.grade || ''}). Интересы: ${doss.interests || 'не указаны'}. Слабые места: ${doss.errors || 'не указаны'}. Прошлая тема: "${prev?.topic || 'не указана'}", Прошлое ДЗ: "${prev?.homework || 'не было'}". Тема сегодня: "${ls?.topic || 'Продолжение'}".\nСоставь:\n1) 🎲 5-минутную разминку (Warm-up: 3 вопроса на говорение с учётом интересов и прошлой темы)\n2) 🔍 Блиц-проверку прошлого ДЗ (3 коротких предложения на перевод сходу с ответами в скобках).`;
+      const prompt = `Ученик: ${st?.name || 'Ученик'} (${st?.grade || ''}). Интересы: ${doss.interests || 'не указаны'}. Слабые места: ${doss.errors || 'не указаны'}. Прошлая тема: "${prev?.topic || 'не указана'}", Прошлое ДЗ: "${prev?.homework || 'не было'}". Тема сегодня: "${ls?.topic || 'Продолжение'}".\nСоставь КОМПАКТНО (до 1500 символов):\n1) 🎲 5-минутную разминку (Warm-up: 3 вопроса на говорение с учётом интересов и прошлой темы)\n2) 🔍 Блиц-проверку прошлого ДЗ (3 коротких предложения на перевод сходу с ответами в скобках).`;
       const planRes = await executeFunctionCall('generate_lesson_plan', { prompt });
-      await bot.sendMessage(chatId, `🇬🇧 *Шпаргалка к уроку (${st?.name || 'Ученик'}):*\n\n${planRes.generated_plan || 'Готово'}`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, planRes.generated_plan || 'Готово'));
+      const fullPlanText = `🇬🇧 *Шпаргалка к уроку (${st?.name || 'Ученик'}):*\n\n${planRes.generated_plan || 'Готово'}`;
+      const chunks = fullPlanText.match(/[\s\S]{1,3500}/g) || [fullPlanText];
+      for (const ch of chunks) {
+        await bot.sendMessage(chatId, ch, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, ch));
+      }
+      if (false) {
+      const planRes = await executeFunctionCall('generate_lesson_plan', { prompt });
+      await bot.sendMessage(chatId, `🇬🇧 *Шпаргалка к уроку (${st?.name || 'Ученик'}):*\n\n${planRes.generated_plan || 'Готово'}`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, planRes.generated_plan || 'Готово')); }
     } catch (e) {
       bot.sendMessage(chatId, '❌ Ошибка подготовки урока: ' + e.message);
     }
@@ -2790,7 +2914,7 @@ cron.schedule('* * * * *', async () => {
     }
 
     // 2. Проверка Уроков (Репетиторство) - Напоминание за 15 минут
-    const finishedPast = new Date(now.getTime() - 65 * 60000);
+    const finishedPast = new Date(now.getTime() - 180 * 60000);
     const finishedFuture = new Date(now.getTime() - 55 * 60000);
     const { data: finishedLessons } = await db.from('lessons')
       .select('*, students(name, price)')

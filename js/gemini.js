@@ -582,6 +582,26 @@ const Gemini = {
         }];
       }
 
+      if ((!message.tool_calls || message.tool_calls.length === 0) && message.content && message.content.includes('<function=')) {
+        const fnMatch = message.content.match(/<function=([a-zA-Z0-9_]+)>([\s\S]*?)<\/function>/);
+        if (fnMatch) {
+          const fnName = fnMatch[1].trim();
+          const fnBody = fnMatch[2];
+          const parsedArgs = {};
+          const paramRegex = /<parameter=([a-zA-Z0-9_]+)>([\s\S]*?)<\/parameter>/g;
+          let pm;
+          while ((pm = paramRegex.exec(fnBody)) !== null) {
+            const pName = pm[1].trim();
+            const pValRaw = pm[2].trim();
+            try { parsedArgs[pName] = JSON.parse(pValRaw); } catch (e) { parsedArgs[pName] = pValRaw; }
+          }
+          message.tool_calls = [{
+            id: 'xml_call_' + Date.now(),
+            type: 'function',
+            function: { name: fnName, arguments: JSON.stringify(parsedArgs) }
+          }];
+        }
+      }
       if (!message.tool_calls || message.tool_calls.length === 0) {
         if (!message.content && messages.some(m => m.role === 'tool')) {
           const lastTool = messages[messages.length - 1];
