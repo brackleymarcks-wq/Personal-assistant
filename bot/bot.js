@@ -497,12 +497,14 @@ function parseStudentDossierBot(st) {
     const idx = raw.indexOf(tag);
     if (idx === -1) return '';
     const rest = raw.slice(idx + tag.length);
-    const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:/);
+    const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:/);
     return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
   };
-  const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:/);
+  const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:/);
   return {
     schedule: (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim(),
+    perplexity: getSec('[PERPLEXITY]:'),
+    unit: getSec('[УЧЕБНИК]:'),
     interests: getSec('[ИНТЕРЕСЫ]:'),
     errors: getSec('[ОШИБКИ]:'),
     vocab: getSec('[СЛОВАРЬ]:'),
@@ -773,6 +775,24 @@ const TOOLS = [
         properties: {
           student_name: { type: 'string', description: 'Имя ученика (или пусто для всех учеников)' }
         }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'import_perplexity_lesson',
+      description: 'Разобрать вставленный конспект/план урока из Perplexity Space (или сообщение с итогами урока): автоматически сохраняет тему урока, очищает домашнее задание от учительских ключей, пополняет словарь ученика и возвращает готовое сообщение для пересылки ученику/родителям.',
+      parameters: {
+        type: 'object',
+        properties: {
+          student_name: { type: 'string', description: 'Имя ученика' },
+          topic: { type: 'string', description: 'Выделенная тема урока' },
+          homework_clean: { type: 'string', description: 'Чистый текст домашнего задания для ученика БЕЗ ключей/ответов преподавателя' },
+          new_vocab: { type: 'string', description: 'Новые слова/коллокации из конспекта через запятую' },
+          student_errors: { type: 'string', description: 'Ошибки ученика, если упомянуты' }
+        },
+        required: ['student_name', 'topic', 'homework_clean']
       }
     }
   },
@@ -1192,8 +1212,14 @@ async function executeFunctionCall(name, args) {
 
         if (CHAT_ID && lesson) {
           const kb = [
-            [{ text: '🎲 Разминка + Блиц-проверка ДЗ', callback_data: `lesson_prep:${lesson.id}` }],
-            [{ text: '✅ Отметить проведённым (без оплаты)', callback_data: `lesson_done_unpaid:${lesson.id}` }]
+            [
+              { text: '🔮 Промпт для Perplexity', callback_data: `lesson_perplexity:${lesson.id}` },
+              { text: '🎲 Разминка + ДЗ', callback_data: `lesson_prep:${lesson.id}` }
+            ],
+            [
+              { text: '🎮 Игра на 5 минут', callback_data: `lesson_game:${lesson.id}` },
+              { text: '✅ Проведён (без оплаты)', callback_data: `lesson_done_unpaid:${lesson.id}` }
+            ]
           ];
           let cardText = `📅 *Урок записан в расписание!*\n👤 *Ученик:* ${st.name}\n🕒 *Время:* ${timeFormatted}\n`;
           if (args.topic) cardText += `📚 *Тема:* ${args.topic}\n`;
@@ -1229,6 +1255,20 @@ async function executeFunctionCall(name, args) {
         }
         return { success: true, students: result };
       }
+      case 'import_perplexity_lesson': {
+        const res = await executeFunctionCall('add_lesson', {
+          student_name: args.student_name,
+          topic: args.topic,
+          homework: args.homework_clean,
+          new_vocab: args.new_vocab,
+          student_errors: args.student_errors,
+          paid: false
+        });
+        return {
+          ...res,
+          message: `🔮 *Конспект из Perplexity разобран и сохранён в карточку урока!*\n` + (res.message || '')
+        };
+      }
       case 'add_lesson': {
         const user = await getUser();
         const { data: allSt } = await db.from('students').select('*').eq('user_id', user.id);
@@ -1243,6 +1283,8 @@ async function executeFunctionCall(name, args) {
           const newErr = args.student_errors ? (doss.errors ? `${doss.errors}; ${args.student_errors}` : args.student_errors) : doss.errors;
           const newVoc = args.new_vocab ? (doss.vocab ? `${doss.vocab}, ${args.new_vocab}` : args.new_vocab) : doss.vocab;
           let updatedSched = doss.schedule || '';
+          if (doss.perplexity) updatedSched += `\\n[PERPLEXITY]:\\n${doss.perplexity}`;
+          if (doss.unit) updatedSched += `\\n[УЧЕБНИК]:\\n${doss.unit}`;
           if (doss.interests) updatedSched += `\\n[ИНТЕРЕСЫ]:\\n${doss.interests}`;
           if (newErr) updatedSched += `\\n[ОШИБКИ]:\\n${newErr}`;
           if (newVoc) updatedSched += `\\n[СЛОВАРЬ]:\\n${newVoc}`;
@@ -1630,7 +1672,7 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
       });
     }
 
-    const isActionOnly = message.tool_calls.every(tc => ['process_brain_dump', 'schedule_lesson', 'add_lesson', 'create_task', 'create_tasks', 'create_event', 'update_task_status', 'add_transaction', 'create_transaction', 'log_habit', 'update_context'].includes(tc.function.name));
+    const isActionOnly = message.tool_calls.every(tc => ['process_brain_dump', 'schedule_lesson', 'import_perplexity_lesson', 'add_lesson', 'create_task', 'create_tasks', 'create_event', 'update_task_status', 'add_transaction', 'create_transaction', 'log_habit', 'update_context'].includes(tc.function.name));
     try {
       response = await callAPI(systemInstruction, messages, 0, !!imageUrl, overrideModel, isActionOnly ? true : disableTools, activeTools);
     } catch (e) {
@@ -1838,6 +1880,12 @@ bot.onText(/\/habits/, async (msg) => {
   const chatId = msg.chat.id;
   try {
     const habits = await getHabits();
+  const minskDayName = new Date().toLocaleDateString('en-US', { timeZone: 'Europe/Minsk', weekday: 'short' });
+  const isWeekend = (minskDayName === 'Sat' || minskDayName === 'Sun');
+  if (typeof completedToday !== 'undefined' && isWeekend) {
+    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: похвали за проведённые уроки и полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
+    return await askAI('Сгенерируй тёплый вечерний обзор выходного дня', weekendCtx, null, true, true);
+  }
     if (habits.length === 0) {
       return bot.sendMessage(chatId, '🌱 У тебя пока нет активных привычек. Добавь их в веб-интерфейсе!');
     }
@@ -1898,6 +1946,12 @@ bot.on('callback_query', async (query) => {
 
       // Перерисовываем список привычек
       const habits = await getHabits();
+  const minskDayName = new Date().toLocaleDateString('en-US', { timeZone: 'Europe/Minsk', weekday: 'short' });
+  const isWeekend = (minskDayName === 'Sat' || minskDayName === 'Sun');
+  if (typeof completedToday !== 'undefined' && isWeekend) {
+    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: похвали за проведённые уроки и полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
+    return await askAI('Сгенерируй тёплый вечерний обзор выходного дня', weekendCtx, null, true, true);
+  }
       const todayLogs = await getHabitLogsToday();
       const doneHabitIds = new Set(todayLogs.filter(l => l.status === 'done').map(l => l.habit_id));
 
@@ -2025,6 +2079,70 @@ bot.on('callback_query', async (query) => {
       await bot.sendMessage(chatId, `🇬🇧 *Шпаргалка к уроку (${st?.name || 'Ученик'}):*\n\n${planRes.generated_plan || 'Готово'}`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, planRes.generated_plan || 'Готово')); }
     } catch (e) {
       bot.sendMessage(chatId, '❌ Ошибка подготовки урока: ' + e.message);
+    }
+  } else if (data && data.startsWith('lesson_perplexity:')) {
+    const lessonId = data.split(':')[1];
+    try {
+      await bot.answerCallbackQuery(query.id, { text: '🔮 Собираю промпт для Perplexity Space...' });
+      const { data: ls } = await db.from('lessons').select('*, students(*)').eq('id', lessonId).maybeSingle();
+      const st = ls?.students || { name: 'Ученик', grade: '' };
+      const doss = parseStudentDossierBot(st);
+      const { data: condList } = await db.from('lessons').select('*').eq('student_id', ls?.student_id).eq('status', 'Проведен').order('date', { ascending: false }).limit(15);
+      const prev = condList?.[0];
+      const baseMs = ls?.date ? new Date(ls.date).getTime() : Date.now();
+      const ebb = (condList || []).find(c => c.topic && (baseMs - new Date(c.date).getTime() >= 10 * 86400000) && (baseMs - new Date(c.date).getTime() <= 25 * 86400000));
+      const prevHwClean = prev ? ((prev.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').trim()) : '';
+      const masterPrompt = [
+        `Привет! Готовим и проводим интерактивный урок английского языка.`,
+        `👤 Ученик: ${st.name} (${st.grade || 'уровень не указан'})`,
+        doss.unit ? `📖 Учебник / Программа: ${doss.unit}` : '',
+        doss.interests ? `🎯 Интересы ученика (используй во всех примерах!): ${doss.interests}` : '',
+        doss.errors ? `⚠️ Типичные ошибки (включи ловушки на эти правила!): ${doss.errors}` : '',
+        doss.vocab ? `📚 Активный словарь на отработку: ${doss.vocab}` : '',
+        prev ? `⏪ Прошлый урок (${new Date(prev.date).toLocaleDateString('ru-RU')}): Тема "${prev.topic || 'Практика'}"${prevHwClean ? `, Заданное ДЗ: "${prevHwClean}"` : ''}` : '',
+        ebb ? `🔄 Повторение по Эббингаузу (~2 недели назад, ${new Date(ebb.date).toLocaleDateString('ru-RU')}): "${ebb.topic}" — вплети 2 вопроса на повторение!` : '',
+        `\n🎯 ТЕМА СЕГОДНЯШНЕГО УРОКА: ${ls?.topic || 'Продолжение по программе + разговорная практика'}`,
+        `\nСгенерируй структурированный материал для урока:`,
+        `1. 🔥 Warm-up (5 мин): 3 живых вопроса по интересам ученика + быстрая проверка прошлого ДЗ и 2 вопроса по теме 2-недельной давности.`,
+        `2. 💡 Основной блок: наглядное правило + 5-6 упражнений в контексте интересов ученика (с ловушками на его ошибки).`,
+        `3. 🗣 Speaking / Roleplay: короткая игровая ситуация для вывода в речь.`,
+        `4. 🏠 Домашнее задание на 10-15 минут (отдельным блоком без ответов, а ключи вынеси в самый низ).`
+      ].filter(Boolean).join('\n');
+      const spaceUrl = (doss.perplexity && doss.perplexity.startsWith('http')) ? doss.perplexity : 'https://www.perplexity.ai/';
+      const msgText = `🔮 *Мастер-промпт для Perplexity Space (${st.name}):*\n_Нажми на блок кода ниже (скопируется в 1 тап) и вставь в Perplexity:_ \n\n\`\`\`\n${masterPrompt}\n\`\`\``;
+      await bot.sendMessage(chatId, msgText, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '🚀 Открыть Perplexity Space', url: spaceUrl }]] }
+      }).catch(() => bot.sendMessage(chatId, masterPrompt));
+    } catch (e) {
+      bot.sendMessage(chatId, '❌ Ошибка сборки промпта Perplexity: ' + e.message);
+    }
+  } else if (data && data.startsWith('lesson_game:')) {
+    const lessonId = data.split(':')[1];
+    try {
+      await bot.answerCallbackQuery(query.id, { text: '🎮 Генерирую игру на 5 минут...' });
+      const { data: ls } = await db.from('lessons').select('*, students(*)').eq('id', lessonId).maybeSingle();
+      const st = ls?.students || { name: 'Ученик', grade: '' };
+      const doss = parseStudentDossierBot(st);
+      const prompt = `Ученик: ${st.name} (${st.grade || ''}). Интересы: ${doss.interests || 'разные'}. Ошибки: ${doss.errors || 'не указаны'}. Словарь: ${doss.vocab || 'по теме'}. Тема урока: "${ls?.topic || 'Английский язык'}".\nДо конца урока осталось 5 минут! Создай КОМПАКТНО (до 1200 символов) живую устную мини-игру на 5 минут (Детектив/Алиби, Taboo по 3 подсказкам, 2 правды 1 ложь или Блиц-аукцион ошибок) с готовыми репликами и ответами в скобках!`;
+      const planRes = await executeFunctionCall('generate_lesson_plan', { prompt });
+      const textOut = `🎮 *Экстренная игра на 5 минут (${st.name}):*\n\n${planRes.generated_plan || 'Готово'}`;
+      await bot.sendMessage(chatId, textOut, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, textOut));
+    } catch (e) {
+      bot.sendMessage(chatId, '❌ Ошибка генерации игры: ' + e.message);
+    }
+  } else if (data && data.startsWith('lesson_remind_text:')) {
+    const lessonId = data.split(':')[1];
+    try {
+      await bot.answerCallbackQuery(query.id, { text: '📲 Готовлю деликатное напоминание...' });
+      const { data: ls } = await db.from('lessons').select('*, students(name, price)').eq('id', lessonId).maybeSingle();
+      const stName = ls?.students?.name || 'Ученик';
+      const price = ls?.students?.price || 0;
+      const dStr = ls?.date ? new Date(ls.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : 'прошедшее занятие';
+      const msg = `📲 *Текст для пересылки (${stName}):*\n\n\`\`\`\nЗдравствуйте! Подскажите, пожалуйста, получилось ли перевести оплату за занятие по английскому за ${dStr}${price ? ` (${price} BYN)` : ''}? Возможно, я пропустил уведомление от банка 🙏 Спасибо!\n\`\`\``;
+      await bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, msg));
+    } catch (e) {
+      bot.sendMessage(chatId, '❌ Ошибка: ' + e.message);
     }
   } else if (data && data.startsWith('lesson_done_paid:')) {
     const lessonId = data.split(':')[1];
@@ -2307,7 +2425,10 @@ async function sendLessonsSummary(chatId, messageId = null) {
           if (prev.topic) text += `    ⏪ _Прошлый раз: ${prev.topic}_\n`;
           if (cleanHw) text += `    📌 *Проверить ДЗ:* ${cleanHw} ${isChecked ? '✅' : '⚠️'}\n`;
         }
-        prepButtons.push([{ text: `🎲 Разминка + ДЗ: ${l.students?.name || 'Ученик'}`, callback_data: `lesson_prep:${l.id}` }]);
+        prepButtons.push([
+          { text: `🔮 Perplexity: ${l.students?.name || 'Ученик'}`, callback_data: `lesson_perplexity:${l.id}` },
+          { text: `🎲 Разминка + ДЗ`, callback_data: `lesson_prep:${l.id}` }
+        ]);
       });
     }
 
@@ -2533,6 +2654,12 @@ bot.onText(/\/health/, async (msg) => {
     const endIso = today.toISOString().split('T')[0];
 
     const habits = await getHabits();
+  const minskDayName = new Date().toLocaleDateString('en-US', { timeZone: 'Europe/Minsk', weekday: 'short' });
+  const isWeekend = (minskDayName === 'Sat' || minskDayName === 'Sun');
+  if (typeof completedToday !== 'undefined' && isWeekend) {
+    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: похвали за проведённые уроки и полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
+    return await askAI('Сгенерируй тёплый вечерний обзор выходного дня', weekendCtx, null, true, true);
+  }
     const logs = await getHabitLogs(startIso, endIso);
 
     const healthKeywords = ['сон', 'спать', 'бег', 'пробежк', 'спорт', 'тренир', 'пресс', 'зарядк', 'вод', 'health', 'отжиман'];
@@ -2704,6 +2831,12 @@ async function generateMorningBriefing() {
   const upcoming = await getUpcomingDeadlines(7);
   const events = await getTodayEvents();
   const habits = await getHabits();
+  const minskDayName = new Date().toLocaleDateString('en-US', { timeZone: 'Europe/Minsk', weekday: 'short' });
+  const isWeekend = (minskDayName === 'Sat' || minskDayName === 'Sun');
+  if (typeof completedToday !== 'undefined' && isWeekend) {
+    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: похвали за проведённые уроки и полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
+    return await askAI('Сгенерируй тёплый вечерний обзор выходного дня', weekendCtx, null, true, true);
+  }
 
   const contextData = `
 ДАННЫЕ ДЛЯ УТРЕННЕГО БРИФИНГА:
@@ -2731,6 +2864,12 @@ async function generateEveningReview() {
   const overdue = await getOverdueTasks();
   const habitLogs = await getHabitLogsToday();
   const habits = await getHabits();
+  const minskDayName = new Date().toLocaleDateString('en-US', { timeZone: 'Europe/Minsk', weekday: 'short' });
+  const isWeekend = (minskDayName === 'Sat' || minskDayName === 'Sun');
+  if (typeof completedToday !== 'undefined' && isWeekend) {
+    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: похвали за проведённые уроки и полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
+    return await askAI('Сгенерируй тёплый вечерний обзор выходного дня', weekendCtx, null, true, true);
+  }
 
   const contextData = `
 ДАННЫЕ ДЛЯ ВЕЧЕРНЕГО ОБЗОРА:
@@ -2852,6 +2991,28 @@ cron.schedule('0 7 * * *', async () => {
     for (const task of upcoming) {
       sendProactiveMessage(`⚠️ Завтра дедлайн: *${task.title}*\nЧто осталось сделать?`);
     }
+    const twoDaysAgoIso = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const { data: oldUnpaid } = await db.from('lessons').select('*, students(name, price)').eq('status', 'Проведен').eq('paid', false).lte('date', twoDaysAgoIso);
+    if (oldUnpaid && oldUnpaid.length > 0 && CHAT_ID) {
+      for (const ul of oldUnpaid) {
+        const stName = ul.students?.name || 'Ученик';
+        const price = ul.students?.price || 0;
+        const dStr = new Date(ul.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+        await bot.sendMessage(CHAT_ID, `⏳ *Контроль оплаты (прошло >48ч):*\nУрок с *${stName}* от ${dStr} (${price} BYN) всё ещё отмечен как неоплаченный.`, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: `💰 Уже оплатили (+${price} BYN)`, callback_data: `lesson_pay:${ul.id}` },
+                { text: '📲 Текст напоминания', callback_data: `lesson_remind_text:${ul.id}` }
+              ]
+            ]
+          }
+        }).catch(() => {});
+      }
+    }
+    if (false) {
+    }
   } catch(e) {
     console.error('Cron deadline check error:', e);
   }
@@ -2969,7 +3130,19 @@ cron.schedule('* * * * *', async () => {
           if (prevHwClean) briefMsg += `📌 *ПРОВЕРИТЬ ДЗ:* ${prevHwClean} ${isHwChecked ? '✅' : '⚠️'}\n`;
           if (doss.errors) briefMsg += `⚠️ *Слабые места:* ${doss.errors}\n`;
           if (doss.interests) briefMsg += `🎯 *Интересы:* ${doss.interests}\n`;
-          const kb = [[{ text: '🎲 Разминка + Блиц-проверка ДЗ', callback_data: `lesson_prep:${ls.id}` }]];
+          const { data: cond15 } = await db.from('lessons').select('*').eq('student_id', ls.student_id).eq('status', 'Проведен').order('date', { ascending: false }).limit(15);
+          const ebbLesson = (cond15 || []).find(c => c.topic && (Date.now() - new Date(c.date).getTime() >= 10 * 86400000) && (Date.now() - new Date(c.date).getTime() <= 25 * 86400000));
+          if (ebbLesson) briefMsg += `🔄 *Кривая Эббингауза (~2 нед. назад):* повторить «${ebbLesson.topic}»\n`;
+          if (doss.unit) briefMsg += `📖 *Учебник/Unit:* ${doss.unit}\n`;
+          const kb = [
+            [
+              { text: '🔮 Промпт для Perplexity', callback_data: `lesson_perplexity:${ls.id}` },
+              { text: '🎲 Разминка + ДЗ', callback_data: `lesson_prep:${ls.id}` }
+            ],
+            [
+              { text: '🎮 Игра на 5 минут', callback_data: `lesson_game:${ls.id}` }
+            ]
+          ];
           if (prev && prevHwClean && !isHwChecked) {
             kb.push([{ text: '✅ Отметить прошлое ДЗ проверенным', callback_data: `lesson_hw_checked:${prev.id}` }]);
           }

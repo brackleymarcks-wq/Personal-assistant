@@ -93,6 +93,10 @@ const TutoringPage = {
                 <input id="st-schedule" type="text" class="form-input" placeholder="Например: Пн 18:00, Вс утро" />
               </div>
               <div class="form-group">
+                <label class="form-label">🔮 Ссылка на Perplexity Space ученика</label>
+                <input id="st-perplexity" type="url" class="form-input" placeholder="https://www.perplexity.ai/collections/..." style="margin-bottom:10px;" />
+                <label class="form-label">📖 Учебник / Текущий Unit (программа РБ)</label>
+                <input id="st-unit" type="text" class="form-input" placeholder="Например: Юхнель 6 класс, Unit 5 (Health) / Повышенный уровень" style="margin-bottom:10px;" />
                 <label class="form-label">🎯 Интересы и хобби ученика (для генерации примеров Twee)</label>
                 <input id="st-interests" type="text" class="form-input" placeholder="Например: Minecraft, сериалы Netflix, футбол, путешествия" style="margin-bottom:10px;" />
                 <label class="form-label">⚠️ Типичные ошибки / Слабые места (Error Log)</label>
@@ -135,6 +139,11 @@ const TutoringPage = {
                 </div>
               </div>
               <div class="form-group">
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+                  <button type="button" id="ls-btn-perplexity" class="btn btn-primary btn-xs" style="font-size:11px;padding:6px 10px;background:linear-gradient(135deg,#0d9488,#0284c7);border:none;color:#fff;display:flex;align-items:center;gap:5px;" title="Скопировать умный промпт со всей памятью об ученике и открыть его Perplexity Space">🔮 В Perplexity Space (копировать промпт)</button>
+                  <button type="button" id="ls-btn-import-perplexity" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;border-color:rgba(13,148,136,0.4);color:#0d9488;" title="Вставить готовый конспект из Perplexity — ИИ сам заполнит тему, чистое ДЗ без ключей и пополнит словарь">📥 Из Perplexity</button>
+                  <button type="button" id="ls-btn-zen-board" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;" title="Открыть чистый экран для демонстрации ученику в Zoom/Telegram (без цен и заметок)">🖥 Экран ученика</button>
+                </div>
                 <div id="ls-memory-banner" style="margin-bottom:12px;"></div>
                 <label class="form-label">Тема урока</label>
                 <input id="ls-topic" type="text" class="form-input" placeholder="Например: Past Simple" />
@@ -149,6 +158,7 @@ const TutoringPage = {
                   <button type="button" id="ls-ai-warmup" class="btn btn-secondary btn-xs" style="font-size:11px;padding:4px 8px;">🎲 Разминка (Warm-up 5м)</button>
                   <button type="button" id="ls-ai-blitz" class="btn btn-secondary btn-xs" style="font-size:11px;padding:4px 8px;">🔍 Блиц-проверка прошлого ДЗ</button>
                   <button type="button" id="ls-ai-parent" class="btn btn-secondary btn-xs" style="font-size:11px;padding:4px 8px;">📲 Текст ученику/родителям</button>
+                  <button type="button" id="ls-ai-game" class="btn btn-secondary btn-xs" style="font-size:11px;padding:4px 8px;color:var(--accent);border-color:var(--accent-alpha);">🎮 Игра на 5 минут</button>
                 </div>
                 <div id="ls-ai-output-box" class="hidden" style="margin-top:8px;padding:10px 12px;background:var(--bg-primary);border:1px solid var(--accent-alpha);border-radius:10px;font-size:12px;white-space:pre-wrap;max-height:200px;overflow-y:auto;"></div>
               </div>
@@ -324,7 +334,7 @@ const TutoringPage = {
               </div>
               ${debtBadge}
             </div>
-            ${(dossier.interests || dossier.errors) ? `<div style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}${dossier.errors ? `<div style="color:var(--warning);">⚠️ <b>Ошибки:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}</div>` : ''}
+            ${(dossier.unit || dossier.interests || dossier.errors) ? `<div style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">${dossier.unit ? `<div style="color:var(--accent);">📖 <b>Программа:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}${dossier.errors ? `<div style="color:var(--warning);">⚠️ <b>Ошибки:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}</div>` : ''}
             </div>
 
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-light); width: 100%;">
@@ -333,6 +343,9 @@ const TutoringPage = {
                   <i data-lucide="coins" style="width:12px;height:12px;"></i> Оплатить долг
                 </button>
               ` : ''}
+              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.launchPerplexity('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px; color:#0d9488; border-color:rgba(13,148,136,0.35); background:rgba(13,148,136,0.06);" title="Скопировать промпт с памятью об ученике и открыть его Perplexity Space">
+                🔮 Perplexity
+              </button>
               <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.generateMonthlyReport('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;" title="Сгенерировать ИИ-отчёт о прогрессе за месяц">
                 <i data-lucide="bar-chart-2" style="width:12px;height:12px;"></i> Отчёт
               </button>
@@ -401,6 +414,7 @@ const TutoringPage = {
                   ${ls.topic ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="book" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(ls.topic)}</span></div>` : ''} 
                   ${displayHomework ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(displayHomework.replace('[ДЗ_ПРОВЕРЕНО]', '✅ '))}</span></div>` : ''}
                   ${(ls.status === 'Запланирован' && prevDoneLesson && prevHwClean) ? `<div style="margin-top:4px;padding:6px 8px;border-radius:8px;background:${prevHwChecked ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.12)'};border:1px solid ${prevHwChecked ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.3)'};font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${prevHwChecked ? '✅ ДЗ проверено:' : '📌 <b>Проверить ДЗ:</b>'} ${this.escapeHtml(prevHwClean)}</span>${!prevHwChecked ? `<button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${prevDoneLesson.id}')">✅ Проверено</button>` : ''}</div>` : ''}
+                  ${ls.status === 'Запланирован' ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;color:#0d9488;border-color:rgba(13,148,136,0.35);background:rgba(13,148,136,0.06);" onclick="event.stopPropagation(); TutoringPage.launchPerplexity('${ls.student_id}', '${ls.id}')">🔮 В Perplexity</button><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;" onclick="event.stopPropagation(); TutoringPage.openZenBoard('${ls.id}')">🖥 Экран ученика</button></div>` : ''}
                   ${displayMaterials ? `<div style="display:flex;align-items:center;gap:6px;color:var(--accent);"><i data-lucide="paperclip" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${hasLinks ? `<a href="${displayMaterials}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:underline;">Материалы прикреплены</a>` : this.escapeHtml(displayMaterials)}</span></div>` : ''}
                 </div>
               </div>
@@ -440,7 +454,9 @@ const TutoringPage = {
     document.getElementById('st-grade').value = st ? (st.grade || '') : '';
     document.getElementById('st-price').value = st ? st.price : 0;
     
-    const dossier = st ? this.parseStudentDossier(st) : { schedule: '', interests: '', errors: '', vocab: '', notes: '' };
+    const dossier = st ? this.parseStudentDossier(st) : { schedule: '', perplexity: '', unit: '', interests: '', errors: '', vocab: '', notes: '' };
+    document.getElementById('st-perplexity').value = dossier.perplexity || '';
+    document.getElementById('st-unit').value = dossier.unit || '';
     document.getElementById('st-schedule').value = dossier.schedule;
     document.getElementById('st-interests').value = dossier.interests;
     document.getElementById('st-errors').value = dossier.errors;
@@ -479,7 +495,9 @@ const TutoringPage = {
       document.getElementById('st-interests').value.trim(),
       document.getElementById('st-errors').value.trim(),
       document.getElementById('st-vocab').value.trim(),
-      document.getElementById('st-notes').value.trim()
+      document.getElementById('st-notes').value.trim(),
+      document.getElementById('st-perplexity').value.trim(),
+      document.getElementById('st-unit').value.trim()
     );
     if (false) {
     const notes = document.getElementById('st-notes').value.trim();
@@ -585,6 +603,14 @@ const TutoringPage = {
     if (blitzBtn) blitzBtn.onclick = () => runTweeMode('blitz_check', blitzBtn, '🔍 Блиц-проверка прошлого ДЗ');
     const parentBtn = document.getElementById('ls-ai-parent');
     if (parentBtn) parentBtn.onclick = () => runTweeMode('parent_msg', parentBtn, '📲 Текст ученику/родителям');
+    const gameBtn = document.getElementById('ls-ai-game');
+    if (gameBtn) gameBtn.onclick = () => runTweeMode('game_5min', gameBtn, '🎮 Игра на 5 минут');
+    const pplxBtn = document.getElementById('ls-btn-perplexity');
+    if (pplxBtn) pplxBtn.onclick = () => this.launchPerplexity(document.getElementById('ls-student').value, ls?.id);
+    const impBtn = document.getElementById('ls-btn-import-perplexity');
+    if (impBtn) impBtn.onclick = () => this.importFromPerplexity(document.getElementById('ls-student').value, ls?.id);
+    const zenBtn = document.getElementById('ls-btn-zen-board');
+    if (zenBtn) zenBtn.onclick = () => this.openZenBoard(ls?.id, document.getElementById('ls-student').value);
     const aiBtn = document.getElementById('ls-generate-ai');
     aiBtn.onclick = async () => {
       const student_id = document.getElementById('ls-student').value;
@@ -791,13 +817,15 @@ const TutoringPage = {
       const idx = raw.indexOf(tag);
       if (idx === -1) return '';
       const rest = raw.slice(idx + tag.length);
-      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:/);
+      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:/);
       return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
     };
-    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ)\]:/);
+    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:/);
     const schedule = (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim();
     return {
       schedule,
+      perplexity: getSec('[PERPLEXITY]:'),
+      unit: getSec('[УЧЕБНИК]:'),
       interests: getSec('[ИНТЕРЕСЫ]:'),
       errors: getSec('[ОШИБКИ]:'),
       vocab: getSec('[СЛОВАРЬ]:'),
@@ -805,8 +833,10 @@ const TutoringPage = {
     };
   },
 
-  serializeStudentDossier(schedule, interests, errors, vocab, notes) {
+  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '') {
     let out = schedule || '';
+    if (perplexity) out += `\\n[PERPLEXITY]:\\n${perplexity}`;
+    if (unit) out += `\\n[УЧЕБНИК]:\\n${unit}`;
     if (interests) out += `\\n[ИНТЕРЕСЫ]:\\n${interests}`;
     if (errors) out += `\\n[ОШИБКИ]:\\n${errors}`;
     if (vocab) out += `\\n[СЛОВАРЬ]:\\n${vocab}`;
@@ -839,6 +869,7 @@ const TutoringPage = {
     if (!st) { banner.innerHTML = ''; return; }
     const dossier = this.parseStudentDossier(st);
     const prev = this.getPrevConductedLesson(studentId, lessonDate);
+    const ebb = this.getEbbinghausLesson(studentId, lessonDate);
     const prevHwRaw = prev ? ((prev.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].trim()) : '';
     const isChecked = prevHwRaw.includes('[ДЗ_ПРОВЕРЕНО]');
     const cleanHw = prevHwRaw.replace('[ДЗ_ПРОВЕРЕНО]', '').trim();
@@ -851,6 +882,8 @@ const TutoringPage = {
         </div>
         ${prev ? `<div>⏪ <b>Прошлая тема:</b> ${this.escapeHtml(prev.topic || 'Не указана')}</div>` : '<div style="color:var(--text-muted);">Проведённых уроков пока нет</div>'}
         ${cleanHw ? `<div style="color:${isChecked ? 'var(--success)' : 'var(--warning)'};">📌 <b>Заданное ДЗ:</b> ${this.escapeHtml(cleanHw)} ${isChecked ? '✅ (Проверено)' : `<button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:1px 6px;margin-left:6px;" onclick="TutoringPage.markPrevHwChecked('${prev.id}').then(()=>TutoringPage.renderLessonMemoryBanner('${studentId}'))">✅ Отметить проверенным</button>`}</div>` : ''}
+        ${ebb ? `<div style="color:#0d9488;font-weight:600;">🔄 <b>Кривая Эббингауза (повторить тему ~2 нед. назад, ${new Date(ebb.date).toLocaleDateString('ru-RU')}):</b> ${this.escapeHtml(ebb.topic)}</div>` : ''}
+        ${dossier.unit ? `<div>📖 <b>Учебник / Unit:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}
         ${dossier.errors ? `<div>⚠️ <b>Слабые места:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}
         ${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}
       </div>
@@ -893,6 +926,174 @@ const TutoringPage = {
     } catch (e) {
       UI.toast('Ошибка: ' + e.message, 'error');
     }
+  },
+
+  getEbbinghausLesson(studentId, refDate = null) {
+    const baseMs = refDate ? new Date(refDate).getTime() : Date.now();
+    const minMs = baseMs - 25 * 24 * 3600 * 1000;
+    const maxMs = baseMs - 10 * 24 * 3600 * 1000;
+    const candidates = this.lessons
+      .filter(l => l.student_id === studentId && l.status === 'Проведен' && l.topic && new Date(l.date).getTime() >= minMs && new Date(l.date).getTime() <= maxMs)
+      .sort((a, b) => Math.abs((baseMs - 14 * 86400000) - new Date(a.date).getTime()) - Math.abs((baseMs - 14 * 86400000) - new Date(b.date).getTime()));
+    return candidates[0] || null;
+  },
+
+  buildPerplexityPrompt(studentId, lessonId = null, customTopic = '') {
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return '';
+    const ls = lessonId ? this.lessons.find(l => l.id === lessonId) : null;
+    const dossier = this.parseStudentDossier(st);
+    const prev = this.getPrevConductedLesson(studentId, ls?.date);
+    const ebb = this.getEbbinghausLesson(studentId, ls?.date);
+    const prevHwClean = prev ? ((prev.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').trim()) : '';
+    const modalTopic = (!document.getElementById('lesson-modal')?.classList.contains('hidden')) ? (document.getElementById('ls-topic')?.value?.trim() || '') : '';
+    const todayTopic = customTopic || modalTopic || ls?.topic || 'Продолжение по программе + отработка лексики и говорения';
+
+    return [
+      `Привет! Готовим и проводим интерактивный урок английского языка.`,
+      `👤 Ученик: ${st.name} (${st.grade || 'уровень не указан'})`,
+      dossier.unit ? `📖 Учебник / Программа: ${dossier.unit}` : '',
+      dossier.interests ? `🎯 Интересы и хобби ученика (используй их во всех примерах и текстах!): ${dossier.interests}` : '',
+      dossier.errors ? `⚠️ Типичные ошибки ученика (включи ловушки на эти правила!): ${dossier.errors}` : '',
+      dossier.vocab ? `📚 Активный словарь на отработку: ${dossier.vocab}` : '',
+      prev ? `⏪ Прошлый урок (${new Date(prev.date).toLocaleDateString('ru-RU')}): Тема "${prev.topic || 'Практика'}"${prevHwClean ? `, Заданное ДЗ: "${prevHwClean}"` : ''}` : '',
+      ebb ? `🔄 Интервальное повторение по Эббингаузу (проходили ~2 недели назад, ${new Date(ebb.date).toLocaleDateString('ru-RU')}): "${ebb.topic}" — обязательно вплети 2 вопроса на повторение этой темы!` : '',
+      `\n🎯 ТЕМА СЕГОДНЯШНЕГО УРОКА: ${todayTopic}`,
+      `\nПожалуйста, сгенерируй структурированный материал для урока:`,
+      `1. 🔥 Warm-up (5 мин): 3 живых вопроса для разминки (Speaking) на основе интересов ученика + быстрая проверка прошлого ДЗ и 2 вопроса по теме 2-недельной давности.`,
+      `2. 💡 Основной блок: наглядное объяснение / интерактивное задание и 5-6 практических предложений/ситуаций в контексте интересов ученика (с ловушками на его типичные ошибки).`,
+      `3. 🗣 Speaking / Roleplay: короткая игровая ситуация или мини-дебаты для вывода темы в речь.`,
+      `4. 🏠 Домашнее задание на 10-15 минут (отдельным блоком в конце без ответов, а ключи для преподавателя вынеси в самый низ).`
+    ].filter(Boolean).join('\n');
+  },
+
+  async launchPerplexity(studentId, lessonId = null) {
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return UI.toast('Выберите ученика', 'warning');
+    const dossier = this.parseStudentDossier(st);
+    const prompt = this.buildPerplexityPrompt(studentId, lessonId);
+    try {
+      await navigator.clipboard.writeText(prompt);
+      UI.toast(`🔮 Мастер-промпт для ${st.name} скопирован в буфер! Нажми Ctrl+V в Perplexity`, 'success');
+    } catch (e) {
+      prompt('Скопируйте промпт для Perplexity:', prompt);
+    }
+    const targetUrl = (dossier.perplexity && dossier.perplexity.startsWith('http')) ? dossier.perplexity : 'https://www.perplexity.ai/';
+    window.open(targetUrl, '_blank');
+  },
+
+  async importFromPerplexity(studentId, lessonId = null) {
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return UI.toast('Сначала выберите ученика', 'warning');
+    const rawText = prompt(`📥 Вставьте скопированный ответ/конспект урока из Perplexity для ученика ${st.name}.\n\nИИ автоматически:\n1) Выделит тему урока\n2) Очистит домашнее задание от учительских ключей\n3) Добавит новые слова в словарь ученика\n4) Напишет сообщение для родителей/ученика:`);
+    if (!rawText || !rawText.trim()) return;
+    const impBtn = document.getElementById('ls-btn-import-perplexity');
+    if (impBtn) { impBtn.disabled = true; impBtn.textContent = '⏳ Разбираю конспект...'; }
+    try {
+      const parsed = await Gemini.parsePerplexityLesson(rawText, st.name);
+      if (parsed.topic) document.getElementById('ls-topic').value = parsed.topic;
+      if (parsed.homework) document.getElementById('ls-homework').value = parsed.homework;
+      if (parsed.new_vocab) {
+        const dossier = this.parseStudentDossier(st);
+        const existingVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
+        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit);
+        await DB.updateStudent(st.id, { schedule: newSchedule });
+        st.schedule = newSchedule;
+      }
+      const outBox = document.getElementById('ls-ai-output-box');
+      if (outBox && parsed.parent_msg) {
+        outBox.classList.remove('hidden');
+        outBox.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><b>📲 Готовое сообщение ученику/родителям + словарь обновлён (${this.escapeHtml(parsed.new_vocab || 'без новых слов')})</b><button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.innerText);UI.toast('Скопировано!','success')">📋 Скопировать</button></div><div>${this.escapeHtml(parsed.parent_msg)}</div>`;
+      }
+      UI.toast('✨ Конспект из Perplexity разобран! Тема, ДЗ и словарь обновлены.', 'success');
+    } catch (e) {
+      UI.toast('Ошибка разбора Perplexity: ' + e.message, 'error');
+    } finally {
+      if (impBtn) { impBtn.disabled = false; impBtn.textContent = '📥 Из Perplexity'; }
+    }
+  },
+
+  openZenBoard(lessonId = null, fallbackStudentId = null) {
+    const ls = lessonId ? this.lessons.find(l => l.id === lessonId) : null;
+    const stId = ls?.student_id || fallbackStudentId || document.getElementById('ls-student')?.value;
+    const st = this.students.find(s => s.id === stId) || { name: 'Ученик', grade: '' };
+    const dossier = this.parseStudentDossier(st);
+    const topicVal = (!document.getElementById('lesson-modal')?.classList.contains('hidden') && document.getElementById('ls-topic')?.value)
+      ? document.getElementById('ls-topic').value
+      : (ls?.topic || 'English Practice Session');
+    const hwVal = (!document.getElementById('lesson-modal')?.classList.contains('hidden') && document.getElementById('ls-homework')?.value)
+      ? document.getElementById('ls-homework').value
+      : ((ls?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').trim());
+
+    let overlay = document.getElementById('student-zen-board-overlay');
+    if (overlay) overlay.remove();
+    overlay = document.createElement('div');
+    overlay.id = 'student-zen-board-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:var(--bg-primary);color:var(--text-primary);display:flex;flex-direction:column;padding:28px 40px;overflow-y:auto;';
+    overlay.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-light);padding-bottom:16px;margin-bottom:24px;">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#0d9488);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;">🇬🇧</div>
+          <div>
+            <div style="font-size:13px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Student Live Board • ${this.escapeHtml(st.name)} ${st.grade ? `(${this.escapeHtml(st.grade)})` : ''}</div>
+            <div style="font-size:24px;font-weight:800;color:var(--text-primary);">${this.escapeHtml(topicVal)}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div id="zen-timer-display" style="font-family:monospace;font-size:20px;font-weight:800;padding:6px 14px;border-radius:12px;background:var(--bg-surface);border:1px solid var(--border-light);color:var(--accent);">00:00</div>
+          <button type="button" class="btn btn-secondary" id="zen-btn-game" style="border-radius:12px;">🎮 5-Min Game</button>
+          <button type="button" class="btn btn-secondary" onclick="TutoringPage.launchPerplexity('${st.id}', '${ls?.id || ''}')" style="border-radius:12px;color:#0d9488;">🔮 Perplexity</button>
+          <button type="button" class="btn btn-primary" id="zen-btn-close" style="border-radius:12px;">✕ Закрыть экран</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;flex:1;min-height:0;">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div style="font-size:14px;font-weight:700;color:var(--text-secondary);display:flex;justify-content:space-between;align-items:center;">
+            <span>✍️ Interactive Whiteboard (Доска урока — можно печатать вместе)</span>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="navigator.clipboard.writeText(document.getElementById('zen-whiteboard-area').value);UI.toast('Записи с доски скопированы!','success')">📋 Скопировать доску</button>
+          </div>
+          <textarea id="zen-whiteboard-area" class="form-input" style="flex:1;min-height:380px;font-size:18px;line-height:1.6;padding:20px;border-radius:16px;background:var(--bg-surface);border:1px solid var(--border-light);resize:none;" placeholder="Type examples, new words, sentences, and exercises here during screen sharing..."></textarea>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:18px;">
+          <div class="glass-panel" style="padding:18px;border-radius:16px;background:var(--bg-surface);border:1px solid var(--border-light);">
+            <div style="font-size:13px;font-weight:700;color:var(--accent);text-transform:uppercase;margin-bottom:8px;">📚 Active Vocabulary Bank</div>
+            <div style="font-size:15px;line-height:1.6;color:var(--text-primary);white-space:pre-wrap;">${this.escapeHtml(dossier.vocab || 'No active vocabulary saved yet.')}</div>
+          </div>
+          <div class="glass-panel" style="padding:18px;border-radius:16px;background:var(--bg-surface);border:1px solid var(--border-light);flex:1;">
+            <div style="font-size:13px;font-weight:700;color:var(--success);text-transform:uppercase;margin-bottom:8px;">🏠 Homework / Next Steps</div>
+            <div id="zen-hw-box" style="font-size:14px;line-height:1.6;color:var(--text-primary);white-space:pre-wrap;">${this.escapeHtml(hwVal || 'Homework will appear here at the end of the lesson.')}</div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    let sec = 0;
+    const timerInt = setInterval(() => {
+      sec++;
+      const m = String(Math.floor(sec / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      const el = document.getElementById('zen-timer-display');
+      if (el) el.textContent = `${m}:${s}`;
+    }, 1000);
+    document.getElementById('zen-btn-close').onclick = () => {
+      clearInterval(timerInt);
+      overlay.remove();
+    };
+    document.getElementById('zen-btn-game').onclick = async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = '⏳ Generating...';
+      try {
+        const gameText = await Gemini.generateTutoringAI('game_5min', { name: st.name, grade: st.grade, ...dossier }, { topic: topicVal });
+        const wb = document.getElementById('zen-whiteboard-area');
+        if (wb) wb.value = (wb.value ? wb.value + '\n\n' : '') + '🎮 5-MINUTE GAME:\n' + gameText;
+      } catch (err) {
+        UI.toast('Ошибка ИИ: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🎮 5-Min Game';
+      }
+    };
   },
 
   escapeHtml(str) {

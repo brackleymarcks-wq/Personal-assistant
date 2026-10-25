@@ -798,6 +798,42 @@ const Gemini = {
     return data.choices?.[0]?.message?.content?.trim() || '';
   },
 
+  async parsePerplexityLesson(rawText, studentName = 'Ученик') {
+    const settings = await DB.getSettings();
+    const apiKey = Config.geminiKey || settings?.api_key;
+    const apiUrl = Config.aiApiUrl || settings?.api_url || DEFAULT_API_URL;
+    const model = Config.aiModel || settings?.model || DEFAULT_MODEL;
+    if (!apiKey) throw new Error('API ключ не настроен.');
+
+    const sysPrompt = `Ты — ИИ-парсер конспектов уроков английского из Perplexity Spaces.
+Преподаватель вставляет сырой текст (ответ Perplexity с планом урока, упражнениями, словами или конспектом).
+Твоя задача — извлечь структурированные данные и вернуть СТРОГО валидный JSON без markdown-обертки:
+{
+  "topic": "Краткая и емкая тема урока (например: Past Simple vs Past Continuous + Travel Vocab)",
+  "homework": "Готовое домашнее задание для ученика БЕЗ ответов/ключей преподавателя (чистый текст, который можно отправить ученику)",
+  "new_vocab": "Новые слова и фразы из этого урока через запятую (только английские слова/коллокации, до 10-12 штук)",
+  "parent_msg": "Готовое дружелюбное сообщение для ученика/родителей в Telegram по итогам урока (с темой и домашним заданием без ответов)"
+}`;
+    const data = await this._callAPI(
+      apiUrl,
+      apiKey,
+      model,
+      sysPrompt,
+      [{ role: 'user', content: `Ученик: ${studentName}\n\nТекст из Perplexity:\n${rawText}` }],
+      true
+    );
+    let jsonStr = data.choices?.[0]?.message?.content?.trim() || '{}';
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    }
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+    }
+    return JSON.parse(jsonStr);
+  },
+
   async autoFillKnowledge(content) {
     const apiKey = Config.geminiKey;
     const apiUrl = Config.aiApiUrl;
@@ -869,6 +905,8 @@ const Gemini = {
     } else if (mode === 'monthly_report') {
       const historyLines = (allLessons || []).slice(0, 8).map(l => `- ${new Date(l.date).toLocaleDateString('ru-RU')}: ${l.topic || 'Практика'} (ДЗ: ${(l.homework || '—').split('\n')[0]})`).join('\n');
       prompt = `Составь красивый "📊 Отчёт о прогрессе ученика" за последние занятия (для отправки родителям или самому ученику в Telegram).\nПройденные уроки:\n${historyLines || 'Нет записанных тем'}\n\nСтруктура отчёта:\n1. 🌟 Главные достижения и пройденные темы\n2. 📈 Над какими ошибками и навыками мы сейчас работаем\n3. 🎯 План и фокус на следующие 4 занятия\nПиши вдохновляюще, структурно, с эмодзи, готовым текстом для пересылки!`;
+    } else if (mode === 'game_5min') {
+      prompt = `До конца урока осталось 5-7 минут! Создай живую, увлекательную устную мини-игру на 5 минут по теме "${currentLesson.topic || 'Повторение и лексика'}", используя активный словарь, типичные ошибки и интересы ученика.\nВыбери один из форматов: "Детективное расследование / Алиби", "Угадай слово по 3 подсказкам (Taboo)", "2 правды и 1 ложь с ловушками на грамматику" или "Блиц-аукцион ошибок".\nПиши сразу готовый сценарий и реплики для преподавателя (с правильными ответами в скобках)!`;
     }
 
     const data = await this._callAPI(
@@ -880,6 +918,42 @@ const Gemini = {
       true
     );
     return data.choices?.[0]?.message?.content?.trim() || '';
+  },
+
+  async parsePerplexityLesson(rawText, studentName = 'Ученик') {
+    const settings = await DB.getSettings();
+    const apiKey = Config.geminiKey || settings?.api_key;
+    const apiUrl = Config.aiApiUrl || settings?.api_url || DEFAULT_API_URL;
+    const model = Config.aiModel || settings?.model || DEFAULT_MODEL;
+    if (!apiKey) throw new Error('API ключ не настроен.');
+
+    const sysPrompt = `Ты — ИИ-парсер конспектов уроков английского из Perplexity Spaces.
+Преподаватель вставляет сырой текст (ответ Perplexity с планом урока, упражнениями, словами или конспектом).
+Твоя задача — извлечь структурированные данные и вернуть СТРОГО валидный JSON без markdown-обертки:
+{
+  "topic": "Краткая и емкая тема урока (например: Past Simple vs Past Continuous + Travel Vocab)",
+  "homework": "Готовое домашнее задание для ученика БЕЗ ответов/ключей преподавателя (чистый текст, который можно отправить ученику)",
+  "new_vocab": "Новые слова и фразы из этого урока через запятую (только английские слова/коллокации, до 10-12 штук)",
+  "parent_msg": "Готовое дружелюбное сообщение для ученика/родителей в Telegram по итогам урока (с темой и домашним заданием без ответов)"
+}`;
+    const data = await this._callAPI(
+      apiUrl,
+      apiKey,
+      model,
+      sysPrompt,
+      [{ role: 'user', content: `Ученик: ${studentName}\n\nТекст из Perplexity:\n${rawText}` }],
+      true
+    );
+    let jsonStr = data.choices?.[0]?.message?.content?.trim() || '{}';
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    }
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+    }
+    return JSON.parse(jsonStr);
   },
 
   async generateHomework(studentName, grade, topic, extraContext = {}) {
@@ -923,6 +997,42 @@ const Gemini = {
 
     const data = await res.json();
     return data.choices?.[0]?.message?.content?.trim() || '';
+  },
+
+  async parsePerplexityLesson(rawText, studentName = 'Ученик') {
+    const settings = await DB.getSettings();
+    const apiKey = Config.geminiKey || settings?.api_key;
+    const apiUrl = Config.aiApiUrl || settings?.api_url || DEFAULT_API_URL;
+    const model = Config.aiModel || settings?.model || DEFAULT_MODEL;
+    if (!apiKey) throw new Error('API ключ не настроен.');
+
+    const sysPrompt = `Ты — ИИ-парсер конспектов уроков английского из Perplexity Spaces.
+Преподаватель вставляет сырой текст (ответ Perplexity с планом урока, упражнениями, словами или конспектом).
+Твоя задача — извлечь структурированные данные и вернуть СТРОГО валидный JSON без markdown-обертки:
+{
+  "topic": "Краткая и емкая тема урока (например: Past Simple vs Past Continuous + Travel Vocab)",
+  "homework": "Готовое домашнее задание для ученика БЕЗ ответов/ключей преподавателя (чистый текст, который можно отправить ученику)",
+  "new_vocab": "Новые слова и фразы из этого урока через запятую (только английские слова/коллокации, до 10-12 штук)",
+  "parent_msg": "Готовое дружелюбное сообщение для ученика/родителей в Telegram по итогам урока (с темой и домашним заданием без ответов)"
+}`;
+    const data = await this._callAPI(
+      apiUrl,
+      apiKey,
+      model,
+      sysPrompt,
+      [{ role: 'user', content: `Ученик: ${studentName}\n\nТекст из Perplexity:\n${rawText}` }],
+      true
+    );
+    let jsonStr = data.choices?.[0]?.message?.content?.trim() || '{}';
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    }
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+    }
+    return JSON.parse(jsonStr);
   },
 
   async transcribeAudio(audioBlob) {
