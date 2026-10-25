@@ -325,7 +325,7 @@ const TutoringPage = {
                   ${st.name.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <div style="font-weight:700;font-size:16px;color:var(--text-primary);">${this.escapeHtml(st.name)}</div>
+                  <div style="font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:6px;">${this.escapeHtml(st.name)}${dossier.streak > 0 ? `<span title="Ударный режим ученика (ДЗ подряд)" style="font-size:11px;padding:1px 6px;border-radius:10px;background:rgba(249,115,22,0.15);color:#f97316;font-weight:800;">🔥 ${dossier.streak}</span>` : ''}</div>
                   <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${this.escapeHtml(st.grade || 'Уровень не указан')}</div>
                 </div>
               </div>
@@ -519,7 +519,8 @@ const TutoringPage = {
       document.getElementById('st-perplexity').value.trim(),
       document.getElementById('st-unit').value.trim(),
       document.getElementById('st-tg-id').value.trim(),
-      document.getElementById('st-tg-user').value.trim()
+      document.getElementById('st-tg-user').value.trim(),
+      id ? this.parseStudentDossier(this.students.find(s => s.id === id)).streak : 0
     );
     if (false) {
     const notes = document.getElementById('st-notes').value.trim();
@@ -527,6 +528,12 @@ const TutoringPage = {
       schedule += '\\n[ЗАМЕТКИ]:\\n' + notes;
     }
 
+    }
+    if (id) {
+      const oldLs = this.lessons.find(l => l.id === id);
+      if (false && oldLs) {
+        homework = (homework ? homework + '\n' : '') + '[ПЕРЕНЕСЕН_В_ТГ]';
+      }
     }
     const data = {
       name,
@@ -674,11 +681,23 @@ const TutoringPage = {
     if (!student_id || !dStr) return UI.toast('Заполните обязательные поля', 'warning');
 
     let homework = document.getElementById('ls-homework').value;
+    if (id) {
+      const prevLsObj = this.lessons.find(l => l.id === id);
+      if (prevLsObj && prevLsObj.status === 'Запланирован' && new Date(prevLsObj.date).getTime() !== new Date(dStr).getTime() && !homework.includes('[ПЕРЕНЕСЕН_В_ТГ]')) {
+        homework = (homework ? homework + '\n' : '') + '[ПЕРЕНЕСЕН_В_ТГ]';
+      }
+    }
     const materials = document.getElementById('ls-materials').value.trim();
     { if (materials) {
       homework += '\\n[МАТЕРИАЛЫ]:\\n' + materials;
     }
 
+    }
+    if (id) {
+      const oldLs = this.lessons.find(l => l.id === id);
+      if (false && oldLs) {
+        homework = (homework ? homework + '\n' : '') + '[ПЕРЕНЕСЕН_В_ТГ]';
+      }
     }
     const data = {
       student_id,
@@ -841,15 +860,16 @@ const TutoringPage = {
       const idx = raw.indexOf(tag);
       if (idx === -1) return '';
       const rest = raw.slice(idx + tag.length);
-      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:/);
+      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:/);
       return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
     };
-    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:/);
+    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:/);
     const schedule = (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim();
     return {
       schedule,
       tgId: getSec('[TG_ID]:'),
       tgUser: getSec('[TG_USER]:'),
+      streak: parseInt(getSec('[СТРИК]:') || '0', 10) || 0,
       perplexity: getSec('[PERPLEXITY]:'),
       unit: getSec('[УЧЕБНИК]:'),
       interests: getSec('[ИНТЕРЕСЫ]:'),
@@ -859,10 +879,11 @@ const TutoringPage = {
     };
   },
 
-  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '') {
+  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '', streak = 0) {
     let out = schedule || '';
     if (tgId) out += `\\n[TG_ID]:\\n${tgId}`;
     if (tgUser) out += `\\n[TG_USER]:\\n${tgUser}`;
+    if (streak) out += `\\n[СТРИК]:\\n${streak}`;
     if (perplexity) out += `\\n[PERPLEXITY]:\\n${perplexity}`;
     if (unit) out += `\\n[УЧЕБНИК]:\\n${unit}`;
     if (interests) out += `\\n[ИНТЕРЕСЫ]:\\n${interests}`;
@@ -1025,7 +1046,7 @@ const TutoringPage = {
       if (parsed.new_vocab) {
         const dossier = this.parseStudentDossier(st);
         const existingVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
-        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser);
+        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak);
         await DB.updateStudent(st.id, { schedule: newSchedule });
         st.schedule = newSchedule;
       }

@@ -511,12 +511,13 @@ function parseStudentDossierBot(st) {
     const idx = raw.indexOf(tag);
     if (idx === -1) return '';
     const rest = raw.slice(idx + tag.length);
-    const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:/);
+    const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:/);
     return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
   };
-  const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:/);
+  const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:/);
   return {
     schedule: (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim(),
+    streak: parseInt(getSec('[СТРИК]:'), 10) || 0,
     tgId: getSec('[TG_ID]:'),
     tgUser: getSec('[TG_USER]:'),
     perplexity: getSec('[PERPLEXITY]:'),
@@ -532,6 +533,7 @@ function serializeStudentDossierBot(doss) {
   let out = doss.schedule || '';
   if (doss.tgId) out += `\\n[TG_ID]:\\n${doss.tgId}`;
   if (doss.tgUser) out += `\\n[TG_USER]:\\n${doss.tgUser}`;
+  if (doss.streak) out += `\\n[СТРИК]:\\n${doss.streak}`;
   if (doss.perplexity) out += `\\n[PERPLEXITY]:\\n${doss.perplexity}`;
   if (doss.unit) out += `\\n[УЧЕБНИК]:\\n${doss.unit}`;
   if (doss.interests) out += `\\n[ИНТЕРЕСЫ]:\\n${doss.interests}`;
@@ -539,6 +541,18 @@ function serializeStudentDossierBot(doss) {
   if (doss.vocab) out += `\\n[СЛОВАРЬ]:\\n${doss.vocab}`;
   if (doss.notes) out += `\\n[ЗАМЕТКИ]:\\n${doss.notes}`;
   return out;
+}
+
+const activeStudentQuizzes = new Map();
+
+async function incrementStudentStreakBot(st) {
+  if (!st || !st.id) return 1;
+  const doss = parseStudentDossierBot(st);
+  doss.streak = (parseInt(doss.streak, 10) || 0) + 1;
+  const newSched = serializeStudentDossierBot(doss);
+  await db.from('students').update({ schedule: newSched }).eq('id', st.id);
+  st.schedule = newSched;
+  return doss.streak;
 }
 
 async function findStudentByTgChatId(chatIdStr) {
@@ -570,9 +584,13 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
   if (lesson?.topic) msg += `📚 *Тема:* ${lesson.topic}\n`;
   if (doss.vocab) msg += `🔤 *Полезные слова (Vocabulary):* ${doss.vocab}\n`;
   if (rawHw) msg += `\n📌 *Домашнее задание:*\n${rawHw}\n`;
-  msg += `\n_Когда выполнишь — нажми кнопку ниже или просто отправь мне сюда свой ответ (текстом или фото тетрадки)!_ 💪`;
+  if (doss.streak > 0) msg += `🔥 *Твоя серия (Streak):* ${doss.streak} ДЗ подряд без пропусков!\n`;
+  msg += `\n_Когда выполнишь — нажми кнопку ниже, пришли фото/текст или запиши голосовое на английском!_ 💪`;
 
-  const kb = [[{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lesson.id}` }]];
+  const kb = [
+    [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lesson.id}` }],
+    [{ text: '🎯 Потренировать мои слова (Мини-квиз)', callback_data: 'student_quiz' }]
+  ];
   try {
     await bot.sendMessage(doss.tgId, msg, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
       return bot.sendMessage(doss.tgId, msg, { reply_markup: { inline_keyboard: kb } });
@@ -1944,7 +1962,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     const welcomeSt = `👋 *Привет, ${st.name}!*\nЯ бот-помощник Игоря по английскому языку 🇬🇧\n\nСюда я буду присылать:\n• 📌 Твои домашние задания и новые слова после урока\n• ⏰ Напоминания перед занятием, чтобы ничего не забыть\n\nА ещё ты можешь прямо сюда *отправлять выполненную домашку* (текстом или фотографией тетрадки) — я сразу передам её Игорю!`;
     await bot.sendMessage(incomingChatId, welcomeSt, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }]] }
+      reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }]] }
     }).catch(() => bot.sendMessage(incomingChatId, welcomeSt));
 
     await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Ученик подключился к боту!*\n👤 *${st.name}* (${doss.tgUser || 'ID: ' + incomingChatId}) нажал Start.\nТеперь бот будет сам отправлять ему ДЗ и напоминалки в личку! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
@@ -1956,7 +1974,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     if (found) {
       return bot.sendMessage(incomingChatId, `👋 Привет, *${found.student.name}*! Нажми кнопку ниже, чтобы посмотреть своё домашнее задание, или просто отправь мне сюда выполненное ДЗ (текстом или фото тетрадки)! 🇬🇧`, {
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }]] }
+        reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }]] }
       });
     }
     return bot.sendMessage(incomingChatId, '🔒 Это закрытый бот для учеников по английскому языку. Пожалуйста, перейдите по персональной ссылке-приглашению от преподавателя!');
@@ -2234,6 +2252,22 @@ bot.on('callback_query', async (query) => {
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
+  } else if (data === 'student_quiz') {
+    try {
+      const found = await findStudentByTgChatId(chatId);
+      if (!found) return bot.answerCallbackQuery(query.id, { text: 'Профиль ученика не найден', show_alert: true });
+      const st = found.student;
+      const doss = found.dossier;
+      await bot.answerCallbackQuery(query.id, { text: '🎯 Готовлю персональный мини-квиз...' });
+      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+      const quizPrompt = `Ты — дружелюбный игровой ИИ-тренер по английскому для ученика ${st.name} (${st.grade || ''}).\nСловарь ученика: ${doss.vocab || 'общая лексика по уровню'}.\nТипичные ошибки: ${doss.errors || 'грамматика времени'}.\nИнтересы: ${doss.interests || 'игры, фильмы, путешествия'}.\nПоследняя тема: ${lastLs?.topic || 'English practice'}.\n\nСоставь КОМПАКТНЫЙ (до 800 символов) увлекательный мини-квиз из 3 коротких вопросов (1: выбрать правильный вариант A/B/C, 2: вставить пропущенное слово в предложение по интересам ученика, 3: перевести короткую фразу на английский). НЕ пиши ответы сразу! Скажи ученику: "Напиши ответы 1, 2, 3 в ответном сообщении (или скажи голосом!), и я сразу проверю!"`;
+      const planRes = await executeFunctionCall('generate_lesson_plan', { prompt: quizPrompt });
+      const quizText = planRes.generated_plan || '1. Choose: I (was/were) happy yesterday.\n2. Translate: Я люблю путешествовать.\n3. Make a sentence with your favourite hobby!';
+      activeStudentQuizzes.set(String(chatId), { quizText, studentName: st.name });
+      await bot.sendMessage(chatId, `🎯 *Мини-тренажёр слов (${st.name}):*\n\n${quizText}`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, quizText));
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
   } else if (data === 'student_my_hw') {
     try {
       const found = await findStudentByTgChatId(chatId);
@@ -2259,7 +2293,11 @@ bot.on('callback_query', async (query) => {
         await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${ls.homework || ''}`.trim() }).eq('id', lessonId);
       }
       await bot.answerCallbackQuery(query.id, { text: '🎉 Супер! Отметил, что ДЗ готово!' });
-      await bot.sendMessage(chatId, `🎉 *Молодец, ${stName}!*\nЯ передал Игорю, что ты выполнил(а) домашнее задание! Если хочешь — можешь также прислать сюда фото тетрадки или текст ответа 🌟`, { parse_mode: 'Markdown' }).catch(() => {});
+      const newStreak = await incrementStudentStreakBot(ls?.students);
+      await bot.sendMessage(chatId, `🎉 *Молодец, ${stName}!*\nЯ передал Игорю, что ты выполнил(а) домашнее задание!\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд без пропусков! (+10 XP)* 🏆\n\nЕсли хочешь — можешь прислать сюда фото тетрадки, ответ текстом/голосом или потренировать слова в мини-квизе:`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '🎯 Потренировать мои слова (Мини-квиз)', callback_data: 'student_quiz' }]] }
+      }).catch(() => {});
       const cleanHw = (ls?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim();
       await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *${stName}* нажал(а) кнопку **«Я сделал(а) ДЗ!»**\n📌 Задание: _${cleanHw || 'Без текста'}_`, {
         parse_mode: 'Markdown',
@@ -3004,8 +3042,55 @@ bot.on('message', async (msg) => {
     const found = await findStudentByTgChatId(chatId);
     if (!found) return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
     const st = found.student;
-    const studentText = msg.text || '[Голосовое/медиа сообщение]';
-    await bot.sendMessage(chatId, `✅ Супер, *${st.name}*! Я передал твой ответ Игорю на проверку! 🌟`, { parse_mode: 'Markdown' }).catch(() => {});
+    let studentText = msg.text || '';
+    const isVoiceSubmission = !!(msg.voice || msg.video_note);
+    if (isVoiceSubmission) {
+      try {
+        bot.sendChatAction(chatId, 'typing');
+        const fId = msg.voice ? msg.voice.file_id : msg.video_note.file_id;
+        const fExt = msg.voice ? 'ogg' : 'mp4';
+        const fLink = await bot.getFileLink(fId);
+        const fRes = await fetch(fLink);
+        if (fRes.ok) {
+          const fBuf = await fRes.arrayBuffer();
+          studentText = (await transcribeAudio(fBuf, `student_${st.id}.${fExt}`)) || '';
+        }
+      } catch (ve) {
+        console.error('Student voice transcribe error:', ve.message);
+      }
+    }
+
+    if (activeStudentQuizzes.has(String(chatId)) && studentText) {
+      const quizObj = activeStudentQuizzes.get(String(chatId));
+      activeStudentQuizzes.delete(String(chatId));
+      const newStreak = await incrementStudentStreakBot(st);
+      const evalPrompt = `Ученик ${st.name} (${st.grade || ''}) решал твой мини-квиз по английскому:\nКВИЗ:\n${quizObj.quizText}\n\nОТВЕТЫ УЧЕНИКА:\n"${studentText}"\n\nПроверь ответы дружелюбно и понятно (обращайся напрямую к ученику ${st.name} на "ты", до 800 символов): похвали за правильные ответы, мягко объясни ошибки (если есть) и поздравь с серией 🔥 ${newStreak} выполненных заданий подряд!`;
+      const evalRes = await executeFunctionCall('generate_lesson_plan', { prompt: evalPrompt });
+      const feedback = evalRes.generated_plan || `Отличная работа, ${st.name}! 🔥 Твоя серия: ${newStreak}!`;
+      await bot.sendMessage(chatId, `🌟 *Проверка твоего мини-квиза:*\n\n${feedback}\n\n🔥 *Твой стрик: ${newStreak} (+10 XP)*`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '🎯 Ещё один мини-квиз!', callback_data: 'student_quiz' }]] }
+      }).catch(() => bot.sendMessage(chatId, feedback));
+      await bot.sendMessage(ADMIN_CHAT_ID, `🔥 *${st.name}* сам(а) прошёл(ла) мини-квиз по словам в боте! (Стрик: ${newStreak})\nОтветы ученика: «${studentText}»`, { parse_mode: 'Markdown' }).catch(() => {});
+      return;
+    }
+
+    const newStreak = await incrementStudentStreakBot(st);
+    if (isVoiceSubmission && studentText) {
+      const speakPrompt = `Ученик ${st.name} (${st.grade || ''}) прислал голосовое сообщение на английском (Speaking practice).\nРаспознанная речь ученика:\n"${studentText}"\n\nНапиши короткий (до 700 символов), очень тёплый и вдохновляющий разбор напрямую для ученика ${st.name}: похвали за смелость и разговорную практику, отметь удачные фразы и мягко подскажи 1-2 улучшения (как сказать ещё естественнее/правильнее).`;
+      const speakRes = await executeFunctionCall('generate_lesson_plan', { prompt: speakPrompt });
+      const speakFeedback = speakRes.generated_plan || 'Отличная разговорная практика! Так держать!';
+      await bot.sendMessage(chatId, `🎤 *Я распознал твою речь:*\n_${studentText}_\n\n🇬🇧 *Разбор Speaking:*\n${speakFeedback}\n\n🔥 *+15 XP за Speaking! Твоя серия: ${newStreak} подряд!* 🏆`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, speakFeedback));
+    } else {
+      await bot.sendMessage(chatId, `✅ Супер, *${st.name}*! Я передал твой ответ Игорю на проверку! 🌟\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+10 XP)*`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '🎯 Потренировать мои слова', callback_data: 'student_quiz' }]] }
+      }).catch(() => {});
+    }
+    if (!studentText) studentText = '[Голосовое/медиа сообщение]';
+    if (false) {
+    await bot.sendMessage( chatId, `✅ Супер, *${st.name}*! Я передал твой ответ Игорю на проверку! 🌟`, { parse_mode: 'Markdown' }).catch(() => {});
+    }
     const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
     if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
       await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
@@ -3402,6 +3487,23 @@ cron.schedule('* * * * *', async () => {
 
     // 2. Проверка Уроков (Репетиторство) - Напоминание за 15 минут
     // 2а. Очередь мгновенной отправки ДЗ с веб-сайта ([ОТПРАВИТЬ_В_ТГ]) и напоминание ученику за 3 часа до урока
+    const { data: rescheduledLessons } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[ПЕРЕНЕСЕН_В_ТГ]%');
+    if (rescheduledLessons && rescheduledLessons.length > 0) {
+      for (const rls of rescheduledLessons) {
+        const cleanedHw = (rls.homework || '').replace('[ПЕРЕНЕСЕН_В_ТГ]', '').trim();
+        await db.from('lessons').update({ homework: cleanedHw }).eq('id', rls.id);
+        if (rls.students) {
+          const doss = parseStudentDossierBot(rls.students);
+          if (doss.tgId) {
+            const newTimeStr = new Date(rls.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+            await bot.sendMessage(doss.tgId, `🕒 *Привет, ${rls.students.name}!*\nОбрати внимание: время нашего урока английского изменилось!\n📅 *Новое время:* ${newTimeStr}\nДо встречи на занятии! 🇬🇧`, { parse_mode: 'Markdown' }).catch(() => {});
+            if (CHAT_ID) {
+              bot.sendMessage(CHAT_ID, `🕒 Ученику *${rls.students.name}* автоматически отправлено уведомление о переносе урока на *${newTimeStr}*!`, { parse_mode: 'Markdown' }).catch(() => {});
+            }
+          }
+        }
+      }
+    }
     const { data: queuedHwLessons } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[ОТПРАВИТЬ_В_ТГ]%');
     if (queuedHwLessons && queuedHwLessons.length > 0) {
       for (const qls of queuedHwLessons) {
