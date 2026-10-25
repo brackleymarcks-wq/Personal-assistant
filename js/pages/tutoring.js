@@ -93,6 +93,12 @@ const TutoringPage = {
                 <input id="st-schedule" type="text" class="form-input" placeholder="Например: Пн 18:00, Вс утро" />
               </div>
               <div class="form-group">
+                <label class="form-label">📱 Telegram ученика (@username или привязка к ТГ-боту для авто-напоминаний ДЗ)</label>
+                <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+                  <input id="st-tg-user" type="text" class="form-input" placeholder="Например: @sonya_eng" style="flex:1;" />
+                  <input id="st-tg-id" type="hidden" />
+                  <button type="button" id="st-btn-copy-tg-link" class="btn btn-secondary btn-xs" style="padding:8px 10px;white-space:nowrap;" title="Скопировать персональную ссылку, чтобы ученик нажал Start в боте и получал авто-напоминания о ДЗ">🔗 Ссылка для бота</button>
+                </div>
                 <label class="form-label">🔮 Ссылка на Perplexity Space ученика</label>
                 <input id="st-perplexity" type="url" class="form-input" placeholder="https://www.perplexity.ai/collections/..." style="margin-bottom:10px;" />
                 <label class="form-label">📖 Учебник / Текущий Unit (программа РБ)</label>
@@ -143,6 +149,7 @@ const TutoringPage = {
                   <button type="button" id="ls-btn-perplexity" class="btn btn-primary btn-xs" style="font-size:11px;padding:6px 10px;background:linear-gradient(135deg,#0d9488,#0284c7);border:none;color:#fff;display:flex;align-items:center;gap:5px;" title="Скопировать умный промпт со всей памятью об ученике и открыть его Perplexity Space">🔮 В Perplexity Space (копировать промпт)</button>
                   <button type="button" id="ls-btn-import-perplexity" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;border-color:rgba(13,148,136,0.4);color:#0d9488;" title="Вставить готовый конспект из Perplexity — ИИ сам заполнит тему, чистое ДЗ без ключей и пополнит словарь">📥 Из Perplexity</button>
                   <button type="button" id="ls-btn-zen-board" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;" title="Открыть чистый экран для демонстрации ученику в Zoom/Telegram (без цен и заметок)">🖥 Экран ученика</button>
+                  <button type="button" id="ls-btn-send-tg" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#3b82f6;border-color:rgba(59,130,246,0.35);" title="Отправить домашнее задание и слова урока напрямую ученику в Telegram через бота">📨 Отправить ДЗ ученику в ТГ</button>
                 </div>
                 <div id="ls-memory-banner" style="margin-bottom:12px;"></div>
                 <label class="form-label">Тема урока</label>
@@ -343,6 +350,12 @@ const TutoringPage = {
                   <i data-lucide="coins" style="width:12px;height:12px;"></i> Оплатить долг
                 </button>
               ` : ''}
+              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.copyStudentBotInvite('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px; color:${dossier.tgId ? 'var(--success)' : '#3b82f6'};" title="${dossier.tgId ? 'Ученик подключён к ТГ-боту (нажми, чтобы скопировать ссылку снова)' : 'Скопировать ссылку-приглашение в ТГ-бота для авто-напоминаний ДЗ'}">
+                ${dossier.tgId ? '🟢 ТГ-бот' : '🔗 В ТГ-бот'}
+              </button>
+              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.sendHwToStudentTelegram('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;" title="Отправить / напомнить последнее домашнее задание ученику в Telegram">
+                📨 ДЗ в ТГ
+              </button>
               <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.launchPerplexity('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px; color:#0d9488; border-color:rgba(13,148,136,0.35); background:rgba(13,148,136,0.06);" title="Скопировать промпт с памятью об ученике и открыть его Perplexity Space">
                 🔮 Perplexity
               </button>
@@ -454,7 +467,14 @@ const TutoringPage = {
     document.getElementById('st-grade').value = st ? (st.grade || '') : '';
     document.getElementById('st-price').value = st ? st.price : 0;
     
-    const dossier = st ? this.parseStudentDossier(st) : { schedule: '', perplexity: '', unit: '', interests: '', errors: '', vocab: '', notes: '' };
+    const dossier = st ? this.parseStudentDossier(st) : { schedule: '', tgId: '', tgUser: '', perplexity: '', unit: '', interests: '', errors: '', vocab: '', notes: '' };
+    document.getElementById('st-tg-user').value = dossier.tgUser || '';
+    document.getElementById('st-tg-id').value = dossier.tgId || '';
+    const copyTgBtn = document.getElementById('st-btn-copy-tg-link');
+    if (copyTgBtn) {
+      copyTgBtn.textContent = dossier.tgId ? '🟢 Подключён (копировать ссылку)' : '🔗 Ссылка привязки к боту';
+      copyTgBtn.onclick = () => st ? this.copyStudentBotInvite(st.id) : UI.toast('Сначала сохраните карточку ученика', 'warning');
+    }
     document.getElementById('st-perplexity').value = dossier.perplexity || '';
     document.getElementById('st-unit').value = dossier.unit || '';
     document.getElementById('st-schedule').value = dossier.schedule;
@@ -497,7 +517,9 @@ const TutoringPage = {
       document.getElementById('st-vocab').value.trim(),
       document.getElementById('st-notes').value.trim(),
       document.getElementById('st-perplexity').value.trim(),
-      document.getElementById('st-unit').value.trim()
+      document.getElementById('st-unit').value.trim(),
+      document.getElementById('st-tg-id').value.trim(),
+      document.getElementById('st-tg-user').value.trim()
     );
     if (false) {
     const notes = document.getElementById('st-notes').value.trim();
@@ -611,6 +633,8 @@ const TutoringPage = {
     if (impBtn) impBtn.onclick = () => this.importFromPerplexity(document.getElementById('ls-student').value, ls?.id);
     const zenBtn = document.getElementById('ls-btn-zen-board');
     if (zenBtn) zenBtn.onclick = () => this.openZenBoard(ls?.id, document.getElementById('ls-student').value);
+    const sendTgBtn = document.getElementById('ls-btn-send-tg');
+    if (sendTgBtn) sendTgBtn.onclick = () => this.sendHwToStudentTelegram(document.getElementById('ls-student').value, ls?.id);
     const aiBtn = document.getElementById('ls-generate-ai');
     aiBtn.onclick = async () => {
       const student_id = document.getElementById('ls-student').value;
@@ -817,13 +841,15 @@ const TutoringPage = {
       const idx = raw.indexOf(tag);
       if (idx === -1) return '';
       const rest = raw.slice(idx + tag.length);
-      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:/);
+      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:/);
       return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
     };
-    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК)\]:/);
+    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER)\]:/);
     const schedule = (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim();
     return {
       schedule,
+      tgId: getSec('[TG_ID]:'),
+      tgUser: getSec('[TG_USER]:'),
       perplexity: getSec('[PERPLEXITY]:'),
       unit: getSec('[УЧЕБНИК]:'),
       interests: getSec('[ИНТЕРЕСЫ]:'),
@@ -833,8 +859,10 @@ const TutoringPage = {
     };
   },
 
-  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '') {
+  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '') {
     let out = schedule || '';
+    if (tgId) out += `\\n[TG_ID]:\\n${tgId}`;
+    if (tgUser) out += `\\n[TG_USER]:\\n${tgUser}`;
     if (perplexity) out += `\\n[PERPLEXITY]:\\n${perplexity}`;
     if (unit) out += `\\n[УЧЕБНИК]:\\n${unit}`;
     if (interests) out += `\\n[ИНТЕРЕСЫ]:\\n${interests}`;
@@ -872,7 +900,8 @@ const TutoringPage = {
     const ebb = this.getEbbinghausLesson(studentId, lessonDate);
     const prevHwRaw = prev ? ((prev.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].trim()) : '';
     const isChecked = prevHwRaw.includes('[ДЗ_ПРОВЕРЕНО]');
-    const cleanHw = prevHwRaw.replace('[ДЗ_ПРОВЕРЕНО]', '').trim();
+    const isSubmitted = prevHwRaw.includes('[ДЗ_СДАНО]');
+    const cleanHw = prevHwRaw.replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').replace('[ОТПРАВИТЬ_В_ТГ]', '').trim();
 
     banner.innerHTML = `
       <div style="padding:10px 12px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:12px;display:flex;flex-direction:column;gap:4px;">
@@ -881,7 +910,7 @@ const TutoringPage = {
           ${prev ? `<span style="font-size:11px;color:var(--text-muted);">Прошлый урок: ${new Date(prev.date).toLocaleDateString('ru-RU')}</span>` : ''}
         </div>
         ${prev ? `<div>⏪ <b>Прошлая тема:</b> ${this.escapeHtml(prev.topic || 'Не указана')}</div>` : '<div style="color:var(--text-muted);">Проведённых уроков пока нет</div>'}
-        ${cleanHw ? `<div style="color:${isChecked ? 'var(--success)' : 'var(--warning)'};">📌 <b>Заданное ДЗ:</b> ${this.escapeHtml(cleanHw)} ${isChecked ? '✅ (Проверено)' : `<button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:1px 6px;margin-left:6px;" onclick="TutoringPage.markPrevHwChecked('${prev.id}').then(()=>TutoringPage.renderLessonMemoryBanner('${studentId}'))">✅ Отметить проверенным</button>`}</div>` : ''}
+        ${cleanHw ? `<div style="color:${isChecked ? 'var(--success)' : 'var(--warning)'};">📌 <b>Заданное ДЗ:</b> ${this.escapeHtml(cleanHw)} ${isSubmitted && !isChecked ? '<span style="color:var(--accent);font-weight:700;">📬 (Сдано учеником в ТГ!)</span>' : ''} ${isChecked ? '✅ (Проверено)' : `<button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:1px 6px;margin-left:6px;" onclick="TutoringPage.markPrevHwChecked('${prev.id}').then(()=>TutoringPage.renderLessonMemoryBanner('${studentId}'))">✅ Отметить проверенным</button>`}</div>` : ''}
         ${ebb ? `<div style="color:#0d9488;font-weight:600;">🔄 <b>Кривая Эббингауза (повторить тему ~2 нед. назад, ${new Date(ebb.date).toLocaleDateString('ru-RU')}):</b> ${this.escapeHtml(ebb.topic)}</div>` : ''}
         ${dossier.unit ? `<div>📖 <b>Учебник / Unit:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}
         ${dossier.errors ? `<div>⚠️ <b>Слабые места:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}
@@ -996,7 +1025,7 @@ const TutoringPage = {
       if (parsed.new_vocab) {
         const dossier = this.parseStudentDossier(st);
         const existingVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
-        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit);
+        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser);
         await DB.updateStudent(st.id, { schedule: newSchedule });
         st.schedule = newSchedule;
       }
@@ -1094,6 +1123,65 @@ const TutoringPage = {
         btn.textContent = '🎮 5-Min Game';
       }
     };
+  },
+
+  async copyStudentBotInvite(studentId) {
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return;
+    let botUser = '';
+    try {
+      const settings = await DB.getSettings();
+      botUser = settings?.context?.bot_username || '';
+    } catch (e) {}
+    if (!botUser) {
+      botUser = prompt('Введите @username вашего Telegram-бота (без @, один раз):', '') || '';
+      botUser = botUser.replace('@', '').trim();
+    }
+    if (!botUser) return;
+    const link = `https://t.me/${botUser}?start=st_${st.id}`;
+    const inviteText = `Привет! 👋 Подключись, пожалуйста, к моему боту по английскому языку (нажми Start / Запустить) — туда будет автоматически приходить домашка, слова урока и напоминалки:\n${link}`;
+    try {
+      await navigator.clipboard.writeText(inviteText);
+      UI.toast(`🔗 Приглашение для ${st.name} скопировано в буфер обмена! Отправь его ученику в ТГ.`, 'success');
+    } catch (e) {
+      prompt('Скопируйте приглашение для ученика:', inviteText);
+    }
+  },
+
+  async sendHwToStudentTelegram(studentId, lessonId = null) {
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return UI.toast('Выберите ученика', 'warning');
+    const dossier = this.parseStudentDossier(st);
+    let ls = lessonId ? this.lessons.find(l => l.id === lessonId) : null;
+    if (!ls || !ls.homework) {
+      ls = this.getPrevConductedLesson(studentId);
+    }
+    const modalOpen = !document.getElementById('lesson-modal')?.classList.contains('hidden');
+    const currentHwText = modalOpen ? document.getElementById('ls-homework')?.value?.trim() : '';
+    const currentTopicText = modalOpen ? document.getElementById('ls-topic')?.value?.trim() : '';
+
+    if (dossier.tgId) {
+      if (modalOpen && currentHwText && ls) {
+        await DB.updateLesson(ls.id, { topic: currentTopicText || ls.topic, homework: `[ОТПРАВИТЬ_В_ТГ] ${currentHwText}` });
+      } else if (ls && ls.homework) {
+        const clean = ls.homework.replace('[ОТПРАВИТЬ_В_ТГ]', '').trim();
+        await DB.updateLesson(ls.id, { homework: `[ОТПРАВИТЬ_В_ТГ] ${clean}` });
+      } else {
+        return UI.toast('Сначала укажите домашнее задание в уроке!', 'warning');
+      }
+      UI.toast(`📨 Команда передана боту! В течение минуты бот отправит ДЗ в личку ${st.name} в Telegram.`, 'success');
+      return;
+    }
+
+    const hwToUse = currentHwText || ((ls?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim());
+    if (dossier.tgUser) {
+      const cleanUser = dossier.tgUser.replace('@', '').trim();
+      const textMsg = `Привет, ${st.name}! 👋 Напоминаю про домашнее задание по английскому:\n📌 ${hwToUse || 'Повторить слова и тему прошлого урока'}`;
+      window.open(`https://t.me/${cleanUser}?text=${encodeURIComponent(textMsg)}`, '_blank');
+      return;
+    }
+    UI.toast(`Ученик ${st.name} ещё не подключён к ТГ-боту — копирую ссылку-приглашение!`, 'info');
+    await this.copyStudentBotInvite(studentId);
   },
 
   escapeHtml(str) {
