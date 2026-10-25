@@ -99,6 +99,12 @@ const TutoringPage = {
                   <input id="st-tg-id" type="hidden" />
                   <button type="button" id="st-btn-copy-tg-link" class="btn btn-secondary btn-xs" style="padding:8px 10px;white-space:nowrap;" title="Скопировать персональную ссылку, чтобы ученик нажал Start в боте и получал авто-напоминания о ДЗ">🔗 Ссылка для бота</button>
                 </div>
+                <label class="form-label">👨‍👩‍👧 Telegram родителя (@username или привязка к ТГ-боту для авто-отчётов по урокам)</label>
+                <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+                  <input id="st-parent-tg-user" type="text" class="form-input" placeholder="Например: @mama_soni" style="flex:1;" />
+                  <input id="st-parent-tg-id" type="hidden" />
+                  <button type="button" id="st-btn-copy-parent-link" class="btn btn-secondary btn-xs" style="padding:8px 10px;white-space:nowrap;color:#8b5cf6;border-color:rgba(139,92,246,0.35);" title="Скопировать персональную ссылку для родителя, чтобы ему приходили отчёты после уроков">👨‍👩‍👧 Ссылка родителю</button>
+                </div>
                 <label class="form-label">🔮 Ссылка на Perplexity Space ученика</label>
                 <input id="st-perplexity" type="url" class="form-input" placeholder="https://www.perplexity.ai/collections/..." style="margin-bottom:10px;" />
                 <label class="form-label">📖 Учебник / Текущий Unit (программа РБ)</label>
@@ -150,6 +156,7 @@ const TutoringPage = {
                   <button type="button" id="ls-btn-import-perplexity" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;border-color:rgba(13,148,136,0.4);color:#0d9488;" title="Вставить готовый конспект из Perplexity — ИИ сам заполнит тему, чистое ДЗ без ключей и пополнит словарь">📥 Из Perplexity</button>
                   <button type="button" id="ls-btn-zen-board" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;" title="Открыть чистый экран для демонстрации ученику в Zoom/Telegram (без цен и заметок)">🖥 Экран ученика</button>
                   <button type="button" id="ls-btn-send-tg" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#3b82f6;border-color:rgba(59,130,246,0.35);" title="Отправить домашнее задание и слова урока напрямую ученику в Telegram через бота">📨 Отправить ДЗ ученику в ТГ</button>
+                  <button type="button" id="ls-btn-send-parent-tg" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#8b5cf6;border-color:rgba(139,92,246,0.35);" title="Сгенерировать и отправить отчёт об этом уроке родителю в Telegram">👨‍👩‍👧 Отчёт родителю в ТГ</button>
                 </div>
                 <div id="ls-memory-banner" style="margin-bottom:12px;"></div>
                 <label class="form-label">Тема урока</label>
@@ -353,6 +360,9 @@ const TutoringPage = {
               <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.copyStudentBotInvite('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px; color:${dossier.tgId ? 'var(--success)' : '#3b82f6'};" title="${dossier.tgId ? 'Ученик подключён к ТГ-боту (нажми, чтобы скопировать ссылку снова)' : 'Скопировать ссылку-приглашение в ТГ-бота для авто-напоминаний ДЗ'}">
                 ${dossier.tgId ? '🟢 ТГ-бот' : '🔗 В ТГ-бот'}
               </button>
+              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.copyParentBotInvite('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px; color:${dossier.parentTgId ? 'var(--success)' : '#8b5cf6'};" title="${dossier.parentTgId ? 'Родитель подключён к ТГ-боту (нажми, чтобы скопировать ссылку снова)' : 'Скопировать ссылку-приглашение в ТГ-бота для родителя (авто-отчёты по урокам)'}">
+                ${dossier.parentTgId ? '🟢 Родитель' : '👨‍👩‍👧 Родителю'}
+              </button>
               <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.sendHwToStudentTelegram('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;" title="Отправить / напомнить последнее домашнее задание ученику в Telegram">
                 📨 ДЗ в ТГ
               </button>
@@ -475,6 +485,15 @@ const TutoringPage = {
       copyTgBtn.textContent = dossier.tgId ? '🟢 Подключён (копировать ссылку)' : '🔗 Ссылка привязки к боту';
       copyTgBtn.onclick = () => st ? this.copyStudentBotInvite(st.id) : UI.toast('Сначала сохраните карточку ученика', 'warning');
     }
+    const pUserEl = document.getElementById('st-parent-tg-user');
+    if (pUserEl) pUserEl.value = dossier.parentTgUser || '';
+    const pIdEl = document.getElementById('st-parent-tg-id');
+    if (pIdEl) pIdEl.value = dossier.parentTgId || '';
+    const copyParentBtn = document.getElementById('st-btn-copy-parent-link');
+    if (copyParentBtn) {
+      copyParentBtn.textContent = dossier.parentTgId ? '🟢 Родитель подключён (ссылка)' : '👨‍👩‍👧 Ссылка родителю';
+      copyParentBtn.onclick = () => st ? this.copyParentBotInvite(st.id) : UI.toast('Сначала сохраните карточку ученика', 'warning');
+    }
     document.getElementById('st-perplexity').value = dossier.perplexity || '';
     document.getElementById('st-unit').value = dossier.unit || '';
     document.getElementById('st-schedule').value = dossier.schedule;
@@ -520,7 +539,9 @@ const TutoringPage = {
       document.getElementById('st-unit').value.trim(),
       document.getElementById('st-tg-id').value.trim(),
       document.getElementById('st-tg-user').value.trim(),
-      id ? this.parseStudentDossier(this.students.find(s => s.id === id)).streak : 0
+      id ? this.parseStudentDossier(this.students.find(s => s.id === id)).streak : 0,
+      document.getElementById('st-parent-tg-id')?.value?.trim() || '',
+      document.getElementById('st-parent-tg-user')?.value?.trim() || ''
     );
     if (false) {
     const notes = document.getElementById('st-notes').value.trim();
@@ -642,6 +663,8 @@ const TutoringPage = {
     if (zenBtn) zenBtn.onclick = () => this.openZenBoard(ls?.id, document.getElementById('ls-student').value);
     const sendTgBtn = document.getElementById('ls-btn-send-tg');
     if (sendTgBtn) sendTgBtn.onclick = () => this.sendHwToStudentTelegram(document.getElementById('ls-student').value, ls?.id);
+    const sendParentTgBtn = document.getElementById('ls-btn-send-parent-tg');
+    if (sendParentTgBtn) sendParentTgBtn.onclick = () => this.sendReportToParentTelegram(document.getElementById('ls-student').value, ls?.id);
     const aiBtn = document.getElementById('ls-generate-ai');
     aiBtn.onclick = async () => {
       const student_id = document.getElementById('ls-student').value;
@@ -713,6 +736,17 @@ const TutoringPage = {
     const wasPaid = ls ? ls.paid : false;
     const isPaidNow = data.paid;
     const isConductedNow = data.status === 'Проведен';
+    const wasConducted = ls ? ls.status === 'Проведен' : false;
+    if (isConductedNow && !wasConducted) {
+      const stObj = this.students.find(s => s.id === student_id);
+      const dossObj = stObj ? this.parseStudentDossier(stObj) : {};
+      if (dossObj.tgId && data.homework && !data.homework.includes('[ОТПРАВИТЬ_В_ТГ]')) {
+        data.homework = `[ОТПРАВИТЬ_В_ТГ] ${data.homework}`;
+      }
+      if (dossObj.parentTgId && !data.homework.includes('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]')) {
+        data.homework = `${data.homework || ''} [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]`.trim();
+      }
+    }
     
     let createTx = false;
     if (!wasPaid && isPaidNow && isConductedNow) {
@@ -860,15 +894,17 @@ const TutoringPage = {
       const idx = raw.indexOf(tag);
       if (idx === -1) return '';
       const rest = raw.slice(idx + tag.length);
-      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:/);
+      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:/);
       return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
     };
-    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:/);
+    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:/);
     const schedule = (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim();
     return {
       schedule,
       tgId: getSec('[TG_ID]:'),
       tgUser: getSec('[TG_USER]:'),
+      parentTgId: getSec('[PARENT_TG_ID]:'),
+      parentTgUser: getSec('[PARENT_TG_USER]:'),
       streak: parseInt(getSec('[СТРИК]:') || '0', 10) || 0,
       perplexity: getSec('[PERPLEXITY]:'),
       unit: getSec('[УЧЕБНИК]:'),
@@ -879,10 +915,12 @@ const TutoringPage = {
     };
   },
 
-  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '', streak = 0) {
+  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '', streak = 0, parentTgId = '', parentTgUser = '') {
     let out = schedule || '';
     if (tgId) out += `\\n[TG_ID]:\\n${tgId}`;
     if (tgUser) out += `\\n[TG_USER]:\\n${tgUser}`;
+    if (parentTgId) out += `\\n[PARENT_TG_ID]:\\n${parentTgId}`;
+    if (parentTgUser) out += `\\n[PARENT_TG_USER]:\\n${parentTgUser}`;
     if (streak) out += `\\n[СТРИК]:\\n${streak}`;
     if (perplexity) out += `\\n[PERPLEXITY]:\\n${perplexity}`;
     if (unit) out += `\\n[УЧЕБНИК]:\\n${unit}`;
@@ -949,7 +987,15 @@ const TutoringPage = {
     try {
       const report = await Gemini.generateTutoringAI('monthly_report', { name: st.name, grade: st.grade, ...dossier }, {}, stLessons[0], stLessons);
       try { await navigator.clipboard.writeText(report); } catch (e) {}
-      alert(`📊 ОТЧЁТ О ПРОГРЕССЕ (${st.name}) — скопирован в буфер обмена!\n\n${report}`);
+      if (dossier.parentTgId || dossier.parentTgUser) {
+        if (confirm(`📊 ОТЧЁТ О ПРОГРЕССЕ (${st.name}) скопирован в буфер обмена!\n\nОтправить этот отчёт родителю в Telegram прямо сейчас?\n\n---\n${report}`)) {
+          await this.sendReportToParentTelegram(studentId, stLessons[0]?.id, report);
+        }
+      } else {
+        if (confirm(`📊 ОТЧЁТ О ПРОГРЕССЕ (${st.name}) — скопирован в буфер обмена!\n\nРодитель ещё не привязан к ТГ-боту. Скопировать ссылку-приглашение для родителя?\n\n---\n${report}`)) {
+          await this.copyParentBotInvite(studentId);
+        }
+      }
     } catch (e) {
       UI.toast('Ошибка генерации отчёта: ' + e.message, 'error');
     }
@@ -1046,7 +1092,7 @@ const TutoringPage = {
       if (parsed.new_vocab) {
         const dossier = this.parseStudentDossier(st);
         const existingVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
-        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak);
+        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser);
         await DB.updateStudent(st.id, { schedule: newSchedule });
         st.schedule = newSchedule;
       }
@@ -1203,6 +1249,63 @@ const TutoringPage = {
     }
     UI.toast(`Ученик ${st.name} ещё не подключён к ТГ-боту — копирую ссылку-приглашение!`, 'info');
     await this.copyStudentBotInvite(studentId);
+  },
+
+  async copyParentBotInvite(studentId) {
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return;
+    let botUser = '';
+    try {
+      const settings = await DB.getSettings();
+      botUser = settings?.context?.bot_username || '';
+    } catch (e) {}
+    if (!botUser) {
+      botUser = prompt('Введите @username вашего Telegram-бота (без @, один раз):', '') || '';
+      botUser = botUser.replace('@', '').trim();
+    }
+    if (!botUser) return;
+    const link = `https://t.me/${botUser}?start=pr_${st.id}`;
+    const inviteText = `Здравствуйте! 👋 Подключитесь, пожалуйста, к электронному дневнику по английскому языку для ${st.name} (нажмите Start / Запустить по ссылке) — туда будут автоматически приходить отчёты после наших уроков, пройденные темы и прогресс:\n${link}`;
+    try {
+      await navigator.clipboard.writeText(inviteText);
+      UI.toast(`👨‍👩‍👧 Ссылка-приглашение для родителя (${st.name}) скопирована в буфер! Отправь её маме/папе в ТГ.`, 'success');
+    } catch (e) {
+      prompt('Скопируйте приглашение для родителя:', inviteText);
+    }
+  },
+
+  async sendReportToParentTelegram(studentId, lessonId = null, customReportText = '') {
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return UI.toast('Выберите ученика', 'warning');
+    const dossier = this.parseStudentDossier(st);
+    let ls = lessonId ? this.lessons.find(l => l.id === lessonId) : null;
+    if (!ls) ls = this.getPrevConductedLesson(studentId);
+    const modalOpen = !document.getElementById('lesson-modal')?.classList.contains('hidden');
+    const currentHwText = modalOpen ? document.getElementById('ls-homework')?.value?.trim() : '';
+    const currentTopicText = modalOpen ? document.getElementById('ls-topic')?.value?.trim() : '';
+
+    if (dossier.parentTgId) {
+      if (ls) {
+        const baseHw = (modalOpen && currentHwText) ? currentHwText : (ls.homework || '');
+        const clean = baseHw.replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
+        await DB.updateLesson(ls.id, {
+          topic: (modalOpen && currentTopicText) ? currentTopicText : ls.topic,
+          homework: `${clean} [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]`.trim()
+        });
+        UI.toast(`👨‍👩‍👧 Команда передана боту! В течение минуты ИИ-отчёт об уроке уйдёт родителю (${st.name}) в Telegram.`, 'success');
+        return;
+      }
+    }
+
+    const reportText = customReportText || await Gemini.generateTutoringAI('parent_msg', { name: st.name, grade: st.grade, ...dossier }, { topic: currentTopicText || ls?.topic || 'Английский язык', homework: currentHwText || ls?.homework || '' }, ls);
+    try { await navigator.clipboard.writeText(reportText); } catch (e) {}
+    if (dossier.parentTgUser) {
+      const cleanUser = dossier.parentTgUser.replace('@', '').trim();
+      window.open(`https://t.me/${cleanUser}?text=${encodeURIComponent(reportText)}`, '_blank');
+      return;
+    }
+    UI.toast(`Родитель (${st.name}) ещё не подключён к ТГ-боту — отчёт скопирован, копирую также ссылку-приглашение родителю!`, 'info');
+    await this.copyParentBotInvite(studentId);
   },
 
   escapeHtml(str) {

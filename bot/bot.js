@@ -511,15 +511,17 @@ function parseStudentDossierBot(st) {
     const idx = raw.indexOf(tag);
     if (idx === -1) return '';
     const rest = raw.slice(idx + tag.length);
-    const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:/);
+    const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:/);
     return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
   };
-  const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|СТРИК)\]:/);
+  const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:/);
   return {
     schedule: (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim(),
     streak: parseInt(getSec('[СТРИК]:'), 10) || 0,
     tgId: getSec('[TG_ID]:'),
     tgUser: getSec('[TG_USER]:'),
+    parentTgId: getSec('[PARENT_TG_ID]:'),
+    parentTgUser: getSec('[PARENT_TG_USER]:'),
     perplexity: getSec('[PERPLEXITY]:'),
     unit: getSec('[УЧЕБНИК]:'),
     interests: getSec('[ИНТЕРЕСЫ]:'),
@@ -533,6 +535,8 @@ function serializeStudentDossierBot(doss) {
   let out = doss.schedule || '';
   if (doss.tgId) out += `\\n[TG_ID]:\\n${doss.tgId}`;
   if (doss.tgUser) out += `\\n[TG_USER]:\\n${doss.tgUser}`;
+  if (doss.parentTgId) out += `\\n[PARENT_TG_ID]:\\n${doss.parentTgId}`;
+  if (doss.parentTgUser) out += `\\n[PARENT_TG_USER]:\\n${doss.parentTgUser}`;
   if (doss.streak) out += `\\n[СТРИК]:\\n${doss.streak}`;
   if (doss.perplexity) out += `\\n[PERPLEXITY]:\\n${doss.perplexity}`;
   if (doss.unit) out += `\\n[УЧЕБНИК]:\\n${doss.unit}`;
@@ -564,6 +568,52 @@ async function findStudentByTgChatId(chatIdStr) {
     }
   }
   return null;
+}
+
+async function findParentByTgChatId(chatIdStr) {
+  const { data: sts } = await db.from('students').select('*');
+  for (const st of (sts || [])) {
+    const doss = parseStudentDossierBot(st);
+    if (doss.parentTgId && String(doss.parentTgId).trim() === String(chatIdStr).trim()) {
+      return { student: st, dossier: doss };
+    }
+  }
+  return null;
+}
+
+async function sendParentLessonReportBot(st, lesson) {
+  if (!st) return { sent: false, reason: 'no_student' };
+  const doss = parseStudentDossierBot(st);
+  if (!doss.parentTgId) return { sent: false, reason: 'no_parent_tg_id' };
+  const rawHw = (lesson?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0]
+    .replace('[ДЗ_ПРОВЕРЕНО]', '')
+    .replace('[ДЗ_СДАНО]', '')
+    .replace('[ОТПРАВИТЬ_В_ТГ]', '')
+    .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
+    .replace('[ПЕРЕНЕСЕН_В_ТГ]', '')
+    .trim();
+  const dateStr = lesson?.date ? new Date(lesson.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' }) : 'сегодня';
+  const prompt = `Ты — вежливый, внимательный преподаватель английского языка Игорь. Составь КОРОТКИЙ (до 700 символов) тёплый отчёт для родителей ученика ${st.name} (${st.grade || ''}) по итогам проведённого урока (${dateStr}).\nТема урока: "${lesson?.topic || 'Практика английского по программе'}".\nАктивный словарь: "${doss.vocab || 'по теме урока'}".\nНад какими ошибками/правилами работали: "${doss.errors || 'грамматика и говорение'}".\nДомашнее задание: "${rawHw || 'повторить лексику урока'}".\nУдарный режим (Streak): ${doss.streak || 0} ДЗ подряд.\nСтруктура: Приветствие ("Здравствуйте! 👋"), что сегодня разобрали и за что можно похвалить ${st.name}, над чем работаем и какое задано ДЗ. Пиши сразу готовый текст сообщения для родителей!`;
+  let aiReport = '';
+  try {
+    const planRes = await executeFunctionCall('generate_lesson_plan', { prompt });
+    aiReport = planRes.generated_plan || '';
+  } catch (e) {}
+  if (!aiReport) {
+    aiReport = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${st.name}* (${dateStr}).\n\n📚 *Тема урока:* ${lesson?.topic || 'Практика и разбор правил'}\n${doss.vocab ? `🔤 *Слова урока:* ${doss.vocab}\n` : ''}${rawHw ? `📌 *Домашнее задание:* ${rawHw}\n` : ''}Спасибо за поддержку! 🌟`;
+  }
+  const kb = [
+    [{ text: '📊 Запросить сводный отчёт о прогрессе', callback_data: `parent_req_report:${st.id}` }],
+    [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
+  ];
+  try {
+    await bot.sendMessage(doss.parentTgId, aiReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
+      return bot.sendMessage(doss.parentTgId, aiReport, { reply_markup: { inline_keyboard: kb } });
+    });
+    return { sent: true };
+  } catch (e) {
+    return { sent: false, reason: e.message };
+  }
 }
 
 async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLessonDateStr = '') {
@@ -1487,6 +1537,8 @@ async function executeFunctionCall(name, args) {
         if (lesson && args.homework) {
           const sendRes = await sendHomeworkToStudentBot(st, lesson, false);
           if (sendRes.sent) autoSentNote = `\n📨 *Домашнее задание автоматически отправлено ${st.name} в личку Telegram!*`;
+          const pRes = await sendParentLessonReportBot(st, lesson);
+          if (pRes.sent) autoSentNote += `\n👨‍👩‍👧 *Отчёт об уроке автоматически отправлен родителю (${st.name}) в Telegram!*`;
         }
         return { success: true, lesson, message: `Урок с ${st.name} успешно добавлен!` + (args.paid && st.price > 0 ? ` Записан доход ${st.price} BYN.` : '') + (args.student_errors ? `\n⚠️ В досье ученика записана ошибка: ${args.student_errors}` : '') + autoSentNote + `\n\n${followUpMsg}` };
       }
@@ -1942,6 +1994,38 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
   const incomingChatId = String(msg.chat.id);
   const payload = (match && match[1]) ? match[1].trim() : '';
 
+  if (payload.startsWith('pr_')) {
+    const studentId = payload.slice(3).trim();
+    const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+    if (!st) {
+      return bot.sendMessage(incomingChatId, '❌ Профиль ученика не найден. Попросите преподавателя отправить актуальную ссылку.');
+    }
+    if (incomingChatId === ADMIN_CHAT_ID) {
+      const botUser = BOT_USERNAME || (await bot.getMe().then(m => m.username).catch(() => ''));
+      const link = `https://t.me/${botUser}?start=pr_${st.id}`;
+      return bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Проверка ссылки для родителя (${st.name}):*\nСсылка активна! Перешли её маме/папе:\n\`${link}\`\n\n_(Когда родитель нажмёт «Запустить» со своего аккаунта, его Telegram ID автоматически привяжется к карточке ${st.name})_`, { parse_mode: 'Markdown' });
+    }
+    const doss = parseStudentDossierBot(st);
+    doss.parentTgId = incomingChatId;
+    if (msg.from?.username) doss.parentTgUser = '@' + msg.from.username;
+    const newSched = serializeStudentDossierBot(doss);
+    await db.from('students').update({ schedule: newSched }).eq('id', st.id);
+
+    const welcomeParent = `Здравствуйте! 👋\nВы подключились к электронному дневнику успеваемости ученика *${st.name}* по английскому языку (преподаватель — Игорь) 🇬🇧\n\nСюда я буду автоматически присылать:\n• 📝 *Отчёты после каждого проведённого урока* (тема, успехи, домашнее задание)\n• 📊 *Аналитику прогресса и выученных тем*\n\nВы также можете в любой момент нажать кнопки ниже, чтобы посмотреть актуальное домашнее задание или запросить свежий отчёт об успеваемости:`;
+    await bot.sendMessage(incomingChatId, welcomeParent, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }],
+          [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
+        ]
+      }
+    }).catch(() => bot.sendMessage(incomingChatId, welcomeParent));
+
+    await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Родитель подключился к боту!*\nРодитель ученика *${st.name}* (${doss.parentTgUser || 'ID: ' + incomingChatId}) нажал Start.\nТеперь отчёты после проведённых уроков будут уходить родителю автоматически! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+    return;
+  }
+
   if (payload.startsWith('st_')) {
     const studentId = payload.slice(3).trim();
     const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
@@ -1977,6 +2061,18 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
         reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }]] }
       });
     }
+    const parentFound = await findParentByTgChatId(incomingChatId);
+    if (parentFound) {
+      return bot.sendMessage(incomingChatId, `Здравствуйте! 👋 Это электронный дневник ученика *${parentFound.student.name}* по английскому языку. Выберите нужное действие ниже:`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${parentFound.student.id}` }],
+            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${parentFound.student.id}` }]
+          ]
+        }
+      });
+    }
     return bot.sendMessage(incomingChatId, '🔒 Это закрытый бот для учеников по английскому языку. Пожалуйста, перейдите по персональной ссылке-приглашению от преподавателя!');
   }
   if (false) {
@@ -1993,7 +2089,20 @@ bot.on('photo', async (msg) => {
   var chatId = msg.chat.id;
   if (String(chatId) !== ADMIN_CHAT_ID) {
     const found = await findStudentByTgChatId(chatId);
-    if (!found) return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
+    if (!found) {
+      const parentFound = await findParentByTgChatId(chatId);
+      if (parentFound) {
+        const pSt = parentFound.student;
+        await bot.sendMessage(chatId, `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику *${pSt.name}*).`, {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: [[{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }]] }
+        }).catch(() => {});
+        await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 "${msg.text || '[Медиа/Голосовое]'}"`, { parse_mode: 'Markdown' }).catch(() => {});
+        await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+        return;
+      }
+      return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
+    }
     const st = found.student;
     await bot.sendMessage(chatId, `✅ Молодец, *${st.name}*! Я получил фото твоего домашнего задания и уже переслал его Игорю на проверку! 🌟`, { parse_mode: 'Markdown' }).catch(() => {});
     const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
@@ -2252,6 +2361,62 @@ bot.on('callback_query', async (query) => {
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
+  } else if (data && data.startsWith('parent_req_report:')) {
+    const studentId = data.split(':')[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+      await bot.answerCallbackQuery(query.id, { text: '📊 Формирую отчёт об успеваемости...' });
+      const doss = parseStudentDossierBot(st);
+      const { data: recentLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(8);
+      const historyLines = (recentLs || []).map(l => `- ${new Date(l.date).toLocaleDateString('ru-RU')}: ${l.topic || 'Практика'} ${(l.homework || '').includes('[ДЗ_ПРОВЕРЕНО]') || (l.homework || '').includes('[ДЗ_СДАНО]') ? '(ДЗ выполнено ✅)' : ''}`).join('\n');
+      const prompt = `Ты — преподаватель английского Игорь. Составь структурированный, доброжелательный "📊 Отчёт об успеваемости" для родителей ученика ${st.name} (${st.grade || ''}).\nПройденные уроки:\n${historyLines || 'Занятия только начались'}\nТекущий учебник/программа: ${doss.unit || 'по уровню'}.\nАктивный словарь: ${doss.vocab || 'по темам уроков'}.\nЗоны роста (над чем работаем): ${doss.errors || 'разговорная практика и грамматика'}.\nУдарный режим выполнения ДЗ: ${doss.streak || 0} подряд.\nСтруктура:\n1. 🌟 Пройденные темы и главные успехи\n2. 📈 Над чем сейчас работаем особенно внимательно\n3. 🎯 План на ближайшие занятия\nПиши тепло, профессионально, до 1200 символов.`;
+      const planRes = await executeFunctionCall('generate_lesson_plan', { prompt });
+      const repText = planRes.generated_plan || `📊 *Сводка по ученику ${st.name}:*\nПройдено уроков в выборке: ${(recentLs || []).length}.\nУдарный режим ДЗ: 🔥 ${doss.streak || 0}`;
+      await bot.sendMessage(chatId, repText, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, repText));
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('parent_view_hw:')) {
+    const studentId = data.split(':')[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+      await bot.answerCallbackQuery(query.id, { text: '📚 Загружаю данные о ДЗ...' });
+      if (!lastLs) return bot.sendMessage(chatId, `По ученику *${st.name}* пока нет записанных уроков.`, { parse_mode: 'Markdown' });
+      const rawHw = (lastLs.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0];
+      const isDone = rawHw.includes('[ДЗ_СДАНО]') || rawHw.includes('[ДЗ_ПРОВЕРЕНО]');
+      const cleanHw = rawHw.replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').replace('[ОТПРАВИТЬ_В_ТГ]', '').replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
+      const dStr = new Date(lastLs.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+      const msg = `📚 *Текущее домашнее задание (${st.name}):*\n📅 Урок от: ${dStr}\n📖 *Тема:* ${lastLs.topic || 'Английский язык'}\n📌 *Задание:* ${cleanHw || 'Без письменного задания'}\n\nСтатус выполнения: ${isDone ? '✅ *Уже выполнено / сдано ребёнком!*' : '⏳ *В процессе выполнения*'}`;
+      await bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, msg));
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('teacher_send_parent_rep:')) {
+    const lessonId = data.split(':')[1];
+    try {
+      const { data: ls } = await db.from('lessons').select('*, students(*)').eq('id', lessonId).maybeSingle();
+      const st = ls?.students;
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      const doss = parseStudentDossierBot(st);
+      if (!doss.parentTgId) {
+        const botUser = BOT_USERNAME || (await bot.getMe().then(m => m.username).catch(() => ''));
+        const link = `https://t.me/${botUser}?start=pr_${st.id}`;
+        await bot.answerCallbackQuery(query.id, { text: 'Родитель ещё не привязан к боту!' });
+        return bot.sendMessage(chatId, `⚠️ Родитель ученика *${st.name}* ещё не нажал Start в боте.\nПерешли родителю эту ссылку один раз:\n\`${link}\``, { parse_mode: 'Markdown' });
+      }
+      await bot.answerCallbackQuery(query.id, { text: '👨‍👩‍👧 Генерирую и отправляю отчёт родителю...' });
+      const sendRes = await sendParentLessonReportBot(st, ls);
+      if (sendRes.sent) {
+        await bot.sendMessage(chatId, `👨‍👩‍👧 Отчёт по уроку успешно отправлен родителю ученика *${st.name}* в Telegram!`, { parse_mode: 'Markdown' });
+      } else {
+        await bot.sendMessage(chatId, `❌ Ошибка отправки родителю: ${sendRes.reason}`);
+      }
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
   } else if (data === 'student_quiz') {
     try {
       const found = await findStudentByTgChatId(chatId);
@@ -2462,7 +2627,11 @@ bot.on('callback_query', async (query) => {
         await createTransaction(price, 'income', 'Уроки (Английский)', `Оплата урока: ${stName}`, 'Карта');
       }
       await bot.answerCallbackQuery(query.id, { text: `✅ Урок проведён, +${price} BYN в доход!` });
-      await bot.editMessageText(`✅ Урок с *${stName}* отмечен как проведённый и оплаченный (+${price} BYN)!`, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }).catch(() => {});
+      if (lesson?.students) {
+        await sendHomeworkToStudentBot(lesson.students, lesson, false).catch(() => {});
+        await sendParentLessonReportBot(lesson.students, lesson).catch(() => {});
+      }
+      await bot.editMessageText(`✅ Урок с *${stName}* отмечен как проведённый и оплаченный (+${price} BYN)!`, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '👨‍👩‍👧 Отправить отчёт родителю', callback_data: `teacher_send_parent_rep:${lessonId}` }]] } }).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -2473,7 +2642,11 @@ bot.on('callback_query', async (query) => {
       await db.from('lessons').update({ status: 'Проведен', paid: false }).eq('id', lessonId);
       const stName = lesson?.students?.name || 'Ученик';
       await bot.answerCallbackQuery(query.id, { text: '⏳ Урок проведён (ждёт оплаты)' });
-      await bot.editMessageText(`⏳ Урок с *${stName}* проведён (ожидает оплаты).`, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }).catch(() => {});
+      if (lesson?.students) {
+        await sendHomeworkToStudentBot(lesson.students, lesson, false).catch(() => {});
+        await sendParentLessonReportBot(lesson.students, lesson).catch(() => {});
+      }
+      await bot.editMessageText(`⏳ Урок с *${stName}* проведён (ожидает оплаты).`, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '👨‍👩‍👧 Отправить отчёт родителю', callback_data: `teacher_send_parent_rep:${lessonId}` }]] } }).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -3040,7 +3213,20 @@ bot.on('message', async (msg) => {
   if (!CHAT_ID) CHAT_ID = ADMIN_CHAT_ID;
   if (String(chatId) !== ADMIN_CHAT_ID) {
     const found = await findStudentByTgChatId(chatId);
-    if (!found) return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
+    if (!found) {
+      const parentFound = await findParentByTgChatId(chatId);
+      if (parentFound) {
+        const pSt = parentFound.student;
+        await bot.sendMessage(chatId, `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику *${pSt.name}*).`, {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: [[{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }]] }
+        }).catch(() => {});
+        await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 "${msg.text || '[Медиа/Голосовое]'}"`, { parse_mode: 'Markdown' }).catch(() => {});
+        await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+        return;
+      }
+      return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
+    }
     const st = found.student;
     let studentText = msg.text || '';
     const isVoiceSubmission = !!(msg.voice || msg.video_note);
@@ -3500,6 +3686,19 @@ cron.schedule('* * * * *', async () => {
             if (CHAT_ID) {
               bot.sendMessage(CHAT_ID, `🕒 Ученику *${rls.students.name}* автоматически отправлено уведомление о переносе урока на *${newTimeStr}*!`, { parse_mode: 'Markdown' }).catch(() => {});
             }
+          }
+        }
+      }
+    }
+    const { data: queuedParentLessons } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]%');
+    if (queuedParentLessons && queuedParentLessons.length > 0) {
+      for (const pls of queuedParentLessons) {
+        const cleanedHw = (pls.homework || '').replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
+        await db.from('lessons').update({ homework: cleanedHw }).eq('id', pls.id);
+        if (pls.students) {
+          const pRes = await sendParentLessonReportBot(pls.students, { ...pls, homework: cleanedHw });
+          if (pRes.sent && CHAT_ID) {
+            bot.sendMessage(CHAT_ID, `👨‍👩‍👧 *С веб-сайта:* ИИ-отчёт об уроке успешно отправлен в Telegram родителю ученика *${pls.students.name}*!`, { parse_mode: 'Markdown' }).catch(() => {});
           }
         }
       }

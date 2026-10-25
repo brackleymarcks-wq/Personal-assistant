@@ -308,34 +308,34 @@
   <script src="config-env.js"></script>
   <script src="js/config.js"></script>
   <script src="js/prompts.js"></script>
-  <script src="js/db.js?v=16"></script>
-  <script src="js/gemini.js?v=16"></script>
+  <script src="js/db.js?v=17"></script>
+  <script src="js/gemini.js?v=17"></script>
   <script src="js/settings.js"></script>
   <script src="js/quickactions.js"></script>
   
   <!-- Page Modules -->
-  <script src="js/pages/dashboard.js?v=16"></script>
+  <script src="js/pages/dashboard.js?v=17"></script>
   <script src="js/pages/inbox.js"></script>
   <script src="js/pages/tasks.js?v=4"></script>
   <script src="js/pages/projects.js"></script>
   <script src="js/pages/calendar.js?v=4"></script>
-  <script src="js/pages/habits.js?v=16"></script>
+  <script src="js/pages/habits.js?v=17"></script>
   <script src="js/pages/goals.js"></script>
-  <script src="js/pages/tutoring.js?v=16"></script>
-  <script src="js/pages/knowledge.js?v=16"></script>
+  <script src="js/pages/tutoring.js?v=17"></script>
+  <script src="js/pages/knowledge.js?v=17"></script>
   <script src="js/pages/chat.js"></script>
   
   <!-- New v2.0 Pages -->
   <script src="js/pages/pomodoro.js"></script>
   <script src="js/pages/notes.js"></script>
-  <script src="js/pages/finances.js?v=16"></script>
+  <script src="js/pages/finances.js?v=17"></script>
   <script src="js/pages/analytics.js"></script>
   <script src="js/pages/gantt.js"></script><script src="js/pages/archive.js"></script>
   <script src="js/pages/health.js"></script>
 
   <!-- Global UI Components -->
   <script src="js/entitySelect.js"></script>
-  <script src="js/chatWidget.js?v=16"></script>
+  <script src="js/chatWidget.js?v=17"></script>
 
   <!-- Main App -->
   <script src="js/peekView.js"></script>
@@ -346,7 +346,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         if (window.caches) { caches.keys().then(ks => ks.forEach(k => caches.delete(k))); }
-        navigator.serviceWorker.register('./sw.js?v=16').then(registration => { registration.update();
+        navigator.serviceWorker.register('./sw.js?v=17').then(registration => { registration.update();
           console.log('ServiceWorker registration successful');
         }).catch(err => {
           console.log('ServiceWorker registration failed: ', err);
