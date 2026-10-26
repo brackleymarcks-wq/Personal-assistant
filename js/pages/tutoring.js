@@ -612,9 +612,11 @@ const TutoringPage = {
       } else {
         container.innerHTML = list.map(ls => {
           const d = new Date(ls.date);
-          const isToday = d.toDateString() === now.toDateString();
-          const dateStr = d.toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
-          const timeStr = d.toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+          const nowMinskDay = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+          const lsMinskDay = d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+          const isToday = lsMinskDay === nowMinskDay;
+          const dateStr = d.toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day:'numeric', month:'short' });
+          const timeStr = d.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour:'2-digit', minute:'2-digit' });
           
           let statusColor = 'var(--accent)';
           let statusIcon = 'calendar';
@@ -624,13 +626,18 @@ const TutoringPage = {
           const studentName = ls.students?.name || 'Ученик';
 
           // Extract materials from homework
-          let displayHomework = ls.homework || '';
+          let rawHomework = ls.homework || '';
           let displayMaterials = '';
-          if (displayHomework.includes('\\n[МАТЕРИАЛЫ]:')) {
-            const parts = displayHomework.split('\\n[МАТЕРИАЛЫ]:');
-            displayHomework = parts[0];
+          if (rawHomework.includes('\n[МАТЕРИАЛЫ]:')) {
+            const parts = rawHomework.split('\n[МАТЕРИАЛЫ]:');
+            rawHomework = parts[0];
+            displayMaterials = parts[1].trim();
+          } else if (rawHomework.includes('\\n[МАТЕРИАЛЫ]:')) {
+            const parts = rawHomework.split('\\n[МАТЕРИАЛЫ]:');
+            rawHomework = parts[0];
             displayMaterials = parts[1].trim();
           }
+          let displayHomework = this.cleanHomeworkText(rawHomework);
 
           const prevDoneLesson = ls.status === 'Запланирован' ? this.getPrevConductedLesson(ls.student_id, ls.date) : null;
           const prevHwRaw = prevDoneLesson ? ((prevDoneLesson.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].trim()) : '';
@@ -814,12 +821,15 @@ const TutoringPage = {
     else if (studentId) sSelect.value = studentId;
 
     // Set date to now if new
-    const dStr = ls ? new Date(ls.date).toISOString().slice(0,16) : new Date().toLocaleString('sv-SE', {timeZone: 'Europe/Minsk'}).replace(' ', 'T').slice(0,16);
+    const dStr = ls 
+      ? new Date(ls.date).toLocaleString('sv-SE', {timeZone: 'Europe/Minsk'}).replace(' ', 'T').slice(0,16) 
+      : new Date().toLocaleString('sv-SE', {timeZone: 'Europe/Minsk'}).replace(' ', 'T').slice(0,16);
     document.getElementById('ls-date').value = dStr;
     
     document.getElementById('ls-topic').value = ls ? (ls.topic || '') : '';
     
     let displayHomework = ls ? (ls.homework || '') : '';
+    displayHomework = displayHomework.replace(/\[ПЕРЕНЕСЕН_В_ТГ\]/g, '').trim();
     
     // 1. Extract [ПРЕЗЕНТАЦИЯ]
     this.attachedPresentation = null;
@@ -999,10 +1009,14 @@ const TutoringPage = {
     const dStr = document.getElementById('ls-date').value;
     if (!student_id || !dStr) return UI.toast('Заполните обязательные поля', 'warning');
 
+    const targetDateIso = (dStr.includes('+') || dStr.includes('Z')) 
+      ? new Date(dStr).toISOString() 
+      : new Date(dStr + ':00+03:00').toISOString();
+
     let homework = document.getElementById('ls-homework').value;
     if (id) {
       const prevLsObj = this.lessons.find(l => l.id === id);
-      if (prevLsObj && prevLsObj.status === 'Запланирован' && new Date(prevLsObj.date).getTime() !== new Date(dStr).getTime() && !homework.includes('[ПЕРЕНЕСЕН_В_ТГ]')) {
+      if (prevLsObj && prevLsObj.status === 'Запланирован' && new Date(prevLsObj.date).getTime() !== new Date(targetDateIso).getTime() && !homework.includes('[ПЕРЕНЕСЕН_В_ТГ]')) {
         homework = (homework ? homework + '\n' : '') + '[ПЕРЕНЕСЕН_В_ТГ]';
       }
     }
@@ -1055,7 +1069,7 @@ const TutoringPage = {
     }
     const data = {
       student_id,
-      date: new Date(dStr).toISOString(),
+      date: targetDateIso,
       topic: document.getElementById('ls-topic').value,
       homework: homework,
       status: document.getElementById('ls-status').value,
@@ -1289,11 +1303,11 @@ const TutoringPage = {
       .replace(/\[КАСТОМНЫЙ_ОТЧЕТ\]:[\s\S]*?\[\/КАСТОМНЫЙ_ОТЧЕТ\]/g, '')
       .replace(/\[ОТЧЕТ_РОДИТЕЛЮ\]:[\s\S]*?\[\/ОТЧЕТ_РОДИТЕЛЮ\]/g, '')
       .split(/\\?n?\[МАТЕРИАЛЫ\]:/)[0]
-      .replace('[ДЗ_ПРОВЕРЕНО]', '')
-      .replace('[ДЗ_СДАНО]', '')
-      .replace('[ОТПРАВИТЬ_В_ТГ]', '')
-      .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
-      .replace('[ПЕРЕНЕСЕН_В_ТГ]', '')
+      .replace(/\[ДЗ_ПРОВЕРЕНО\]/g, '')
+      .replace(/\[ДЗ_СДАНО\]/g, '')
+      .replace(/\[ОТПРАВИТЬ_В_ТГ\]/g, '')
+      .replace(/\[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ\]/g, '')
+      .replace(/\[ПЕРЕНЕСЕН_В_ТГ\]/g, '')
       .trim();
   },
 
@@ -1466,13 +1480,13 @@ const TutoringPage = {
       <div style="padding:10px 12px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:12px;display:flex;flex-direction:column;gap:4px;">
         <div style="font-weight:700;color:var(--accent);display:flex;justify-content:space-between;align-items:center;">
           <span>🧠 Память по ученику: ${this.escapeHtml(st.name)}</span>
-          ${prev ? `<span style="font-size:11px;color:var(--text-muted);">Прошлый урок: ${new Date(prev.date).toLocaleDateString('ru-RU')}</span>` : ''}
+          ${prev ? `<span style="font-size:11px;color:var(--text-muted);">Прошлый урок: ${new Date(prev.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' })}</span>` : ''}
         </div>
         ${prev ? `<div>⏪ <b>Прошлая тема:</b> ${this.escapeHtml(prev.topic || 'Не указана')}</div>` : '<div style="color:var(--text-muted);">Проведённых уроков пока нет</div>'}
         ${cleanHw ? `<div style="color:${isChecked ? 'var(--success)' : 'var(--warning)'};">📌 <b>Заданное ДЗ:</b> ${this.escapeHtml(cleanHw)} ${isSubmitted && !isChecked ? '<span style="color:var(--accent);font-weight:700;">📬 (Сдано учеником в ТГ!)</span>' : ''} ${isChecked ? '✅ (Проверено)' : `<button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:1px 6px;margin-left:6px;" onclick="TutoringPage.markPrevHwChecked('${prev.id}').then(()=>TutoringPage.renderLessonMemoryBanner('${studentId}'))">✅ Отметить проверенным</button>`}</div>` : ''}
         ${hasPres ? `<div style="font-size:11px;color:#0d9488;">📎 <b>Материалы:</b> К прошлому уроку прикреплена презентация (PDF/PPTX)</div>` : ''}
         ${hasScenario ? `<div style="font-size:11px;color:#0d9488;">📋 <b>Сценарий:</b> В базе сохранён полный конспект урока</div>` : ''}
-        ${ebb ? `<div style="color:#0d9488;font-weight:600;">🔄 <b>Кривая Эббингауза (повторить тему ~2 нед. назад, ${new Date(ebb.date).toLocaleDateString('ru-RU')}):</b> ${this.escapeHtml(ebb.topic)}</div>` : ''}
+        ${ebb ? `<div style="color:#0d9488;font-weight:600;">🔄 <b>Кривая Эббингауза (повторить тему ~2 нед. назад, ${new Date(ebb.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' })}):</b> ${this.escapeHtml(ebb.topic)}</div>` : ''}
         ${dossier.unit ? `<div>📖 <b>Учебник / Unit:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}
         ${dossier.errors ? `<div>⚠️ <b>Слабые места:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}
         ${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}
@@ -2244,7 +2258,7 @@ const TutoringPage = {
     if (!initialReport) {
       const topic = currentTopicText || ls?.topic || 'Практика английского языка';
       const hwClean = this.cleanHomeworkText(currentHwText || ls?.homework || '');
-      const dateStr = ls?.date ? new Date(ls.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : 'сегодня';
+      const dateStr = ls?.date ? new Date(ls.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' }) : 'сегодня';
       initialReport = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${st.name}* (${dateStr}).\n\n📚 *Тема урока:* ${topic}\n${dossier.vocab ? `🔤 *Слова урока:* ${dossier.vocab}\n` : ''}${hwClean ? `📌 *Домашнее задание:* ${hwClean}\n` : ''}🔥 *Серия занятий (Streak):* ${dossier.streak || 0} ДЗ подряд!\n\nСпасибо за поддержку! 🌟`;
     }
 
