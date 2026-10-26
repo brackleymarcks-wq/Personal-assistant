@@ -601,7 +601,8 @@ async function findParentByTgChatId(chatIdStr) {
 async function sendParentLessonReportBot(st, lesson) {
   if (!st) return { sent: false, reason: 'no_student' };
   const doss = parseStudentDossierBot(st);
-  if (!doss.parentTgId) return { sent: false, reason: 'no_parent_tg_id' };
+  const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (parentIds.length === 0) return { sent: false, reason: 'no_parent_tg_id' };
   const rawHw = (lesson?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0]
     .replace(/\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/g, '')
     .replace(/\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/g, '')
@@ -639,9 +640,11 @@ async function sendParentLessonReportBot(st, lesson) {
     [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
   ];
   try {
-    await bot.sendMessage(doss.parentTgId, aiReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
-      return bot.sendMessage(doss.parentTgId, aiReport, { reply_markup: { inline_keyboard: kb } });
-    });
+    for (const pid of parentIds) {
+      await bot.sendMessage(pid, aiReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
+        return bot.sendMessage(pid, aiReport, { reply_markup: { inline_keyboard: kb } });
+      });
+    }
 
     // Duplicate exact copy to teacher/admin so teacher sees word-for-word what parent sees
     const adminId = CHAT_ID || ADMIN_CHAT_ID;
