@@ -1401,6 +1401,10 @@ const TutoringPage = {
   },
 
   async sendReportToParentTelegram(studentId, lessonId = null, customReportText = '') {
+    [this.students, this.lessons] = await Promise.all([
+      DB.getStudents(),
+      DB.getLessons()
+    ]);
     const st = this.students.find(s => s.id === studentId);
     if (!st) return UI.toast('Выберите ученика', 'warning');
     const dossier = this.parseStudentDossier(st);
@@ -1410,28 +1414,46 @@ const TutoringPage = {
     const currentHwText = modalOpen ? document.getElementById('ls-homework')?.value?.trim() : '';
     const currentTopicText = modalOpen ? document.getElementById('ls-topic')?.value?.trim() : '';
 
-    if (dossier.parentTgId) {
-      if (ls) {
-        const baseHw = (modalOpen && currentHwText) ? currentHwText : (ls.homework || '');
-        const clean = baseHw.replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
-        await DB.updateLesson(ls.id, {
-          topic: (modalOpen && currentTopicText) ? currentTopicText : ls.topic,
-          homework: `${clean} [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]`.trim()
-        });
-        UI.toast(`👨‍👩‍👧 Команда передана боту! В течение минуты ИИ-отчёт об уроке уйдёт родителю (${st.name}) в Telegram.`, 'success');
+    if (!dossier.parentTgId) {
+      if (dossier.parentTgUser) {
+        const reportText = customReportText || await Gemini.generateTutoringAI('parent_msg', { name: st.name, grade: st.grade, ...dossier }, { topic: currentTopicText || ls?.topic || 'Английский язык', homework: currentHwText || ls?.homework || '' }, ls);
+        try { await navigator.clipboard.writeText(reportText); } catch (e) {}
+        const cleanUser = dossier.parentTgUser.replace('@', '').trim();
+        window.open(`https://t.me/${cleanUser}?text=${encodeURIComponent(reportText)}`, '_blank');
         return;
       }
-    }
-
-    const reportText = customReportText || await Gemini.generateTutoringAI('parent_msg', { name: st.name, grade: st.grade, ...dossier }, { topic: currentTopicText || ls?.topic || 'Английский язык', homework: currentHwText || ls?.homework || '' }, ls);
-    try { await navigator.clipboard.writeText(reportText); } catch (e) {}
-    if (dossier.parentTgUser) {
-      const cleanUser = dossier.parentTgUser.replace('@', '').trim();
-      window.open(`https://t.me/${cleanUser}?text=${encodeURIComponent(reportText)}`, '_blank');
+      UI.toast(`Родитель (${st.name}) ещё не подключён к ТГ-боту — копирую ссылку-приглашение!`, 'warning');
+      await this.copyParentBotInvite(studentId);
       return;
     }
-    UI.toast(`Родитель (${st.name}) ещё не подключён к ТГ-боту — отчёт скопирован, копирую также ссылку-приглашение родителю!`, 'info');
-    await this.copyParentBotInvite(studentId);
+
+    // Если родитель подключен к боту (есть parentTgId):
+    if (!ls && modalOpen && (currentTopicText || currentHwText)) {
+      const dt = document.getElementById('ls-date')?.value || new Date().toISOString();
+      ls = await DB.createLesson({
+        student_id: studentId,
+        date: dt,
+        topic: currentTopicText || 'Английский язык',
+        homework: currentHwText || '',
+        status: 'Проведен',
+        paid: false
+      });
+      this.lessons.unshift(ls);
+    }
+
+    if (ls) {
+      const baseHw = (modalOpen && currentHwText) ? currentHwText : (ls.homework || '');
+      const clean = baseHw.replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
+      await DB.updateLesson(ls.id, {
+        topic: (modalOpen && currentTopicText) ? currentTopicText : ls.topic,
+        homework: `${clean} [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]`.trim()
+      });
+      UI.toast(`👨‍👩‍👧 Команда передана боту! В течение 5 секунд ИИ-отчёт об уроке уйдёт родителю (${st.name}) в Telegram.`, 'success');
+      return;
+    }
+
+    // Если проведенных уроков пока нет, формируем сводный отчёт о прогрессе через модалку
+    return this.generateMonthlyReport(studentId);
   },
 
   escapeHtml(str) {
