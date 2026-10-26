@@ -210,8 +210,15 @@ const TutoringPage = {
                 <div id="ls-ai-output-box" class="hidden" style="margin-top:8px;padding:10px 12px;background:var(--bg-primary);border:1px solid var(--accent-alpha);border-radius:10px;font-size:12px;white-space:pre-wrap;max-height:200px;overflow-y:auto;"></div>
               </div>
               <div class="form-group">
-                <label class="form-label">Материалы урока (Ссылки, PDF)</label>
-                <input id="ls-materials" type="text" class="form-input" placeholder="Например: https://youtube.com/..." />
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <label class="form-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;">
+                    <i data-lucide="file-text" style="width:14px;height:14px;color:#0d9488;"></i>
+                    <span style="font-weight:700;">Сценарий и материалы урока (Конспект из Perplexity / План)</span>
+                  </label>
+                  <button type="button" id="ls-btn-pplx-fill" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0d9488;border-color:rgba(13,148,136,0.35);" title="Вставить текст конспекта из Perplexity">📥 Вставить из Perplexity</button>
+                </div>
+                <textarea id="ls-scenario" class="form-input" rows="4" style="font-size:12px;font-family:inherit;" placeholder="Вставьте сюда сценарий / конспект урока из Perplexity (все слайды, слова, правила). Бот запомнит этот сценарий и будет по нему подкидывать ученице 5 слов, 5 глаголов и тестик!"></textarea>
+                <input id="ls-materials" type="text" class="form-input" style="margin-top:6px;" placeholder="Ссылки на материалы, видео или PDF (например: https://youtube.com/...)" />
               </div>
               <div class="form-row">
                 <div class="form-group">
@@ -763,8 +770,30 @@ const TutoringPage = {
       materials = parts[1].trim();
     }
     
+    // Extract [СЦЕНАРИЙ_УРОКА]
+    let scenario = '';
+    const scMatch = displayHomework.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
+    if (scMatch) {
+      scenario = scMatch[1].trim();
+      displayHomework = displayHomework.replace(scMatch[0], '').trim();
+    }
+    displayHomework = displayHomework.replace(/\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/, '').trim();
+
     document.getElementById('ls-homework').value = displayHomework;
+    const scenEl = document.getElementById('ls-scenario');
+    if (scenEl) scenEl.value = scenario;
     document.getElementById('ls-materials').value = materials;
+
+    const pplxFillBtn = document.getElementById('ls-btn-pplx-fill');
+    if (pplxFillBtn) {
+      pplxFillBtn.onclick = () => {
+        const raw = prompt('📥 Вставьте сценарий / конспект урока из Perplexity:');
+        if (raw && raw.trim()) {
+          scenEl.value = raw.trim();
+          UI.toast('Сценарий вставлен в материалы урока!', 'success');
+        }
+      };
+    }
     document.getElementById('ls-status').value = ls ? ls.status : 'Запланирован';
     document.getElementById('ls-paid').checked = ls ? ls.paid : false;
 
@@ -870,10 +899,16 @@ const TutoringPage = {
         homework = (homework ? homework + '\n' : '') + '[ПЕРЕНЕСЕН_В_ТГ]';
       }
     }
-    // Clean old cards & serialize current cards
+    // Clean old cards & scenario, then serialize both
     homework = homework.replace(/\\n\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/, '').trim();
     if (this.attachedCards && this.attachedCards.length > 0) {
       homework += '\\n[КАРТОЧКИ_ДЗ]:\\n' + this.attachedCards.join('||') + '\\n[/КАРТОЧКИ_ДЗ]';
+    }
+
+    const scenarioVal = document.getElementById('ls-scenario')?.value?.trim() || '';
+    homework = homework.replace(/\\n\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/, '').trim();
+    if (scenarioVal) {
+      homework += '\\n[СЦЕНАРИЙ_УРОКА]:\\n' + scenarioVal + '\\n[/СЦЕНАРИЙ_УРОКА]';
     }
 
     const materials = document.getElementById('ls-materials').value.trim();
@@ -1347,6 +1382,8 @@ const TutoringPage = {
       const parsed = await Gemini.parsePerplexityLesson(rawText, st.name);
       if (parsed.topic) document.getElementById('ls-topic').value = parsed.topic;
       if (parsed.homework) document.getElementById('ls-homework').value = parsed.homework;
+      const scenEl = document.getElementById('ls-scenario');
+      if (scenEl) scenEl.value = rawText.trim();
       if (parsed.new_vocab) {
         const dossier = this.parseStudentDossier(st);
         const existingVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
