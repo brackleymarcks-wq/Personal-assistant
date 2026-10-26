@@ -651,7 +651,7 @@ const Gemini = {
         const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ['gsk', 'FagNCC3UXjF8iCIDPvkfWGdyb3FYB8mfWlbFUH7CatLFR9pxUrQ9'].join('_') },
-          body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: systemInstruction }, ...messages], temperature: 0.6, max_tokens: 1500 })
+          body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: systemInstruction }, ...messages], temperature: 0.6, max_tokens: 3500 })
         });
         if (gRes.ok) return gRes.json();
       } catch (e) {}
@@ -674,7 +674,7 @@ const Gemini = {
         ],
         tools: disableTools ? undefined : TOOLS,
         temperature: 0.7,
-        max_tokens: 1024
+        max_tokens: 3500
       })
     });
 
@@ -801,7 +801,7 @@ const Gemini = {
           ...messages
         ],
         temperature: 0.7,
-        max_tokens: 2048
+        max_tokens: 3500
       })
     });
 
@@ -811,7 +811,11 @@ const Gemini = {
     }
 
     const data = await res.json();
-    return data.choices?.[0]?.message?.content?.trim() || '';
+    let out = data.choices?.[0]?.message?.content?.trim() || '';
+    if (mode === 'homework') {
+      out = out.replace(/\*\*/g, '').replace(/\*/g, '');
+    }
+    return out;
   },
 
   async autoFillKnowledge(content) {
@@ -918,7 +922,13 @@ ${hasScenario ? `НИЖЕ ДАН СЦЕНАРИЙ И МАТЕРИАЛЫ ПРОВ
    Дружелюбная инструкция: «Пришли ответы сюда в чат текстом, сфотографируй тетрадь или отправь голосовое сообщение! Не забудь нажать кнопку "Я сделал(а) ДЗ!", когда закончишь! 👍»
 
 В самом конце (отдельным блоком) добавь:
-🔑 КЛЮЧИ ДЛЯ ПРЕПОДАВАТЕЛЯ: (краткие правильные ответы ко 2-му шагу для быстрой проверки).`;
+🔑 КЛЮЧИ ДЛЯ ПРЕПОДАВАТЕЛЯ: (краткие правильные ответы ко 2-му шагу для быстрой проверки).
+
+ВАЖНЫЕ ПРАВИЛА ОФОРМЛЕНИЯ (СТРОГО):
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ таблицы markdown (|---|---|). Никаких таблиц и вертикальных палочек!
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ звездочки markdown (** или *). Никаких звездочек в тексте! Оформляй заголовки и списки эмодзи, дефисами и абзацами.
+- В Шаге 1 дай РОВНО 4-5 ключевых слов/семейств компактным нумерованным списком (не перегружай длинными списками!).
+- ОБЯЗАТЕЛЬНО ДОЛЖНЫ БЫТЬ СГЕНЕРИРОВАНЫ ВСЕ 3 ШАГА: Шаг 1 (Слова), Шаг 2 (Грамматика с памяткой и 3-4 практическими предложениями) и Шаг 3 (Творческое/разговорное задание)! Ни один шаг нельзя пропускать!`;
     } else if (mode === 'parent_msg') {
       prompt = `Напиши готовое, теплое и профессиональное сообщение для ученика или его родителей в Telegram/Viber по итогам сегодняшнего урока.\nТема сегодня: "${currentLesson.topic || 'Практика английского'}".\nДомашнее задание на следующий раз: "${currentLesson.homework || 'Повторить лексику урока'}".\nСтруктура: Приветствие, что сегодня классно разобрали и за что можно похвалить, над чем ещё работаем, и чётко выделенное Домашнее задание. Без лишних вступлений, сразу текст сообщения для копирования!`;
     } else if (mode === 'monthly_report') {
@@ -936,7 +946,11 @@ ${hasScenario ? `НИЖЕ ДАН СЦЕНАРИЙ И МАТЕРИАЛЫ ПРОВ
       [{ role: 'user', content: prompt }],
       true
     );
-    return data.choices?.[0]?.message?.content?.trim() || '';
+    let out = data.choices?.[0]?.message?.content?.trim() || '';
+    if (mode === 'homework') {
+      out = out.replace(/\*\*/g, '').replace(/\*/g, '');
+    }
+    return out;
   },
 
   async parsePerplexityLesson(rawText, studentName = 'Ученик') {
@@ -1054,7 +1068,11 @@ ${hasScenario ? `НИЖЕ ДАН СЦЕНАРИЙ И МАТЕРИАЛЫ ПРОВ
     }
 
     const data = await res.json();
-    return data.choices?.[0]?.message?.content?.trim() || '';
+    let out = data.choices?.[0]?.message?.content?.trim() || '';
+    if (mode === 'homework') {
+      out = out.replace(/\*\*/g, '').replace(/\*/g, '');
+    }
+    return out;
   },
 
   async transcribeAudio(audioBlob) {

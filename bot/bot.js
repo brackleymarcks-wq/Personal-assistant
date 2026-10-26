@@ -648,6 +648,57 @@ async function sendParentLessonReportBot(st, lesson) {
 
 
 
+const studentPracticeProgress = {};
+function getPracticeProgress(studentId, lessonId) {
+  const key = `${studentId}_${lessonId || 'curr'}`;
+  if (!studentPracticeProgress[key]) {
+    studentPracticeProgress[key] = {
+      wordsBatch: 0,
+      verbsBatch: 0,
+      quizRound: 0,
+      seenWords: [],
+      seenVerbs: []
+    };
+  }
+  return studentPracticeProgress[key];
+}
+
+function formatToTelegramHtml(text) {
+  if (!text) return '';
+  let str = String(text);
+  // 1. Convert bullet lists at line starts (* item or - item) to bullet emoji •
+  str = str.replace(/^(\s*)[*-]\s+/gm, '$1• ');
+  // 2. Escape HTML special characters
+  str = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // 3. Convert headers: ### Header or ## Header -> <b>Header</b>
+  str = str.replace(/^#{1,6}\s*(.+)$/gm, '<b>$1</b>');
+  // 4. Convert bold: **text** or __text__ -> <b>text</b>
+  str = str.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+  str = str.replace(/__(.*?)__/g, '<b>$1</b>');
+  // 5. Convert italic: *text* or _text_ -> <i>text</i>
+  str = str.replace(/\*([^*\n]+)\*/g, '<i>$1</i>');
+  str = str.replace(/_([^_\n]+)_/g, '<i>$1</i>');
+  // 6. Monospace: `code`
+  str = str.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // 7. Strip ANY remaining stray asterisks or markdown table pipes so text is pristine
+  str = str.replace(/\*+/g, '');
+  return str.trim();
+}
+
+async function sendCleanMessage(chatId, text, options = {}) {
+  const html = formatToTelegramHtml(text);
+  try {
+    return await bot.sendMessage(chatId, html, {
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+      ...options
+    });
+  } catch (err) {
+    const plain = text.replace(/[*_`#]/g, '').trim();
+    return await bot.sendMessage(chatId, plain, options);
+  }
+}
+
 function extractLessonScenario(homeworkText) {
   if (!homeworkText) return '';
   const match = homeworkText.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
@@ -2700,35 +2751,52 @@ bot.on('callback_query', async (query) => {
       }
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
 
-      await bot.answerCallbackQuery(query.id, { text: '🔤 Загружаю 5 слов...' });
+      await bot.answerCallbackQuery(query.id, { text: '🔤 Загружаю 5 новых слов...' });
       const doss = parseStudentDossierBot(st);
       const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
 
       const scenario = extractLessonScenario(lastLs?.homework || '');
-      const wordsPrompt = `Ты — весёлый репетитор английского для ${st.name} (${st.grade || ''}).
-${scenario ? `СТРОГО ИСПОЛЬЗУЙ МАТЕРИАЛЫ И СЛОВАРЬ ИЗ СЦЕНАРИЯ УРОКА ПРЕПОДАВАТЕЛЯ:\n"${scenario}"\n` : `Активный словарь ученика: "${doss.vocab || 'adventure, challenge, journey, explore, succeed'}"\n`}
-Последняя тема урока: "${lastLs?.topic || 'General English'}".
+      const prog = getPracticeProgress(st.id, lastLs?.id);
+      prog.wordsBatch++;
 
-Выбери или составь ровно 5 полезных английских слов из этого урока/словаря.
-Для каждого слова напиши:
-1. Слово + транскрипция [IPA] + перевод на русский
-2. Короткий живой пример предложения с этим словом на английском и перевод в скобках.
+      const wordsPrompt = `Ты — первоклассный методист английского языка для ${st.name} (${st.grade || '6 класс'}).
+${scenario ? `СТРОГО ИСПОЛЬЗУЙ МАТЕРИАЛЫ И СЛОВАРЬ ИЗ СЦЕНАРИЯ УРОКА:\n"${scenario}"\n` : `Активный словарь: "${doss.vocab || ''}"\n`}
+Тема урока: "${lastLs?.topic || 'English'}".
+Ученик уже выучил следующие слова урока: ${prog.seenWords.length > 0 ? prog.seenWords.join(', ') : 'ещё не начинал'}.
 
-Формат:
-🔤 *5 слов урока (${st.name}):*
-1. *Word* [wɜːd] — Слово
-   _It is an example sentence._ (Это пример предложения.)
+ТВОЯ ЗАДАЧА:
+Выбери РОВНО 5 СЛЕДУЮЩИХ НОВЫХ слов или словообразовательных цепочек из сценария урока (порция #${prog.wordsBatch}), которые ещё НЕ встречались в списке выше!
+Если все слова сценария уже пройдены, напиши в первой строке: "🎉 Все ключевые слова урока пройдены! Повторяем с 1-й порции с новыми примерами."
+
+ПРАВИЛА ОФОРМЛЕНИЯ (СТРОГО):
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)! Никаких звездочек!
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ таблицы (|---|). Только чистый нумерованный список!
+- Формат:
+🔤 5 слов урока (${st.name}) — Порция ${prog.wordsBatch}:
+1. Word [транскрипция] — русский перевод
+   Пример: Short english sentence (Русский перевод в скобках)
 ...
 В конце добавь вопрос: "Какое слово тебе понравилось больше всего? Напиши мне в ответ предложение с ним!"`;
 
       const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: wordsPrompt });
-      const text = genRes.generated_plan || '1. *Explore* [ɪkˈsplɔː] — Исследовать\n2. *Challenge* [ˈtʃælɪndʒ] — Вызов';
+      const rawText = genRes.generated_plan || '1. Explore [ɪkˈsplɔː] — Исследовать\n2. Challenge [ˈtʃælɪndʒ] — Вызов';
+
+      // Parse and track seen words
+      const lines = rawText.split('\n');
+      for (const line of lines) {
+        const m = line.match(/^\d+\.\s+([A-Za-z\s-]+)(?:\[|$|—)/);
+        if (m && m[1]) {
+          const w = m[1].trim();
+          if (!prog.seenWords.includes(w)) prog.seenWords.push(w);
+        }
+      }
 
       const kb = [
-        [{ text: '📝 Пройти тестик по этим словам', callback_data: `student_poll_quiz:${st.id}` }],
-        [{ text: '⚡ 5 важных глаголов', callback_data: `student_verbs:${st.id}` }]
+        [{ text: '📝 Пройти тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
+        [{ text: '⚡ 5 важных глаголов', callback_data: `student_verbs:${st.id}` }],
+        [{ text: '🔤 Ещё 5 слов урока', callback_data: `student_words:${st.id}` }]
       ];
-      await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => bot.sendMessage(chatId, text));
+      await sendCleanMessage(chatId, rawText, { reply_markup: { inline_keyboard: kb } });
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -2750,33 +2818,53 @@ ${scenario ? `СТРОГО ИСПОЛЬЗУЙ МАТЕРИАЛЫ И СЛОВАР
       }
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
 
-      await bot.answerCallbackQuery(query.id, { text: '⚡ Загружаю 5 глаголов...' });
+      await bot.answerCallbackQuery(query.id, { text: '⚡ Загружаю 5 новых глаголов...' });
       const doss = parseStudentDossierBot(st);
       const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
 
       const scenario = extractLessonScenario(lastLs?.homework || '');
-      const verbsPrompt = `Ты — преподаватель английского для ${st.name} (${st.grade || ''}).
-${scenario ? `ИСПОЛЬЗУЙ ГЛАГОЛЫ И ПРАВИЛА ИЗ СЦЕНАРИЯ УРОКА ПРЕПОДАВАТЕЛЯ:\n"${scenario}"\n` : ''}
-Тема: "${lastLs?.topic || 'English Verbs'}". Ошибки: "${doss.errors || 'глагольные формы'}".
-Составь 5 ключевых неправильных/важных глаголов к текущему уровню:
-Для каждого глагола:
-1. 3 формы: V1 - V2 - V3 + перевод
-2. 1 короткое классное предложение в прошедшем или настоящем времени с переводом.
+      const prog = getPracticeProgress(st.id, lastLs?.id);
+      prog.verbsBatch++;
 
-Формат:
-⚡ *5 ключевых глаголов с формами:*
-1. *make – made – made* [meɪk] — делать / создавать
-   _She made a delicious cake._ (Она сделала вкусный торт.)
+      const verbsPrompt = `Ты — преподаватель английского для ${st.name} (${st.grade || '6 класс'}).
+${scenario ? `ИСПОЛЬЗУЙ ГЛАГОЛЫ И ПРАВИЛА ИЗ СЦЕНАРИЯ УРОКА:\n"${scenario}"\n` : ''}
+Тема: "${lastLs?.topic || 'English Verbs'}".
+Ученик уже повторил следующие глаголы: ${prog.seenVerbs.length > 0 ? prog.seenVerbs.join(', ') : 'ещё не начинал'}.
+
+ТВОЯ ЗАДАЧА:
+Выбери РОВНО 5 СЛЕДУЮЩИХ НОВЫХ неправильных глаголов из сценария урока (порция #${prog.verbsBatch}), которые ещё НЕ встречались выше!
+Иди последовательно: Группа 1 (V2=V3: have, make, find, hear, catch, get), затем Группа 2 (V1=V3: become, come, run), затем Группа 3 (3 разные формы: be, go, see, do, eat, fly, ride, drive, take, swim, write).
+Если все глаголы сценария пройдены, напиши: "🎉 Все неправильные глаголы урока пройдены! Повторяем с 1-й группы."
+
+ПРАВИЛА ОФОРМЛЕНИЯ (СТРОГО):
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)!
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ таблицы!
+- Формат:
+⚡ 5 глаголов урока — Порция ${prog.verbsBatch}:
+1. V1 – V2 – V3 [транскрипция] — русский перевод
+   Пример: Short sentence (Русский перевод)
 ...
 В конце: "Попробуй составить одно предложение с любым глаголом и пришли мне!"`;
 
       const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: verbsPrompt });
-      const text = genRes.generated_plan || '1. *go – went – gone* — идти';
+      const rawText = genRes.generated_plan || '1. make – made – made [meɪk] — делать / создавать';
+
+      // Parse and track seen verbs
+      const lines = rawText.split('\n');
+      for (const line of lines) {
+        const m = line.match(/^\d+\.\s+([A-Za-z]+)/);
+        if (m && m[1]) {
+          const v = m[1].trim();
+          if (!prog.seenVerbs.includes(v)) prog.seenVerbs.push(v);
+        }
+      }
+
       const kb = [
         [{ text: '📝 Пройти тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
-        [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }]
+        [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }],
+        [{ text: '⚡ Ещё 5 глаголов', callback_data: `student_verbs:${st.id}` }]
       ];
-      await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => bot.sendMessage(chatId, text));
+      await sendCleanMessage(chatId, rawText, { reply_markup: { inline_keyboard: kb } });
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -2798,48 +2886,94 @@ ${scenario ? `ИСПОЛЬЗУЙ ГЛАГОЛЫ И ПРАВИЛА ИЗ СЦЕН�
       }
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
 
-      await bot.answerCallbackQuery(query.id, { text: '📝 Создаю опрос-квиз...' });
+      await bot.answerCallbackQuery(query.id, { text: '📝 Создаю мини-тест из 3 вопросов...' });
       const doss = parseStudentDossierBot(st);
       const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
 
       const scenario = extractLessonScenario(lastLs?.homework || '');
-      const pollPrompt = `Ты — методист по английскому для ${st.name} (${st.grade || ''}).
-${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И ПРАВИЛАМ ИЗ ЭТОГО СЦЕНАРИЯ УРОКА:\n"${scenario}"\n` : ''}
-Тема урока: "${lastLs?.topic || 'English Grammar'}".
-Ошибки ученика: "${doss.errors || 'was/were, -s в Present Simple, неправильные глаголы'}".
-Слова: "${doss.vocab || 'daily routine, school, hobbies'}".
+      const prog = getPracticeProgress(st.id, lastLs?.id);
+      prog.quizRound++;
 
-Придумай 1 быстрый, интерактивный тест-вопрос (Telegram Quiz Poll).
-Верни строго в формате JSON:
-{
-  "question": "Вопрос с пропуском или выбором правильного варианта (до 250 символов)?",
-  "options": ["Вариант A", "Вариант B", "Вариант C"],
-  "correct_id": 0,
-  "explanation": "Короткое понятное объяснение правила на русском языке (до 200 символов)"
-}`;
+      const pollPrompt = `Ты — методист по английскому для ${st.name} (${st.grade || '6 класс'}).
+${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И ПРАВИЛАМ ИЗ СЦЕНАРИЯ УРОКА:\n"${scenario}"\n` : ''}
+Тема урока: "${lastLs?.topic || 'English Grammar'}".
+Раунд тестирования: #${prog.quizRound}.
+
+ТВОЯ ЗАДАЧА:
+Составь МИНИ-ТЕСТ РОВНО ИЗ 3 РАЗНЫХ ВОПРОСОВ (Telegram Quiz Polls) по разным правилам урока:
+- Вопрос 1: Разница Present Perfect vs Past Simple (yesterday vs already/yet)
+- Вопрос 2: Ловушка теста (been to vs gone to ИЛИ артикли the с морями/океанами vs Lake без the)
+- Вопрос 3: Особое множественное число (deer, species, bison, wolves) ИЛИ V3 форма глагола.
+Каждый новый раунд меняй вопросы, не повторяйся!
+
+Верни СТРОГО валидный JSON массив из 3 объектов без markdown-обертки:
+[
+  {
+    "question": "1/3. Вопрос с пропуском или выбором варианта (до 250 символов)?",
+    "options": ["Вариант A", "Вариант B", "Вариант C"],
+    "correct_id": 0,
+    "explanation": "Объяснение правила на русском (до 200 символов)"
+  },
+  {
+    "question": "2/3. Второй вопрос...?",
+    "options": ["Вариант A", "Вариант B", "Вариант C"],
+    "correct_id": 1,
+    "explanation": "Объяснение правила..."
+  },
+  {
+    "question": "3/3. Третий вопрос...?",
+    "options": ["Вариант A", "Вариант B", "Вариант C"],
+    "correct_id": 0,
+    "explanation": "Объяснение правила..."
+  }
+]`;
 
       const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: pollPrompt });
-      let parsedQuiz = null;
+      let quizList = null;
       try {
-        const jsonMatch = genRes.generated_plan.match(/\{[\s\S]*\}/);
-        if (jsonMatch) parsedQuiz = JSON.parse(jsonMatch[0]);
+        const jsonMatch = genRes.generated_plan.match(/\[[\s\S]*\]/);
+        if (jsonMatch) quizList = JSON.parse(jsonMatch[0]);
       } catch (err) {}
 
-      if (!parsedQuiz || !parsedQuiz.options || parsedQuiz.options.length < 2) {
-        parsedQuiz = {
-          question: "Choose the correct verb form: Yesterday we ___ to the cinema.",
-          options: ["went", "go", "goes"],
-          correct_id: 0,
-          explanation: "Yesterday указывает на Past Simple, вторая форма глагола go — went!"
-        };
+      if (!Array.isArray(quizList) || quizList.length === 0) {
+        quizList = [
+          {
+            question: "1/3. Choose the correct form: She ___ her suitcase ten minutes ago.",
+            options: ["packed", "has packed", "packs"],
+            correct_id: 0,
+            explanation: "Ago указывает на точное время в прошлом -> Past Simple (packed)!"
+          },
+          {
+            question: "2/3. He is not at home now. He has ___ to Africa.",
+            options: ["gone", "been", "went"],
+            correct_id: 0,
+            explanation: "Gone to значит 'уехал и сейчас ещё там'! Been to — 'съездил и вернулся'."
+          },
+          {
+            question: "3/3. In Bielaviezhskaja Pushcha there are many wild ___.",
+            options: ["wolves", "wolfs", "wolfes"],
+            correct_id: 0,
+            explanation: "Множественное число от wolf — wolves (f меняется на ves)!"
+          }
+        ];
       }
 
-      await bot.sendPoll(chatId, `🎯 Квиз (${st.name}): ${parsedQuiz.question}`, parsedQuiz.options.slice(0, 4), {
-        type: 'quiz',
-        correct_option_id: Number(parsedQuiz.correct_id) || 0,
-        explanation: (parsedQuiz.explanation || 'Отлично!').slice(0, 200),
-        is_anonymous: false
-      });
+      await bot.sendMessage(chatId, `🎯 <b>Мини-тест по уроку для ${st.name} (Раунд ${prog.quizRound}):</b>\nОтвечай прямо на вопросы викторины ниже 👇`, { parse_mode: 'HTML' });
+
+      for (let i = 0; i < quizList.length; i++) {
+        const q = quizList[i];
+        if (q.options && q.options.length >= 2) {
+          await bot.sendPoll(chatId, q.question, q.options.slice(0, 4), {
+            type: 'quiz',
+            correct_option_id: Number(q.correct_id) || 0,
+            explanation: (q.explanation || 'Молодец!').slice(0, 200),
+            is_anonymous: false
+          });
+          if (i < quizList.length - 1) {
+            await new Promise(r => setTimeout(r, 400));
+          }
+        }
+      }
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -2860,18 +2994,22 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
       await bot.answerCallbackQuery(query.id, { text: '🎮 Запускаю мини-игру...' });
       const doss = parseStudentDossierBot(st);
 
-      const gamePrompt = `Ты — геймифицированный ИИ-тренер английского для ${st.name} (${st.grade || ''}).
+      const gamePrompt = `Ты — геймифицированный ИИ-тренер английского для ${st.name} (${st.grade || '6 класс'}).
 Интересы: "${doss.interests || 'игры, кино, приключения'}".
 Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}".
 
 Предложи 1 классную 2-минутную игру или загадку на английском языке (Word Detective или English Riddle).
 Короткий сюжет (3-4 строки) + загадка на английском с переводом ключевых слов.
-НЕ пиши ответ сразу! Напиши: "Напиши свою отгадку сюда в чат, и проверим!"`;
+НЕ пиши ответ сразу! Напиши: "Напиши свою отгадку сюда в чат, и проверим!"
+
+ПРАВИЛА ОФОРМЛЕНИЯ (СТРОГО):
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)! Никаких звездочек в тексте!
+- Оформляй заголовок эмодзи, списки через дефис или точку •`;
 
       const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: gamePrompt });
-      const text = genRes.generated_plan || '🎮 *English Riddle Time!*\nWhat has keys but no locks, space but no room, and you can enter but never go outside?\n(Напиши свою догадку в ответном сообщении!)';
+      const text = genRes.generated_plan || '🎮 English Riddle Time!\nWhat has keys but no locks, space but no room, and you can enter but never go outside?\n(Напиши свою догадку в ответном сообщении!)';
 
-      await bot.sendMessage(chatId, `🎮 *Мини-игра для ${st.name}:*\n\n${text}`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, text));
+      await sendCleanMessage(chatId, `🎮 <b>Мини-игра для ${st.name}:</b>\n\n${text}`);
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
