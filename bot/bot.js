@@ -2056,7 +2056,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     const welcomeSt = `👋 *Привет, ${st.name}!*\nЯ бот-помощник Игоря по английскому языку 🇬🇧\n\nСюда я буду присылать:\n• 📌 Твои домашние задания и новые слова после урока\n• ⏰ Напоминания перед занятием, чтобы ничего не забыть\n\nА ещё ты можешь прямо сюда *отправлять выполненную домашку* (текстом или фотографией тетрадки) — я сразу передам её Игорю!`;
     await bot.sendMessage(incomingChatId, welcomeSt, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }], [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${(typeof st !== 'undefined' ? st : found.student).id}` }]] }
+      reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }], [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${st.id}` }]] }
     }).catch(() => bot.sendMessage(incomingChatId, welcomeSt));
 
     await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Ученик подключился к боту!*\n👤 *${st.name}* (${doss.tgUser || 'ID: ' + incomingChatId}) нажал Start.\nТеперь бот будет сам отправлять ему ДЗ и напоминалки в личку! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
@@ -2064,16 +2064,9 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
   }
 
   if (incomingChatId !== ADMIN_CHAT_ID) {
-    const found = await findStudentByTgChatId(incomingChatId);
-    if (found) {
-      return bot.sendMessage(incomingChatId, `👋 Привет, *${found.student.name}*! Нажми кнопку ниже, чтобы посмотреть своё домашнее задание, или просто отправь мне сюда выполненное ДЗ (текстом или фото тетрадки)! 🇬🇧`, {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }], [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${(typeof st !== 'undefined' ? st : found.student).id}` }]] }
-      });
-    }
     const parentFound = await findParentByTgChatId(incomingChatId);
     if (parentFound) {
-      return bot.sendMessage(incomingChatId, `Здравствуйте! 👋 Это электронный дневник ученика *${parentFound.student.name}* по английскому языку. Выберите нужное действие ниже:`, {
+      return bot.sendMessage(incomingChatId, `Здравствуйте! 👋 Это электронный дневник успеваемости ученика *${parentFound.student.name}* по английскому языку (преподаватель — Игорь) 🇬🇧.\n\nВыберите действие ниже:`, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -2081,6 +2074,13 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
             [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${parentFound.student.id}` }]
           ]
         }
+      });
+    }
+    const found = await findStudentByTgChatId(incomingChatId);
+    if (found) {
+      return bot.sendMessage(incomingChatId, `👋 Привет, *${found.student.name}*! Нажми кнопку ниже, чтобы посмотреть своё домашнее задание, или просто отправь мне сюда выполненное ДЗ (текстом или фото тетрадки)! 🇬🇧`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }], [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${found.student.id}` }]] }
       });
     }
     return bot.sendMessage(incomingChatId, '🔒 Это закрытый бот для учеников по английскому языку. Пожалуйста, перейдите по персональной ссылке-приглашению от преподавателя!');
@@ -2098,19 +2098,24 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
 bot.on('photo', async (msg) => {
   var chatId = msg.chat.id;
   if (String(chatId) !== ADMIN_CHAT_ID) {
+    const parentFound = await findParentByTgChatId(chatId);
+    if (parentFound) {
+      const pSt = parentFound.student;
+      await bot.sendMessage(chatId, `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику *${pSt.name}*).`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }],
+            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }]
+          ]
+        }
+      }).catch(() => {});
+      await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 "${msg.text || '[Медиа/Голосовое]'}"`, { parse_mode: 'Markdown' }).catch(() => {});
+      await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+      return;
+    }
     const found = await findStudentByTgChatId(chatId);
     if (!found) {
-      const parentFound = await findParentByTgChatId(chatId);
-      if (parentFound) {
-        const pSt = parentFound.student;
-        await bot.sendMessage(chatId, `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику *${pSt.name}*).`, {
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }]] }
-        }).catch(() => {});
-        await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 "${msg.text || '[Медиа/Голосовое]'}"`, { parse_mode: 'Markdown' }).catch(() => {});
-        await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
-        return;
-      }
       return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
     }
     const st = found.student;
@@ -3275,19 +3280,24 @@ bot.on('message', async (msg) => {
   // Автоматически запоминаем chat_id
   if (!CHAT_ID) CHAT_ID = ADMIN_CHAT_ID;
   if (String(chatId) !== ADMIN_CHAT_ID) {
+    const parentFound = await findParentByTgChatId(chatId);
+    if (parentFound) {
+      const pSt = parentFound.student;
+      await bot.sendMessage(chatId, `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику *${pSt.name}*).`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }],
+            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }]
+          ]
+        }
+      }).catch(() => {});
+      await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 "${msg.text || '[Медиа/Голосовое]'}"`, { parse_mode: 'Markdown' }).catch(() => {});
+      await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+      return;
+    }
     const found = await findStudentByTgChatId(chatId);
     if (!found) {
-      const parentFound = await findParentByTgChatId(chatId);
-      if (parentFound) {
-        const pSt = parentFound.student;
-        await bot.sendMessage(chatId, `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику *${pSt.name}*).`, {
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }]] }
-        }).catch(() => {});
-        await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 "${msg.text || '[Медиа/Голосовое]'}"`, { parse_mode: 'Markdown' }).catch(() => {});
-        await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
-        return;
-      }
       return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
     }
     const st = found.student;
