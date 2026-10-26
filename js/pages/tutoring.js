@@ -820,14 +820,8 @@ const TutoringPage = {
     document.getElementById('ls-topic').value = ls ? (ls.topic || '') : '';
     
     let displayHomework = ls ? (ls.homework || '') : '';
-    let materials = '';
-    if (displayHomework.includes('\\n[МАТЕРИАЛЫ]:')) {
-      const parts = displayHomework.split('\\n[МАТЕРИАЛЫ]:');
-      displayHomework = parts[0];
-      materials = parts[1].trim();
-    }
     
-    // Extract [ПРЕЗЕНТАЦИЯ]
+    // 1. Extract [ПРЕЗЕНТАЦИЯ]
     this.attachedPresentation = null;
     const presMatch = displayHomework.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
     if (presMatch) {
@@ -836,14 +830,35 @@ const TutoringPage = {
     }
     this.renderPresentationBadge();
 
-    // Extract [СЦЕНАРИЙ_УРОКА]
+    // 2. Extract [СЦЕНАРИЙ_УРОКА]
     let scenario = '';
     const scMatch = displayHomework.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
     if (scMatch) {
       scenario = scMatch[1].trim();
       displayHomework = displayHomework.replace(scMatch[0], '').trim();
     }
-    displayHomework = displayHomework.replace(/\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/, '').trim();
+
+    // 3. Extract [КАРТОЧКИ_ДЗ]
+    const cardsMatch = displayHomework.match(/\[КАРТОЧКИ_ДЗ\]:([\s\S]*?)\[\/КАРТОЧКИ_ДЗ\]/);
+    this.attachedCards = cardsMatch ? cardsMatch[1].trim().split('||').map(s => s.trim()).filter(Boolean) : [];
+    if (cardsMatch) {
+      displayHomework = displayHomework.replace(cardsMatch[0], '').trim();
+    }
+    this.renderCardsPreview();
+
+    // 4. Strip custom reports from homework input field
+    displayHomework = displayHomework
+      .replace(/\[КАСТОМНЫЙ_ОТЧЕТ\]:[\s\S]*?\[\/КАСТОМНЫЙ_ОТЧЕТ\]/g, '')
+      .replace(/\[ОТЧЕТ_РОДИТЕЛЮ\]:[\s\S]*?\[\/ОТЧЕТ_РОДИТЕЛЮ\]/g, '')
+      .trim();
+
+    // 5. Extract [МАТЕРИАЛЫ]
+    let materials = '';
+    const matMatch = displayHomework.match(/(?:\r?\n|\\n)?\[МАТЕРИАЛЫ\]:([\s\S]*)$/);
+    if (matMatch) {
+      materials = matMatch[1].trim();
+      displayHomework = displayHomework.replace(matMatch[0], '').trim();
+    }
 
     document.getElementById('ls-homework').value = displayHomework;
     const scenEl = document.getElementById('ls-scenario');
@@ -991,27 +1006,46 @@ const TutoringPage = {
         homework = (homework ? homework + '\n' : '') + '[ПЕРЕНЕСЕН_В_ТГ]';
       }
     }
-    // Clean old cards & scenario, then serialize both
-    homework = homework.replace(/\\n\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/, '').trim();
-    if (this.attachedCards && this.attachedCards.length > 0) {
-      homework += '\\n[КАРТОЧКИ_ДЗ]:\\n' + this.attachedCards.join('||') + '\\n[/КАРТОЧКИ_ДЗ]';
-    }
+    // Clean existing tags from homework text
+    homework = homework
+      .replace(/(?:\r?\n|\\n)?\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/g, '')
+      .replace(/(?:\r?\n|\\n)?\[ПРЕЗЕНТАЦИЯ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ\]/g, '')
+      .replace(/(?:\r?\n|\\n)?\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/g, '')
+      .replace(/(?:\r?\n|\\n)?\[МАТЕРИАЛЫ\]:[\s\S]*$/g, '')
+      .trim();
 
-    // Serialize presentation file
-    homework = homework.replace(/\\n\[ПРЕЗЕНТАЦИЯ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ\]/, '').trim();
+    // 1. Serialize presentation file (or preserve existing if not deleted)
     if (this.attachedPresentation) {
-      homework += '\\n[ПРЕЗЕНТАЦИЯ]:\\n' + this.attachedPresentation + '\\n[/ПРЕЗЕНТАЦИЯ]';
+      homework += '\n\n[ПРЕЗЕНТАЦИЯ]:\n' + this.attachedPresentation + '\n[/ПРЕЗЕНТАЦИЯ]';
+    } else if (id) {
+      const oldLs = this.lessons.find(l => l.id === id);
+      const oldPres = oldLs?.homework?.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
+      if (oldPres) {
+        homework += '\n\n' + oldPres[0];
+      }
     }
 
+    // 2. Serialize scenario (or preserve existing if not cleared)
     const scenarioVal = document.getElementById('ls-scenario')?.value?.trim() || '';
-    homework = homework.replace(/\\n\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/, '').trim();
     if (scenarioVal) {
-      homework += '\\n[СЦЕНАРИЙ_УРОКА]:\\n' + scenarioVal + '\\n[/СЦЕНАРИЙ_УРОКА]';
+      homework += '\n\n[СЦЕНАРИЙ_УРОКА]:\n' + scenarioVal + '\n[/СЦЕНАРИЙ_УРОКА]';
+    } else if (id) {
+      const oldLs = this.lessons.find(l => l.id === id);
+      const oldScen = oldLs?.homework?.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
+      if (oldScen) {
+        homework += '\n\n' + oldScen[0];
+      }
     }
 
-    const materials = document.getElementById('ls-materials').value.trim();
+    // 3. Serialize cards
+    if (this.attachedCards && this.attachedCards.length > 0) {
+      homework += '\n\n[КАРТОЧКИ_ДЗ]:\n' + this.attachedCards.join('||') + '\n[/КАРТОЧКИ_ДЗ]';
+    }
+
+    // 4. Serialize materials
+    const materials = document.getElementById('ls-materials')?.value?.trim() || '';
     if (materials) {
-      homework += '\\n[МАТЕРИАЛЫ]:\\n' + materials;
+      homework += '\n\n[МАТЕРИАЛЫ]:\n' + materials;
     }
     if (id) {
       const oldLs = this.lessons.find(l => l.id === id);
@@ -2071,10 +2105,18 @@ const TutoringPage = {
         // Build composite homework string
         let compositeHw = hwText;
         if (this.dispatcherCards.length > 0) {
-          compositeHw += `\n[КАРТОЧКИ_ДЗ]:\n${this.dispatcherCards.join('||')}\n[/КАРТОЧКИ_ДЗ]`;
+          compositeHw += `\n\n[КАРТОЧКИ_ДЗ]:\n${this.dispatcherCards.join('||')}\n[/КАРТОЧКИ_ДЗ]`;
         }
         if (scenarioText) {
-          compositeHw += `\n[СЦЕНАРИЙ_УРОКА]:\n${scenarioText}\n[/СЦЕНАРИЙ_УРОКА]`;
+          compositeHw += `\n\n[СЦЕНАРИЙ_УРОКА]:\n${scenarioText}\n[/СЦЕНАРИЙ_УРОКА]`;
+        } else if (lessonTarget?.homework) {
+          const oldScen = lessonTarget.homework.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
+          if (oldScen) compositeHw += `\n\n${oldScen[0]}`;
+        }
+
+        if (lessonTarget?.homework) {
+          const oldPres = lessonTarget.homework.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
+          if (oldPres) compositeHw += `\n\n${oldPres[0]}`;
         }
 
         compositeHw = `[ОТПРАВИТЬ_В_ТГ] ${compositeHw}`;

@@ -309,7 +309,7 @@
   <script src="js/config.js"></script>
   <script src="js/prompts.js"></script>
   <script src="js/db.js?v=18"></script>
-  <script src="js/gemini.js?v=18"></script>
+  <script src="js/gemini.js?v=29"></script>
   <script src="js/settings.js"></script>
   <script src="js/quickactions.js"></script>
   
@@ -321,7 +321,7 @@
   <script src="js/pages/calendar.js?v=4"></script>
   <script src="js/pages/habits.js?v=18"></script>
   <script src="js/pages/goals.js"></script>
-  <script src="js/pages/tutoring.js?v=28"></script>
+  <script src="js/pages/tutoring.js?v=29"></script>
   <script src="js/pages/knowledge.js?v=18"></script>
   <script src="js/pages/chat.js"></script>
   
@@ -346,7 +346,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         if (window.caches) { caches.keys().then(ks => ks.forEach(k => caches.delete(k))); }
-        navigator.serviceWorker.register('./sw.js?v=27').then(registration => { registration.update();
+        navigator.serviceWorker.register('./sw.js?v=29').then(registration => { registration.update();
           console.log('ServiceWorker registration successful');
         }).catch(err => {
           console.log('ServiceWorker registration failed: ', err);
