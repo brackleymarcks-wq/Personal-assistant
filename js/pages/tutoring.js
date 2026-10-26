@@ -841,7 +841,8 @@ const TutoringPage = {
       btnEl.disabled = true;
       btnEl.textContent = '⏳ Генерирую...';
       try {
-        const res = await Gemini.generateTutoringAI(mode, { name: st.name, grade: st.grade, ...dossier }, { topic, homework: hw }, prevLs);
+        const scenario = document.getElementById('ls-scenario')?.value?.trim() || '';
+      const res = await Gemini.generateTutoringAI(mode, { name: st.name, grade: st.grade, ...dossier }, { topic, homework: hw, scenario }, prevLs);
         if (mode === 'homework') {
           document.getElementById('ls-homework').value = res;
           UI.toast('Персональное ДЗ сгенерировано!', 'success');
@@ -887,7 +888,8 @@ const TutoringPage = {
       aiBtn.disabled = true;
       
       try {
-        const homework = await Gemini.generateTutoringAI('homework', { name: st.name, grade: st.grade, ...this.parseStudentDossier(st) }, { topic }, this.getPrevConductedLesson(st.id, ls?.date));
+        const scenario = document.getElementById('ls-scenario')?.value?.trim() || '';
+        const homework = await Gemini.generateTutoringAI('homework', { name: st.name, grade: st.grade, ...this.parseStudentDossier(st) }, { topic, scenario }, this.getPrevConductedLesson(st.id, ls?.date));
         document.getElementById('ls-homework').value = homework;
         UI.toast('Домашка сгенерирована!', 'success');
       } catch (e) {
@@ -1741,7 +1743,8 @@ const TutoringPage = {
         aiHwBtn.textContent = '⏳ Генерирую...';
         try {
           const dossier = this.parseStudentDossier(st);
-          const hw = await Gemini.generateTutoringAI('homework', { name: st.name, grade: st.grade, ...dossier }, { topic }, ls);
+          const scenario = document.getElementById('hw-disp-scenario')?.value?.trim() || '';
+          const hw = await Gemini.generateTutoringAI('homework', { name: st.name, grade: st.grade, ...dossier }, { topic, scenario }, ls);
           document.getElementById('hw-disp-text').value = hw;
           UI.toast('ДЗ сгенерировано!', 'success');
         } catch (e) {

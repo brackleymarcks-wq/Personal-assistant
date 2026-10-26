@@ -3803,21 +3803,81 @@ bot.on('message', async (msg) => {
     await bot.sendMessage( chatId, `✅ Супер, *${st.name}*! Я передал твой ответ Игорю на проверку! 🌟`, { parse_mode: 'Markdown' }).catch(() => {});
     }
     const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
-    if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
-      await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
-    }
-    let aiReview = '';
-    if (msg.text && msg.text.length > 5) {
+    const cleanHw = (lastLs?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim();
+    const scenario = extractLessonScenario(lastLs?.homework || '');
+
+    // Autonomous AI Grading & Verification
+    let aiGrading = null;
+    if (studentText && studentText.length >= 3 && lastLs) {
       try {
-        const checkPrompt = `Ученик ${st.name} (${st.grade || ''}) прислал ответ по домашнему заданию.\nЗаданное ДЗ было: "${lastLs?.homework || 'не указано'}".\nОтвет ученика:\n"${msg.text}"\n\nКоротко (до 600 символов) проверь ошибки для преподавателя и напиши 1 фразу похвалы/разбора для пересылки ученику.`;
-        const checkRes = await executeFunctionCall('generate_lesson_plan', { prompt: checkPrompt });
-        if (checkRes.generated_plan) aiReview = `\n\n🤖 *Экспресс-проверка ИИ:*\n${checkRes.generated_plan}`;
-      } catch (e) {}
+        const gradePrompt = `Ты — профессиональный, справедливый и доброжелательный преподаватель английского языка.
+Ученик ${st.name} (${st.grade || ''}) прислал ответ на домашнее задание.
+ЗАДАННОЕ ДЗ:
+"${cleanHw || 'практика английского'}"
+МАТЕРИАЛЫ И СЦЕНАРИЙ УРОКА:
+"${scenario ? scenario.slice(0, 1500) : 'по программе'}"
+
+ОТВЕТ УЧЕНИКА:
+"${studentText}"
+
+ОЦЕНИ ОТВЕТ И ВЕРНИ СТРОГО JSON без markdown-обертки:
+{
+  "is_fully_done": true | false,
+  "student_feedback": "Дружелюбный разбор ДЛЯ УЧЕНИКА: похвали за сделанное, укажи на ошибки и как их исправить, и ЧЁТКО напиши что ещё доделать если сдано не всё!",
+  "teacher_summary": "Краткий отчёт для учителя Игоря: статус, процент выполнения, ключевые ошибки"
+}`;
+
+        const gradeRes = await executeFunctionCall('generate_lesson_plan', { prompt: gradePrompt });
+        const jsonMatch = gradeRes.generated_plan?.match(/\{[\s\S]*\}/);
+        if (jsonMatch) aiGrading = JSON.parse(jsonMatch[0]);
+      } catch (errGrade) {
+        console.error('AI grading error:', errGrade.message);
+      }
     }
-    await bot.sendMessage(ADMIN_CHAT_ID, `📬 *Ответ от ученика ${st.name}:*\n\n«${studentText}»${aiReview}`, {
-      parse_mode: 'Markdown',
-      reply_markup: lastLs ? { inline_keyboard: [[{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]] } : undefined
-    }).catch(() => bot.sendMessage(ADMIN_CHAT_ID, `📬 Ответ от ученика ${st.name}:\n\n${studentText}${aiReview}`));
+
+    if (aiGrading && aiGrading.is_fully_done) {
+      // 1. ДЗ выполнено полностью -> ИИ АВТОМАТИЧЕСКИ МЕНЯЕТ СТАТУС НА [ДЗ_ПРОВЕРЕНО]
+      if (lastLs && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
+        const updated = `[ДЗ_ПРОВЕРЕНО] ${(lastLs.homework || '').replace('[ДЗ_СДАНО]', '')}`.trim();
+        await db.from('lessons').update({ homework: updated }).eq('id', lastLs.id);
+      }
+      
+      // Отправляем разбор ученику
+      await bot.sendMessage(chatId, `🎉 *Отличная работа, ${st.name}! ДЗ проверено и зачтено!* ✅\n\n${aiGrading.student_feedback}\n\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+15 XP)* 🏆`, {
+        parse_mode: 'Markdown'
+      }).catch(() => bot.sendMessage(chatId, aiGrading.student_feedback));
+
+      // Отправляем отчёт преподавателю
+      await bot.sendMessage(ADMIN_CHAT_ID, `✅ *ИИ автоматически ПРОВЕРИЛ И ЗАЧЁЛ ДЗ ученика ${st.name}!* (Статус в приложении: Проверено)\n\nОтвет ученика: «${studentText}»\n\n📋 *Разбор ИИ:*\n${aiGrading.teacher_summary}`, {
+        parse_mode: 'Markdown'
+      }).catch(() => {});
+
+    } else if (aiGrading && !aiGrading.is_fully_done) {
+      // 2. ДЗ выполнено частично -> статус [ДЗ_СДАНО], ученику пишем что доделать
+      if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
+        await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
+      }
+
+      await bot.sendMessage(chatId, `📬 *Ответ принят, ${st.name}!* (Задание выполнено частично)\n\n${aiGrading.student_feedback}\n\n🔥 *Твой стрик: ${newStreak} ДЗ подряд!* Давай доделаем остальное 💪`, {
+        parse_mode: 'Markdown'
+      }).catch(() => bot.sendMessage(chatId, aiGrading.student_feedback));
+
+      await bot.sendMessage(ADMIN_CHAT_ID, `⚠️ *Ученик ${st.name} сдал ДЗ частично:*\n\n«${studentText}»\n\n📋 *Разбор ИИ:*\n${aiGrading.teacher_summary}`, {
+        parse_mode: 'Markdown',
+        reply_markup: lastLs ? { inline_keyboard: [[{ text: '✅ Всё равно отметить проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]] } : undefined
+      }).catch(() => {});
+
+    } else {
+      // Фоллбек если ИИ не вернул JSON
+      if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
+        await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
+      }
+      await bot.sendMessage(chatId, `✅ Супер, *${st.name}*! Твой ответ принят и отправлен на проверку! 🌟\n🔥 *Твой стрик: ${newStreak} ДЗ подряд! (+10 XP)*`, { parse_mode: 'Markdown' }).catch(() => {});
+      await bot.sendMessage(ADMIN_CHAT_ID, `📬 *Ответ от ученика ${st.name}:*\n\n«${studentText}»`, {
+        parse_mode: 'Markdown',
+        reply_markup: lastLs ? { inline_keyboard: [[{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]] } : undefined
+      }).catch(() => {});
+    }
     if (msg.voice || msg.video_note) {
       await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
     }
