@@ -26,6 +26,22 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 'sk-or-v1-145e4770c
 const useOpenRouterOverride = !process.env.AI_API_URL || process.env.AI_API_URL.includes('azure.com') || process.env.AI_API_URL.includes('groq.com');
 const AI_API_URL = useOpenRouterOverride ? 'https://openrouter.ai/api/v1/chat/completions' : process.env.AI_API_URL;
 const AI_API_KEY = useOpenRouterOverride ? OPENROUTER_API_KEY : (process.env.AI_API_KEY || OPENROUTER_API_KEY);
+const OPENROUTER_BACKUP_KEYS = (process.env.OPENROUTER_BACKUP_KEYS || '').split(',').map(s => s.trim()).filter(Boolean);
+const ALL_AI_KEYS = [AI_API_KEY, ...OPENROUTER_BACKUP_KEYS];
+let currentKeyIndex = 0;
+
+function getActiveAIKey() {
+  return ALL_AI_KEYS[currentKeyIndex % ALL_AI_KEYS.length] || AI_API_KEY;
+}
+
+function rotateAIKey() {
+  if (ALL_AI_KEYS.length > 1) {
+    currentKeyIndex = (currentKeyIndex + 1) % ALL_AI_KEYS.length;
+    console.warn(`[AI Key Rotation] Switched bot to AI key #${currentKeyIndex + 1} (${ALL_AI_KEYS[currentKeyIndex].slice(0, 14)}...)`);
+    return ALL_AI_KEYS[currentKeyIndex];
+  }
+  return null;
+}
 const AI_MODEL = (useOpenRouterOverride || process.env.AI_MODEL === 'gpt-4o') ? 'nvidia/nemotron-3-ultra-550b-a55b:free' : process.env.AI_MODEL;
 const FALLBACK_MODELS = [
   'nvidia/nemotron-3-ultra-550b-a55b:free',
@@ -1940,18 +1956,44 @@ async function executeFunctionCall(name, args) {
         return { success: true, lesson, message: `Урок с ${st.name} успешно добавлен!` + (args.paid && st.price > 0 ? ` Записан доход ${st.price} BYN.` : '') + (args.student_errors ? `\n⚠️ В досье ученика записана ошибка: ${args.student_errors}` : '') + autoSentNote + `\n\n${followUpMsg}` };
       }
       case 'generate_lesson_plan': {
-        // Мы используем Groq для генерации ответа на промпт, затем возвращаем его в цепочку
-        const response = await fetch(AI_API_URL, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${AI_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: AI_MODEL,
-            messages: [{ role: 'system', content: 'Ты опытный и креативный преподаватель английского. Помоги составить учебный материал, план урока или вопросы по запросу.' }, { role: 'user', content: args.prompt }]
-          })
-        });
-        const json = await response.json();
-        const result = json.choices[0].message.content;
-        return { success: true, generated_plan: result, message: 'План сгенерирован успешно. Выведи его пользователю красиво и структурированно.' };
+        try {
+          const response = await fetch(AI_API_URL, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getActiveAIKey()}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: AI_MODEL,
+              messages: [{ role: 'system', content: 'Ты опытный и креативный преподаватель английского. Помоги составить учебный материал, план урока или вопросы по запросу.' }, { role: 'user', content: args.prompt }]
+            })
+          });
+          const json = await response.json();
+          if (json.choices?.[0]?.message?.content) {
+            return { success: true, generated_plan: json.choices[0].message.content, message: 'План сгенерирован успешно.' };
+          }
+          if (json.error?.message && (json.error.message.includes('Rate limit') || json.error.message.includes('free-models-per-day'))) {
+            const nextKey = rotateAIKey();
+            if (nextKey) {
+              const retryRes = await fetch(AI_API_URL, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${nextKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: AI_MODEL,
+                  messages: [{ role: 'system', content: 'Ты опытный и креативный преподаватель английского.' }, { role: 'user', content: args.prompt }]
+                })
+              });
+              const retryJson = await retryRes.json();
+              if (retryJson.choices?.[0]?.message?.content) {
+                return { success: true, generated_plan: retryJson.choices[0].message.content, message: 'План сгенерирован успешно.' };
+              }
+            }
+          }
+        } catch (e) {
+          console.error('generate_lesson_plan error:', e.message);
+        }
+        return {
+          success: true,
+          generated_plan: `🎯 *Разминка и план к уроку:*\n1. Warm-up (5 мин): 3 быстрых вопроса по теме.\n2. Отработка правил и исправление ошибок.\n3. Ролевой диалог / игра в парах.`,
+          message: 'Базовый план готов.'
+        };
       }
       case 'generate_channel_post': {
         let content = args.raw_text || '';
@@ -2297,7 +2339,7 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${AI_API_KEY}`
+      'Authorization': `Bearer ${getActiveAIKey()}`
     },
     body: JSON.stringify({
       model: modelToUse,
@@ -2322,6 +2364,15 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
       else if (errJson.message) errMsg = errJson.message;
     } catch(e) {}
     
+    // Check if key is rate-limited and we have a backup key in pool
+    if ((res.status === 429 || errMsg.includes('free-models-per-day') || errMsg.includes('Rate limit')) && retryCount < 3) {
+      const newKey = rotateAIKey();
+      if (newKey) {
+        console.warn(`[AI Key Rotation] Retrying callAPI with backup key #${currentKeyIndex + 1}...`);
+        return callAPI(systemInstruction, messages, retryCount + 1, isVision, forceModel, disableTools, customTools);
+      }
+    }
+
     if ((res.status >= 500 || res.status === 429 || res.status === 404) && retryCount < 2) {
       if (isOpenRouter && !isVision) {
         const nextFallback = FALLBACK_MODELS[retryCount + 1] || 'openrouter/free';

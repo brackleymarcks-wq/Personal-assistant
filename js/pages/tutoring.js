@@ -1028,13 +1028,13 @@ const TutoringPage = {
       .replace(/(?:\r?\n|\\n)?\[МАТЕРИАЛЫ\]:[\s\S]*$/g, '')
       .trim();
 
-    // 1. Serialize presentation file (or preserve existing if not deleted)
-    if (this.attachedPresentation) {
+    // 1. Serialize presentation file only if small (<250KB) or a URL
+    if (this.attachedPresentation && (this.attachedPresentation.startsWith('http') || this.attachedPresentation.length < 250000)) {
       homework += '\n\n[ПРЕЗЕНТАЦИЯ]:\n' + this.attachedPresentation + '\n[/ПРЕЗЕНТАЦИЯ]';
     } else if (id) {
       const oldLs = this.lessons.find(l => l.id === id);
       const oldPres = oldLs?.homework?.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
-      if (oldPres) {
+      if (oldPres && oldPres[1].trim().length < 250000) {
         homework += '\n\n' + oldPres[0];
       }
     }
@@ -1500,7 +1500,10 @@ const TutoringPage = {
     const st = this.students.find(s => s.id === studentId);
     if (!st) return;
     const dossier = this.parseStudentDossier(st);
-    const stLessons = this.lessons.filter(l => l.student_id === studentId && l.status === 'Проведен');
+    const stLessons = (this.lessons.filter(l => l.student_id === studentId && l.status === 'Проведен') || []).map(l => ({
+      ...l,
+      homework: this.cleanHomeworkText(l.homework)
+    }));
     try {
       const report = await Gemini.generateTutoringAI('monthly_report', { name: st.name, grade: st.grade, ...dossier }, {}, stLessons[0], stLessons);
       try { await navigator.clipboard.writeText(report); } catch (e) {}
@@ -2364,6 +2367,10 @@ const TutoringPage = {
       fileInput.onchange = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        if (file.size > 200 * 1024) {
+          if (fileInput) fileInput.value = '';
+          return UI.toast('Файл слишком большой (>200KB) для хранения в БД. Вставьте ссылку на Google Диск / Gamma в поле «Ссылка на презентацию» выше!', 'warning');
+        }
         const reader = new FileReader();
         reader.onload = (ev) => {
           this.attachedPresentation = ev.target.result;

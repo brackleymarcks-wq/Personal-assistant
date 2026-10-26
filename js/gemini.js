@@ -639,9 +639,31 @@ const Gemini = {
     return response.choices?.[0]?.message?.content || 'Не удалось получить ответ';
   },
 
+  _activeKeyIndex: 0,
+  _getAllKeys() {
+    const primary = Config.geminiKey;
+    const backups = Array.isArray(window.ENV_CONFIG?.backupKeys) ? window.ENV_CONFIG.backupKeys : [];
+    return [primary, ...backups].filter(Boolean);
+  },
+  _getCurrentKey() {
+    const keys = this._getAllKeys();
+    if (keys.length === 0) return Config.geminiKey || '';
+    return keys[this._activeKeyIndex % keys.length];
+  },
+  _rotateKey() {
+    const keys = this._getAllKeys();
+    if (keys.length > 1) {
+      this._activeKeyIndex = (this._activeKeyIndex + 1) % keys.length;
+      console.warn(`[AI Key Rotation] Switched to key #${this._activeKeyIndex + 1} (${keys[this._activeKeyIndex].slice(0, 12)}...)`);
+      return keys[this._activeKeyIndex];
+    }
+    return null;
+  },
+
   async _callAPI(arg1, arg2, arg3, arg4 = 0, arg5 = null, arg6 = false) {
     const isExtendedSig = Array.isArray(arg5);
-    const apiKey = (isExtendedSig ? arg2 : arg1) || Config.geminiKey;
+    const passedKey = (isExtendedSig ? arg2 : arg1);
+    const apiKey = passedKey || this._getCurrentKey() || Config.geminiKey;
     const systemInstruction = isExtendedSig ? arg4 : arg2;
     const messages = isExtendedSig ? arg5 : (Array.isArray(arg3) ? arg3 : []);
     const retryCount = isExtendedSig ? 0 : (typeof arg4 === 'number' ? arg4 : 0);
@@ -693,6 +715,15 @@ const Gemini = {
         errMsg = `API error ${res.status}: ` + JSON.stringify(err);
       }
       
+      // Check if key is rate limited and we can rotate to a backup key
+      if ((res.status === 429 || errMsg.includes('free-models-per-day') || errMsg.includes('Rate limit')) && retryCount < 3) {
+        const newKey = this._rotateKey();
+        if (newKey && newKey !== apiKey) {
+          console.warn('Rotated to backup key on 429 rate limit. Retrying immediately...');
+          return this._callAPI(apiUrl, newKey, model, systemInstruction, messages, disableTools);
+        }
+      }
+
       // Fallback chain across models on 404/429/5xx (up to 2 retries)
       if ((res.status === 429 || res.status === 404 || res.status >= 500) && retryCount < 2) {
         console.warn(`AI API status ${res.status} on model. Switching to fallback model #${retryCount + 1}...`);
@@ -930,9 +961,13 @@ ${hasScenario ? `НИЖЕ ДАН СЦЕНАРИЙ И МАТЕРИАЛЫ ПРОВ
 - В Шаге 1 дай РОВНО 4-5 ключевых слов/семейств компактным нумерованным списком (не перегружай длинными списками!).
 - ОБЯЗАТЕЛЬНО ДОЛЖНЫ БЫТЬ СГЕНЕРИРОВАНЫ ВСЕ 3 ШАГА: Шаг 1 (Слова), Шаг 2 (Грамматика с памяткой и 3-4 практическими предложениями) и Шаг 3 (Творческое/разговорное задание)! Ни один шаг нельзя пропускать!`;
     } else if (mode === 'parent_msg') {
-      prompt = `Напиши готовое, теплое и профессиональное сообщение для ученика или его родителей в Telegram/Viber по итогам сегодняшнего урока.\nТема сегодня: "${currentLesson.topic || 'Практика английского'}".\nДомашнее задание на следующий раз: "${currentLesson.homework || 'Повторить лексику урока'}".\nСтруктура: Приветствие, что сегодня классно разобрали и за что можно похвалить, над чем ещё работаем, и чётко выделенное Домашнее задание. Без лишних вступлений, сразу текст сообщения для копирования!`;
+      const cleanHw = (currentLesson.homework || 'Повторить лексику урока').replace(/\[(ПРЕЗЕНТАЦИЯ|МАТЕРИАЛЫ|СЦЕНАРИЙ_УРОКА|КАРТОЧКИ_ДЗ)\]:[\s\S]*?\[\/\1\]/g, '').replace(/data:application\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '').slice(0, 500).trim();
+      prompt = `Напиши готовое, теплое и профессиональное сообщение для ученика или его родителей в Telegram/Viber по итогам сегодняшнего урока.\nТема сегодня: "${currentLesson.topic || 'Практика английского'}".\nДомашнее задание на следующий раз: "${cleanHw}".\nСтруктура: Приветствие, что сегодня классно разобрали и за что можно похвалить, над чем ещё работаем, и чётко выделенное Домашнее задание. Без лишних вступлений, сразу текст сообщения для копирования!`;
     } else if (mode === 'monthly_report') {
-      const historyLines = (allLessons || []).slice(0, 8).map(l => `- ${new Date(l.date).toLocaleDateString('ru-RU')}: ${l.topic || 'Практика'} (ДЗ: ${(l.homework || '—').split('\n')[0]})`).join('\n');
+      const historyLines = (allLessons || []).slice(0, 8).map(l => {
+        const cleanHw = (l.homework || '—').replace(/\[(ПРЕЗЕНТАЦИЯ|МАТЕРИАЛЫ|СЦЕНАРИЙ_УРОКА|КАРТОЧКИ_ДЗ)\]:[\s\S]*?\[\/\1\]/g, '').replace(/data:application\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '').trim();
+        return `- ${new Date(l.date).toLocaleDateString('ru-RU')}: ${l.topic || 'Практика'} (ДЗ: ${cleanHw.split('\n')[0].slice(0, 150)})`;
+      }).join('\n');
       prompt = `Составь красивый "📊 Отчёт о прогрессе ученика" за последние занятия (для отправки родителям или самому ученику в Telegram).\nПройденные уроки:\n${historyLines || 'Нет записанных тем'}\n\nСтруктура отчёта:\n1. 🌟 Главные достижения и пройденные темы\n2. 📈 Над какими ошибками и навыками мы сейчас работаем\n3. 🎯 План и фокус на следующие 4 занятия\nПиши вдохновляюще, структурно, с эмодзи, готовым текстом для пересылки!`;
     } else if (mode === 'game_5min') {
       prompt = `До конца урока осталось 5-7 минут! Создай живую, увлекательную устную мини-игру на 5 минут по теме "${currentLesson.topic || 'Повторение и лексика'}", используя активный словарь, типичные ошибки и интересы ученика.\nВыбери один из форматов: "Детективное расследование / Алиби", "Угадай слово по 3 подсказкам (Taboo)", "2 правды и 1 ложь с ловушками на грамматику" или "Блиц-аукцион ошибок".\nПиши сразу готовый сценарий и реплики для преподавателя (с правильными ответами в скобках)!`;
