@@ -218,7 +218,18 @@ const TutoringPage = {
                   <button type="button" id="ls-btn-pplx-fill" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0d9488;border-color:rgba(13,148,136,0.35);" title="Вставить текст конспекта из Perplexity">📥 Вставить из Perplexity</button>
                 </div>
                 <textarea id="ls-scenario" class="form-input" rows="4" style="font-size:12px;font-family:inherit;" placeholder="Вставьте сюда сценарий / конспект урока из Perplexity (все слайды, слова, правила). Бот запомнит этот сценарий и будет по нему подкидывать ученице 5 слов, 5 глаголов и тестик!"></textarea>
-                <input id="ls-materials" type="text" class="form-input" style="margin-top:6px;" placeholder="Ссылки на материалы, видео или PDF (например: https://youtube.com/...)" />
+                <input id="ls-materials" type="text" class="form-input" style="margin-top:6px;" placeholder="Ссылка на презентацию в Gamma / Google Диск / YouTube (https://...)" />
+                <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px;">
+                  <input type="file" id="ls-presentation-file" accept=".pdf,.pptx,.ppt" style="display:none;" />
+                  <button type="button" id="ls-btn-upload-pres" class="btn btn-secondary btn-xs" style="font-size:11px;display:inline-flex;align-items:center;gap:4px;">
+                    <i data-lucide="file" style="width:12px;height:12px;"></i> 📎 Прикрепить файл презентации (PDF / PPTX)
+                  </button>
+                  <div id="ls-pres-badge" style="display:none;align-items:center;gap:6px;padding:3px 8px;background:rgba(13,148,136,0.12);border:1px solid rgba(13,148,136,0.3);border-radius:6px;font-size:11px;color:#0d9488;">
+                    <span id="ls-pres-name">Презентация.pdf</span>
+                    <a id="ls-pres-link" href="#" target="_blank" style="color:var(--accent);text-decoration:underline;">Открыть</a>
+                    <button type="button" id="ls-pres-remove" style="border:none;background:none;color:var(--danger);cursor:pointer;font-weight:700;">✕</button>
+                  </div>
+                </div>
               </div>
               <div class="form-row">
                 <div class="form-group">
@@ -770,6 +781,15 @@ const TutoringPage = {
       materials = parts[1].trim();
     }
     
+    // Extract [ПРЕЗЕНТАЦИЯ]
+    this.attachedPresentation = null;
+    const presMatch = displayHomework.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
+    if (presMatch) {
+      this.attachedPresentation = presMatch[1].trim();
+      displayHomework = displayHomework.replace(presMatch[0], '').trim();
+    }
+    this.renderPresentationBadge();
+
     // Extract [СЦЕНАРИЙ_УРОКА]
     let scenario = '';
     const scMatch = displayHomework.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
@@ -903,6 +923,12 @@ const TutoringPage = {
     homework = homework.replace(/\\n\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/, '').trim();
     if (this.attachedCards && this.attachedCards.length > 0) {
       homework += '\\n[КАРТОЧКИ_ДЗ]:\\n' + this.attachedCards.join('||') + '\\n[/КАРТОЧКИ_ДЗ]';
+    }
+
+    // Serialize presentation file
+    homework = homework.replace(/\\n\[ПРЕЗЕНТАЦИЯ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ\]/, '').trim();
+    if (this.attachedPresentation) {
+      homework += '\\n[ПРЕЗЕНТАЦИЯ]:\\n' + this.attachedPresentation + '\\n[/ПРЕЗЕНТАЦИЯ]';
     }
 
     const scenarioVal = document.getElementById('ls-scenario')?.value?.trim() || '';
@@ -1881,6 +1907,58 @@ const TutoringPage = {
 
   attachedCards: [],
   _voiceRec: null,
+
+  attachedPresentation: null,
+
+  renderPresentationBadge() {
+    const badge = document.getElementById('ls-pres-badge');
+    const nameSpan = document.getElementById('ls-pres-name');
+    const linkA = document.getElementById('ls-pres-link');
+    const removeBtn = document.getElementById('ls-pres-remove');
+    const uploadBtn = document.getElementById('ls-btn-upload-pres');
+    const fileInput = document.getElementById('ls-presentation-file');
+
+    if (!badge) return;
+
+    if (uploadBtn && fileInput && !uploadBtn._bound) {
+      uploadBtn._bound = true;
+      uploadBtn.onclick = () => fileInput.click();
+      fileInput.onchange = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          this.attachedPresentation = ev.target.result;
+          this.renderPresentationBadge();
+          UI.toast('Презентация прикреплена к уроку!', 'success');
+        };
+        reader.readAsDataURL(file);
+      };
+    }
+
+    if (removeBtn) {
+      removeBtn.onclick = () => {
+        this.attachedPresentation = null;
+        if (fileInput) fileInput.value = '';
+        this.renderPresentationBadge();
+      };
+    }
+
+    if (this.attachedPresentation) {
+      badge.style.display = 'inline-flex';
+      nameSpan.textContent = '📄 Презентация урока (PDF/PPTX)';
+      linkA.href = this.attachedPresentation;
+      linkA.onclick = (e) => {
+        if (this.attachedPresentation.startsWith('data:')) {
+          e.preventDefault();
+          const win = window.open();
+          win.document.write('<iframe src="' + this.attachedPresentation + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+        }
+      };
+    } else {
+      badge.style.display = 'none';
+    }
+  },
 
   parseCardsFromHomework(rawHw) {
     if (!rawHw) return [];
