@@ -528,6 +528,9 @@ const TutoringPage = {
   async saveStudent(id = null) {
     const name = document.getElementById('st-name').value;
     if (!name) return UI.toast('Введите имя', 'warning');
+    const freshList = id ? await DB.getStudents().catch(() => this.students) : this.students;
+    const freshSt = id ? (freshList.find(s => s.id === id) || this.students.find(s => s.id === id)) : null;
+    const freshDoss = freshSt ? this.parseStudentDossier(freshSt) : {};
 
     let schedule = this.serializeStudentDossier(
       document.getElementById('st-schedule').value.trim(),
@@ -537,11 +540,11 @@ const TutoringPage = {
       document.getElementById('st-notes').value.trim(),
       document.getElementById('st-perplexity').value.trim(),
       document.getElementById('st-unit').value.trim(),
-      document.getElementById('st-tg-id').value.trim(),
-      document.getElementById('st-tg-user').value.trim(),
-      id ? this.parseStudentDossier(this.students.find(s => s.id === id)).streak : 0,
-      document.getElementById('st-parent-tg-id')?.value?.trim() || '',
-      document.getElementById('st-parent-tg-user')?.value?.trim() || ''
+      document.getElementById('st-tg-id').value.trim() || freshDoss.tgId || '',
+      document.getElementById('st-tg-user').value.trim() || freshDoss.tgUser || '',
+      freshDoss.streak || (id ? this.parseStudentDossier(this.students.find(s => s.id === id)).streak : 0),
+      document.getElementById('st-parent-tg-id')?.value?.trim() || freshDoss.parentTgId || '',
+      document.getElementById('st-parent-tg-user')?.value?.trim() || freshDoss.parentTgUser || ''
     );
     if (false) {
     const notes = document.getElementById('st-notes').value.trim();
@@ -1195,10 +1198,10 @@ const TutoringPage = {
   async copyStudentBotInvite(studentId) {
     const st = this.students.find(s => s.id === studentId);
     if (!st) return;
-    let botUser = '';
+    let botUser = 'gor_pavlovskiy_bot';
     try {
       const settings = await DB.getSettings();
-      botUser = settings?.context?.bot_username || '';
+      botUser = settings?.context?.bot_username || 'gor_pavlovskiy_bot';
     } catch (e) {}
     if (!botUser) {
       botUser = prompt('Введите @username вашего Telegram-бота (без @, один раз):', '') || '';
@@ -1254,10 +1257,10 @@ const TutoringPage = {
   async copyParentBotInvite(studentId) {
     const st = this.students.find(s => s.id === studentId);
     if (!st) return;
-    let botUser = '';
+    let botUser = 'gor_pavlovskiy_bot';
     try {
       const settings = await DB.getSettings();
-      botUser = settings?.context?.bot_username || '';
+      botUser = settings?.context?.bot_username || 'gor_pavlovskiy_bot';
     } catch (e) {}
     if (!botUser) {
       botUser = prompt('Введите @username вашего Telegram-бота (без @, один раз):', '') || '';

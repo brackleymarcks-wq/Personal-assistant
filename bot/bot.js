@@ -563,6 +563,7 @@ async function findStudentByTgChatId(chatIdStr) {
   const { data: sts } = await db.from('students').select('*');
   for (const st of (sts || [])) {
     const doss = parseStudentDossierBot(st);
+    if (doss.parentTgId && String(doss.parentTgId).trim() === String(chatIdStr).trim()) continue;
     if (doss.tgId && String(doss.tgId).trim() === String(chatIdStr).trim()) {
       return { student: st, dossier: doss };
     }
@@ -639,7 +640,8 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
 
   const kb = [
     [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lesson.id}` }],
-    [{ text: '🎯 Потренировать мои слова (Мини-квиз)', callback_data: 'student_quiz' }]
+    [{ text: '🎯 Потренировать мои слова (Мини-квиз)', callback_data: 'student_quiz' }],
+    [{ text: '👨‍👩‍👧 Я родитель (переключить режим)', callback_data: `switch_to_parent:${st.id}` }]
   ];
   try {
     await bot.sendMessage(doss.tgId, msg, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
@@ -2006,6 +2008,10 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
       return bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Проверка ссылки для родителя (${st.name}):*\nСсылка активна! Перешли её маме/папе:\n\`${link}\`\n\n_(Когда родитель нажмёт «Запустить» со своего аккаунта, его Telegram ID автоматически привяжется к карточке ${st.name})_`, { parse_mode: 'Markdown' });
     }
     const doss = parseStudentDossierBot(st);
+    if (doss.tgId && String(doss.tgId).trim() === incomingChatId) {
+      doss.tgId = '';
+      doss.tgUser = '';
+    }
     doss.parentTgId = incomingChatId;
     if (msg.from?.username) doss.parentTgUser = '@' + msg.from.username;
     const newSched = serializeStudentDossierBot(doss);
@@ -2038,6 +2044,10 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
       return bot.sendMessage(ADMIN_CHAT_ID, `🔗 *Проверка ссылки для ${st.name}:*\nСсылка активна! Перешли её ученику:\n\`${link}\`\n\n_(Когда сам ученик нажмёт «Запустить» со своего аккаунта, его Telegram ID автоматически привяжется к карточке)_`, { parse_mode: 'Markdown' });
     }
     const doss = parseStudentDossierBot(st);
+    if (doss.parentTgId && String(doss.parentTgId).trim() === incomingChatId) {
+      doss.parentTgId = '';
+      doss.parentTgUser = '';
+    }
     doss.tgId = incomingChatId;
     if (msg.from?.username) doss.tgUser = '@' + msg.from.username;
     const newSched = serializeStudentDossierBot(doss);
@@ -2046,7 +2056,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     const welcomeSt = `👋 *Привет, ${st.name}!*\nЯ бот-помощник Игоря по английскому языку 🇬🇧\n\nСюда я буду присылать:\n• 📌 Твои домашние задания и новые слова после урока\n• ⏰ Напоминания перед занятием, чтобы ничего не забыть\n\nА ещё ты можешь прямо сюда *отправлять выполненную домашку* (текстом или фотографией тетрадки) — я сразу передам её Игорю!`;
     await bot.sendMessage(incomingChatId, welcomeSt, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }]] }
+      reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }], [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${(typeof st !== 'undefined' ? st : found.student).id}` }]] }
     }).catch(() => bot.sendMessage(incomingChatId, welcomeSt));
 
     await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Ученик подключился к боту!*\n👤 *${st.name}* (${doss.tgUser || 'ID: ' + incomingChatId}) нажал Start.\nТеперь бот будет сам отправлять ему ДЗ и напоминалки в личку! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
@@ -2058,7 +2068,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     if (found) {
       return bot.sendMessage(incomingChatId, `👋 Привет, *${found.student.name}*! Нажми кнопку ниже, чтобы посмотреть своё домашнее задание, или просто отправь мне сюда выполненное ДЗ (текстом или фото тетрадки)! 🇬🇧`, {
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }]] }
+        reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }], [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${(typeof st !== 'undefined' ? st : found.student).id}` }]] }
       });
     }
     const parentFound = await findParentByTgChatId(incomingChatId);
@@ -2361,6 +2371,35 @@ bot.on('callback_query', async (query) => {
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
+  } else if (data && data.startsWith('switch_to_parent:')) {
+    const studentId = data.split(':')[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+      const doss = parseStudentDossierBot(st);
+      if (String(doss.tgId).trim() === String(chatId).trim()) {
+        doss.tgId = '';
+        doss.tgUser = '';
+      }
+      doss.parentTgId = String(chatId);
+      if (query.from?.username) doss.parentTgUser = '@' + query.from.username;
+      const newSched = serializeStudentDossierBot(doss);
+      await db.from('students').update({ schedule: newSched }).eq('id', st.id);
+      await bot.answerCallbackQuery(query.id, { text: '👨‍👩‍👧 Переключено в режим Родителя!' });
+      const welcomeParent = `Здравствуйте! 👋\nРежим успешно переключён: теперь вы подключены как *Родитель* к электронному дневнику успеваемости ученика *${st.name}* по английскому языку (преподаватель — Игорь) 🇬🇧\n\nСюда я буду автоматически присылать:\n• 📝 *Отчёты после каждого проведённого урока* (тема, успехи, домашнее задание)\n• 📊 *Аналитику прогресса и выученных тем*\n\nВы можете в любой момент нажать кнопки ниже, чтобы посмотреть актуальное домашнее задание ребёнка или запросить свежий отчёт об успеваемости:`;
+      await bot.sendMessage(chatId, welcomeParent, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }],
+            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
+          ]
+        }
+      }).catch(() => bot.sendMessage(chatId, welcomeParent));
+      await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 Аккаунт (${doss.parentTgUser || 'ID: ' + chatId}) переключился в режим *Родителя* ученика *${st.name}*!`, { parse_mode: 'Markdown' }).catch(() => {});
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
   } else if (data && data.startsWith('parent_req_report:')) {
     const studentId = data.split(':')[1];
     try {
@@ -2419,6 +2458,18 @@ bot.on('callback_query', async (query) => {
     }
   } else if (data === 'student_quiz') {
     try {
+      const pFound = await findParentByTgChatId(chatId);
+      if (pFound) {
+        return bot.sendMessage(chatId, `Здравствуйте! 👋 Вы находитесь в режиме *Родителя* ученика *${pFound.student.name}*. Используйте кнопки дневника для родителей:`, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pFound.student.id}` }],
+              [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pFound.student.id}` }]
+            ]
+          }
+        });
+      }
       const found = await findStudentByTgChatId(chatId);
       if (!found) return bot.answerCallbackQuery(query.id, { text: 'Профиль ученика не найден', show_alert: true });
       const st = found.student;
@@ -2435,6 +2486,18 @@ bot.on('callback_query', async (query) => {
     }
   } else if (data === 'student_my_hw') {
     try {
+      const pFound = await findParentByTgChatId(chatId);
+      if (pFound) {
+        return bot.sendMessage(chatId, `Здравствуйте! 👋 Вы находитесь в режиме *Родителя* ученика *${pFound.student.name}*. Используйте кнопки дневника для родителей:`, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pFound.student.id}` }],
+              [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pFound.student.id}` }]
+            ]
+          }
+        });
+      }
       const found = await findStudentByTgChatId(chatId);
       if (!found) {
         return bot.answerCallbackQuery(query.id, { text: 'Профиль ученика не найден', show_alert: true });
