@@ -717,18 +717,37 @@ async function sendTtsAudio(chatId, phrase, title = 'Произношение с
   }
 }
 
-function getLessonFlashcards(scenarioText, hwText) {
+function getLessonFlashcards(scenarioText, hwText = '') {
   const cards = [];
-  const text = (scenarioText || '') + '\n' + (hwText || '');
+  const text = (hwText || '') + '\n' + (scenarioText || '');
   const lines = text.split('\n');
   for (const l of lines) {
-    const m = l.match(/[•\d\-*]*\s*([A-Za-z\s-]+)\s*(?:[\[\/](.*?)[\]\/])?\s*[—–-]\s*([^(\n]+)(?:\((.*?)\))?/);
+    const trimmed = l.trim();
+    if (!trimmed || trimmed.startsWith('Слайд') || trimmed.startsWith('Unit') || trimmed.startsWith('Today') || trimmed.startsWith('Mission') || trimmed.startsWith('Checklist')) continue;
+
+    // Pattern: [bullet/num]? [English word] [transcription]? [dash with spaces] [Russian translation] (example)?
+    const m = trimmed.match(/^[•\d\s\-\*.]*([A-Za-z][A-Za-z\s'-]*?)\s*(?:[\[\/]([^\/\]]+)[\]\/])?\s+[—–-]\s+([^(\n]+)(?:\((.*?)\))?/);
     if (m && m[1] && m[3]) {
       const en = m[1].trim();
-      const ipa = m[2] ? `[${m[2].trim()}]` : '';
-      const ru = m[3].trim();
+      const ipa = m[2] ? ('[' + m[2].trim() + ']') : '';
+      let ru = m[3].trim();
       const ex = m[4] ? m[4].trim() : '';
-      if (en.length >= 2 && ru.length >= 2 && !en.startsWith('http') && !en.startsWith('Unit') && !cards.find(c => c.en.toLowerCase() === en.toLowerCase())) {
+
+      // Strict validation:
+      // 1. ru MUST contain Cyrillic letters (real Russian translation)
+      if (!/[а-яА-ЯёЁ]/.test(ru)) continue;
+
+      // 2. en must be 1-3 English words, NO cyrillic, between 2 and 30 chars
+      if (!/^[A-Za-z\s'-]{2,30}$/.test(en)) continue;
+      if (en.split(/\s+/).length > 3) continue;
+
+      // 3. Clean ru from any trailing noise or secondary dashes
+      ru = ru.replace(/\s*[—–-]\s*.*$/, '').trim();
+
+      const lowerEn = en.toLowerCase();
+      if (['mistakes', 'words', 'prepositions', 'checklist', 'places', 'trees', 'animals', 'birds', 'grammar', 'practice', 'step', 'shag'].includes(lowerEn)) continue;
+
+      if (!cards.find(c => c.en.toLowerCase() === lowerEn)) {
         cards.push({ en, ipa, ru, ex });
       }
     }
@@ -740,12 +759,10 @@ function getLessonFlashcards(scenarioText, hwText) {
       { en: 'dangerous', ipa: '[ˈdeɪndʒərəs]', ru: 'опасный', ex: 'A wild wolf can be dangerous.' },
       { en: 'endangered', ipa: '[ɪnˈdeɪndʒəd]', ru: 'под угрозой исчезновения', ex: 'The bison is an endangered animal.' },
       { en: 'wildlife', ipa: '[ˈwaɪldlaɪf]', ru: 'дикая природа', ex: 'We must protect wildlife.' },
-      { en: 'naturalist', ipa: '[ˈnætʃrəlɪst]', ru: 'натуралист', ex: 'A naturalist studies nature.' },
       { en: 'suitcase', ipa: '[ˈsuːtkeɪs]', ru: 'чемодан', ex: 'She has just packed her suitcase.' },
       { en: 'to rescue', ipa: '[ˈreskjuː]', ru: 'спасать', ex: 'He has rescued a kitten.' },
       { en: 'species', ipa: '[ˈspiːʃiːz]', ru: 'вид / виды животных', ex: 'There are rare species in the forest.' },
-      { en: 'recently', ipa: '[ˈriːsntli]', ru: 'недавно', ex: 'I have seen a bison recently.' },
-      { en: 'beaver', ipa: '[ˈbiːvə]', ru: 'бобр', ex: 'The beaver builds a dam.' }
+      { en: 'recently', ipa: '[ˈriːsntli]', ru: 'недавно', ex: 'I have seen a bison recently.' }
     ];
   }
   return cards;
