@@ -888,7 +888,9 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
 
   const header = isReminder
     ? `⏰ *Привет, ${st.name}!*\nНапоминаю про домашнее задание по английскому языку${nextLessonDateStr ? ` к уроку *${nextLessonDateStr}*` : ''} 🇬🇧`
-    : `🇬🇧 *Привет, ${st.name}!*\nИтоги нашего урока и домашнее задание на следующий раз:`;
+    : (lesson?.status === 'Запланирован'
+        ? `📚 *Привет, ${st.name}!*\nМатериалы и задания к предстоящему уроку:`
+        : `🇬🇧 *Привет, ${st.name}!*\nИтоги нашего урока и домашнее задание на следующий раз:`);
 
   let msg = `${header}\n\n`;
   if (lesson?.topic) msg += `📚 *Тема:* ${lesson.topic}\n`;
@@ -938,7 +940,7 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
         if (cards.length > 0) {
           await sendCardsToChat(adminId, cards, `🖼 [Копия для преподавателя] Карточки ДЗ для ${st.name}`).catch(() => {});
         }
-        const adminHeader = `👀 *[Копия для преподавателя — так это видит ${st.name} в Telegram]:*\n\n`;
+        const adminHeader = `👀 *[Копия для преподавателя — ученик ${st.name} открыл материалы в боте (${lesson?.status === 'Запланирован' ? 'до урока' : 'после урока'})]:*\n\n`;
         await bot.sendMessage(adminId, adminHeader + msg, {
           parse_mode: 'Markdown',
           reply_markup: { inline_keyboard: kb }
@@ -3447,7 +3449,8 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
         reply_markup: { inline_keyboard: [[{ text: '🎯 Потренировать мои слова (Мини-квиз)', callback_data: 'student_quiz' }]] }
       }).catch(() => {});
       const cleanHw = (ls?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim();
-      await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *${stName}* нажал(а) кнопку **«Я сделал(а) ДЗ!»**\n📌 Задание: _${cleanHw || 'Без текста'}_`, {
+      const isUpcoming = ls?.status === 'Запланирован';
+      await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *${stName}* нажал(а) кнопку **«Я сделал(а) ДЗ!»** ${isUpcoming ? '*(к предстоящему уроку)*' : ''}\n📌 Задание: _${cleanHw || 'Без текста'}_`, {
         parse_mode: 'Markdown',
         reply_markup: { inline_keyboard: [[{ text: '✅ Отметить проверенным', callback_data: `lesson_hw_checked:${lessonId}` }]] }
       }).catch(() => {});
@@ -4542,10 +4545,13 @@ bot.on('message', async (msg) => {
     }
   } catch(e) {
     console.error('Bot message error:', e);
-    let debugInfo = e.message;
-    if (e.cause) debugInfo += '\nCause: ' + e.cause.message;
-    if (e.stack) debugInfo += '\nStack: ' + e.stack.substring(0, 200);
-    bot.sendMessage(chatId, '❌ Ошибка (Дебаг):\n' + debugInfo);
+    const errText = (e.message || '') + (e.cause ? ' ' + e.cause.message : '');
+    if (errText.includes('Rate limit') || errText.includes('free-models-per-day') || errText.includes('429') || errText.includes('Лимит запросов')) {
+      bot.sendMessage(chatId, '⚠️ *Лимит бесплатных запросов нейросети на сегодня исчерпан* (OpenRouter free tier limit).\nВсе кнопки, карточки, интерактивные викторины, расписание и напоминалки работают в штатном режиме без перебоев! Свободная генерация текста через ИИ обновится при сбросе суточного лимита.', { parse_mode: 'Markdown' }).catch(() => {});
+    } else {
+      let debugInfo = e.message || 'Неизвестная ошибка';
+      bot.sendMessage(chatId, '⚠️ Произошла ошибка при обработке сообщения: ' + debugInfo).catch(() => {});
+    }
   }
 });
 
