@@ -34,10 +34,10 @@ const TutoringPage = {
           </div>
           
           <!-- 2 Column Layout -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-xl);align-items:start;">
+          <div style="display:grid;grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);gap:var(--space-xl);align-items:start;min-width:0;">
             
             <!-- Left Column: Students -->
-            <div style="display:flex;flex-direction:column;gap:var(--space-md);">
+            <div style="display:flex;flex-direction:column;gap:var(--space-md);min-width:0;overflow:hidden;">
               <h3 style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
                 <i data-lucide="users" style="color:var(--accent);width:18px;height:18px;"></i> Мои ученики
               </h3>
@@ -45,7 +45,7 @@ const TutoringPage = {
             </div>
 
             <!-- Right Column: Lessons -->
-            <div style="display:flex;flex-direction:column;gap:var(--space-xl);">
+            <div style="display:flex;flex-direction:column;gap:var(--space-xl);min-width:0;overflow:hidden;">
               
               <div style="display:flex;flex-direction:column;gap:var(--space-md);">
                 <h3 style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
@@ -461,11 +461,11 @@ const TutoringPage = {
           const isChecked = rawHw.includes('[ДЗ_ПРОВЕРЕНО]');
           const cleanHwText = rawHw.split('\\n[МАТЕРИАЛЫ]:')[0].split('\\n[КАРТОЧКИ_ДЗ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').replace('[ОТПРАВИТЬ_В_ТГ]', '').replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
           if (isDone && !isChecked) {
-            hwStatusBadge = `<div style="margin-top:8px;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:6px;"><span style="color:#2563eb;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📬 Сдано в ТГ: ${this.escapeHtml(cleanHwText || 'Домашка')}</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${lastHwLesson.id}')">✅ Проверено</button></div>`;
+            hwStatusBadge = `<div style="margin-top:8px;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:6px;min-width:0;overflow:hidden;"><span style="color:#2563eb;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">📬 Сдано в ТГ: ${this.escapeHtml(cleanHwText || 'Домашка')}</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${lastHwLesson.id}')">✅ Проверено</button></div>`;
           } else if (isChecked) {
-            hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);font-size:11px;color:var(--success);display:flex;align-items:center;gap:6px;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> <span>✅ ДЗ проверено: ${this.escapeHtml(cleanHwText || 'Задание')}</span></div>`;
+            hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);font-size:11px;color:var(--success);display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;"><i data-lucide="check-circle" style="width:12px;height:12px;flex-shrink:0;"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">✅ ДЗ проверено: ${this.escapeHtml(cleanHwText || 'Задание')}</span></div>`;
           } else if (cleanHwText) {
-            hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;color:var(--accent);"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">ДЗ: ${this.escapeHtml(cleanHwText)}</span></div>`;
+            hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;"><i data-lucide="edit-3" style="width:12px;height:12px;color:var(--accent);flex-shrink:0;"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">ДЗ: ${this.escapeHtml(cleanHwText)}</span></div>`;
           }
         }
         const displaySchedule = dossier.schedule || 'Нет расписания';
@@ -483,7 +483,7 @@ const TutoringPage = {
           : "this.style.transform='none';this.style.borderColor='var(--border-light)';this.style.boxShadow='none';";
 
         return `
-          <div class="glass-panel" data-id="${st.id}" style="padding:20px;border-radius:16px;cursor:pointer;opacity:${opacity};transition:all 0.2s;background:var(--bg-surface);border:1px solid ${borderColor};${glowEffect}position:relative;overflow:hidden;" onmouseover="${onMouseOver}" onmouseout="${onMouseOut}">
+          <div class="glass-panel" data-id="${st.id}" style="padding:20px;border-radius:16px;cursor:pointer;opacity:${opacity};transition:all 0.2s;background:var(--bg-surface);border:1px solid ${borderColor};${glowEffect}position:relative;overflow:hidden;min-width:0;max-width:100%;box-sizing:border-box;" onmouseover="${onMouseOver}" onmouseout="${onMouseOut}">
             ${!st.active ? '<div style="position:absolute;top:12px;right:12px;font-size:10px;background:var(--bg-secondary);padding:2px 8px;border-radius:12px;font-weight:600;">АРХИВ</div>' : ''}
             <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:16px;">
               <div style="display:flex;align-items:center;gap:12px;">
@@ -507,10 +507,10 @@ const TutoringPage = {
               </div>
               ${debtBadge}
             </div>
-            ${(dossier.unit || dossier.interests || dossier.errors) ? `<div style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">${dossier.unit ? `<div style="color:var(--accent);">📖 <b>Программа:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}${dossier.errors ? `<div style="color:var(--warning);">⚠️ <b>Ошибки:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}</div>` : ''}
+            ${(dossier.unit || dossier.interests || dossier.errors) ? `<div style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;overflow:hidden;word-break:break-word;min-width:0;">${dossier.unit ? `<div style="color:var(--accent);">📖 <b>Программа:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}${dossier.errors ? `<div style="color:var(--warning);">⚠️ <b>Ошибки:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}</div>` : ''}
             ${hwStatusBadge}
 
-            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-light); width: 100%;">
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-light); width: 100%; flex-wrap:wrap; min-width:0;">
               ${unpaidCount > 0 ? `
                 <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.payAllDebts('${st.id}', ${unpaidCount}, ${st.price}, '${this.escapeHtml(st.name)}')" style="color:var(--danger); border-color:rgba(239,68,68,0.2); background:rgba(239,68,68,0.05); display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;">
                   <i data-lucide="coins" style="width:12px;height:12px;"></i> Оплатить долг
