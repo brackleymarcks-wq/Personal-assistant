@@ -564,7 +564,8 @@ async function findStudentByTgChatId(chatIdStr) {
   for (const st of (sts || [])) {
     const doss = parseStudentDossierBot(st);
     if (doss.parentTgId && String(doss.parentTgId).trim() === String(chatIdStr).trim()) continue;
-    if (doss.tgId && String(doss.tgId).trim() === String(chatIdStr).trim()) {
+    const tgIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (tgIds.includes(String(chatIdStr).trim())) {
       return { student: st, dossier: doss };
     }
   }
@@ -804,7 +805,8 @@ async function sendCardsToChat(chatId, cards, captionPrefix = '🖼 Карточ
 
 async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLessonDateStr = '') {
   const doss = parseStudentDossierBot(st);
-  if (!doss.tgId) return { sent: false, reason: 'no_tg_id' };
+  const targetIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (targetIds.length === 0) return { sent: false, reason: 'no_tg_id' };
   
   const { cleanHw: noCardsHw, cards } = extractAttachedCards(lesson?.homework || '');
   const rawHw = noCardsHw.split('\\n[МАТЕРИАЛЫ]:')[0]
@@ -814,11 +816,6 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
     .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
     .trim();
   if (!rawHw && !lesson?.topic && cards.length === 0) return { sent: false, reason: 'empty_hw' };
-
-  // 1. Send cards first if any
-  if (cards.length > 0) {
-    await sendCardsToChat(doss.tgId, cards, '🖼 Карточка к ДЗ');
-  }
 
   const header = isReminder
     ? `⏰ *Привет, ${st.name}!*\nНапоминаю про домашнее задание по английскому языку${nextLessonDateStr ? ` к уроку *${nextLessonDateStr}*` : ''} 🇬🇧`
@@ -855,13 +852,18 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
     [{ text: '👨‍👩‍👧 Я родитель (переключить режим)', callback_data: `switch_to_parent:${st.id}` }]
   ];
   try {
-    await bot.sendMessage(doss.tgId, msg, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
-      return bot.sendMessage(doss.tgId, msg, { reply_markup: { inline_keyboard: kb } });
-    });
+    for (const tid of targetIds) {
+      if (cards.length > 0) {
+        await sendCardsToChat(tid, cards, '🖼 Карточка к ДЗ');
+      }
+      await bot.sendMessage(tid, msg, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
+        return bot.sendMessage(tid, msg, { reply_markup: { inline_keyboard: kb } });
+      });
+    }
 
     // Duplicate exact copy to teacher/admin so teacher sees word-for-word what the student receives
     const adminId = CHAT_ID || ADMIN_CHAT_ID;
-    if (adminId && String(adminId) !== String(doss.tgId)) {
+    if (adminId && !targetIds.includes(String(adminId))) {
       try {
         if (cards.length > 0) {
           await sendCardsToChat(adminId, cards, `🖼 [Копия для преподавателя] Карточки ДЗ для ${st.name}`).catch(() => {});
@@ -2369,12 +2371,23 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
       doss.parentTgId = '';
       doss.parentTgUser = '';
     }
-    doss.tgId = incomingChatId;
-    if (msg.from?.username) doss.tgUser = '@' + msg.from.username;
+    const currentTgIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (!currentTgIds.includes(incomingChatId)) {
+      currentTgIds.push(incomingChatId);
+    }
+    doss.tgId = currentTgIds.join(', ');
+
+    const currentTgUsers = (doss.tgUser || '').split(',').map(s => s.trim()).filter(Boolean);
+    const thisUser = msg.from?.username ? '@' + msg.from.username : (msg.from?.first_name || ('ID:' + incomingChatId));
+    if (!currentTgUsers.includes(thisUser)) {
+      currentTgUsers.push(thisUser);
+    }
+    doss.tgUser = currentTgUsers.join(', ');
     const newSched = serializeStudentDossierBot(doss);
     await db.from('students').update({ schedule: newSched }).eq('id', st.id);
 
-    const welcomeSt = `👋 *Привет, ${st.name}!*\nЯ бот-помощник Игоря по английскому языку 🇬🇧\n\nСюда я буду присылать:\n• 📌 Твои домашние задания и новые слова после урока\n• ⏰ Напоминания перед занятием, чтобы ничего не забыть\n\nА ещё ты можешь прямо сюда *отправлять выполненную домашку* (текстом или фотографией тетрадки) — я сразу передам её Игорю!`;
+    const studentDisplayName = msg.from?.first_name || st.name;
+    const welcomeSt = `👋 *Привет, ${studentDisplayName}!* (${st.name})\nЯ бот-помощник Игоря по английскому языку 🇬🇧\n\nСюда я буду присылать:\n• 📌 Твои домашние задания и новые слова после урока\n• ⏰ Напоминания перед занятием, чтобы ничего не забыть\n\nА ещё ты можешь прямо сюда *отправлять выполненную домашку* (текстом, голосом или фотографией тетрадки) — я сразу передам её Игорю!`;
     await bot.sendMessage(incomingChatId, welcomeSt, {
       parse_mode: 'Markdown',
       reply_markup: {
@@ -2388,7 +2401,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
       }
     }).catch(() => bot.sendMessage(incomingChatId, welcomeSt));
 
-    await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Ученик подключился к боту!*\n👤 *${st.name}* (${doss.tgUser || 'ID: ' + incomingChatId}) нажал Start.\nТеперь бот будет сам отправлять ему ДЗ и напоминалки в личку! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+    await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *${msg.from?.first_name || "Ученик"}* из группы *${st.name}* (${thisUser}) подключился(лась) к боту!\n👥 Всего подключено к группе: ${currentTgIds.length} уч. 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
     return;
   }
 
@@ -4628,10 +4641,13 @@ cron.schedule('* * * * *', async () => {
         if (rls.students) {
           const doss = parseStudentDossierBot(rls.students);
           if (doss.tgId) {
+            const targetIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
             const newTimeStr = new Date(rls.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
-            await bot.sendMessage(doss.tgId, `🕒 *Привет, ${rls.students.name}!*\nОбрати внимание: время нашего урока английского изменилось!\n📅 *Новое время:* ${newTimeStr}\nДо встречи на занятии! 🇬🇧`, { parse_mode: 'Markdown' }).catch(() => {});
+            for (const tid of targetIds) {
+              await bot.sendMessage(tid, `🕒 *Привет, ${rls.students.name}!*\nОбрати внимание: время нашего урока английского изменилось!\n📅 *Новое время:* ${newTimeStr}\nДо встречи на занятии! 🇬🇧`, { parse_mode: 'Markdown' }).catch(() => {});
+            }
             if (CHAT_ID) {
-              bot.sendMessage(CHAT_ID, `🕒 Ученику *${rls.students.name}* автоматически отправлено уведомление о переносе урока на *${newTimeStr}*!`, { parse_mode: 'Markdown' }).catch(() => {});
+              bot.sendMessage(CHAT_ID, `🕒 Ученикам *${rls.students.name}* автоматически отправлено уведомление о переносе урока на *${newTimeStr}*!`, { parse_mode: 'Markdown' }).catch(() => {});
             }
           }
         }
@@ -4647,6 +4663,7 @@ cron.schedule('* * * * *', async () => {
         notifiedEvents.add(key3h);
         const doss = parseStudentDossierBot(ls3.students);
         if (doss.tgId) {
+          const targetIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
           const timeStr = new Date(ls3.date).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' });
           const { data: prev } = await db.from('lessons').select('*').eq('student_id', ls3.student_id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
           if (prev && prev.homework && !prev.homework.includes('[ДЗ_ПРОВЕРЕНО]') && !prev.homework.includes('[ДЗ_СДАНО]')) {
@@ -4658,10 +4675,12 @@ cron.schedule('* * * * *', async () => {
               [{ text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${ls3.students.id}:0` }],
               [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${ls3.students.id}` }]
             ];
-            await bot.sendMessage(doss.tgId, remindMsg, {
-              parse_mode: 'Markdown',
-              reply_markup: { inline_keyboard: remindKb }
-            }).catch(() => {});
+            for (const tid of targetIds) {
+              await bot.sendMessage(tid, remindMsg, {
+                parse_mode: 'Markdown',
+                reply_markup: { inline_keyboard: remindKb }
+              }).catch(() => {});
+            }
           }
           if (CHAT_ID) {
             bot.sendMessage(CHAT_ID, `⏰ Отправил напоминание *${ls3.students.name}* о сегодняшнем уроке в *${timeStr}*!`, { parse_mode: 'Markdown' }).catch(() => {});
