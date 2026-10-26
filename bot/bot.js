@@ -587,6 +587,11 @@ async function sendParentLessonReportBot(st, lesson) {
   const doss = parseStudentDossierBot(st);
   if (!doss.parentTgId) return { sent: false, reason: 'no_parent_tg_id' };
   const rawHw = (lesson?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0]
+    .replace(/\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/g, '')
+    .replace(/\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/g, '')
+    .replace(/\[ПРЕЗЕНТАЦИЯ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ\]/g, '')
+    .replace(/\[КАСТОМНЫЙ_ОТЧЕТ\]:[\s\S]*?\[\/КАСТОМНЫЙ_ОТЧЕТ\]/g, '')
+    .replace(/\[ОТЧЕТ_РОДИТЕЛЮ\]:[\s\S]*?\[\/ОТЧЕТ_РОДИТЕЛЮ\]/g, '')
     .replace('[ДЗ_ПРОВЕРЕНО]', '')
     .replace('[ДЗ_СДАНО]', '')
     .replace('[ОТПРАВИТЬ_В_ТГ]', '')
@@ -594,12 +599,22 @@ async function sendParentLessonReportBot(st, lesson) {
     .replace('[ПЕРЕНЕСЕН_В_ТГ]', '')
     .trim();
   const dateStr = lesson?.date ? new Date(lesson.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' }) : 'сегодня';
-  const prompt = `Ты — вежливый, внимательный преподаватель английского языка Игорь. Составь КОРОТКИЙ (до 700 символов) тёплый отчёт для родителей ученика ${st.name} (${st.grade || ''}) по итогам проведённого урока (${dateStr}).\nТема урока: "${lesson?.topic || 'Практика английского по программе'}".\nАктивный словарь: "${doss.vocab || 'по теме урока'}".\nНад какими ошибками/правилами работали: "${doss.errors || 'грамматика и говорение'}".\nДомашнее задание: "${rawHw || 'повторить лексику урока'}".\nУдарный режим (Streak): ${doss.streak || 0} ДЗ подряд.\nСтруктура: Приветствие ("Здравствуйте! 👋"), что сегодня разобрали и за что можно похвалить ${st.name}, над чем работаем и какое задано ДЗ. Пиши сразу готовый текст сообщения для родителей!`;
+  
+  // Check if a pre-approved custom report was provided by the teacher
   let aiReport = '';
-  try {
-    const planRes = await executeFunctionCall('generate_lesson_plan', { prompt });
-    aiReport = planRes.generated_plan || '';
-  } catch (e) {}
+  const customRepMatch = (lesson?.homework || '').match(/\[КАСТОМНЫЙ_ОТЧЕТ\]:([\s\S]*?)\[\/КАСТОМНЫЙ_ОТЧЕТ\]/) || (lesson?.homework || '').match(/\[ОТЧЕТ_РОДИТЕЛЮ\]:([\s\S]*?)\[\/ОТЧЕТ_РОДИТЕЛЮ\]/);
+  if (customRepMatch && customRepMatch[1].trim()) {
+    aiReport = customRepMatch[1].trim();
+  }
+
+  if (!aiReport) {
+    const prompt = `Ты — вежливый, внимательный преподаватель английского языка Игорь. Составь КОРОТКИЙ (до 700 символов) тёплый отчёт для родителей ученика ${st.name} (${st.grade || ''}) по итогам проведённого урока (${dateStr}).\nТема урока: "${lesson?.topic || 'Практика английского по программе'}".\nАктивный словарь: "${doss.vocab || 'по теме урока'}".\nНад какими ошибками/правилами работали: "${doss.errors || 'грамматика и говорение'}".\nДомашнее задание: "${rawHw || 'повторить лексику урока'}".\nУдарный режим (Streak): ${doss.streak || 0} ДЗ подряд.\nСтруктура: Приветствие ("Здравствуйте! 👋"), что сегодня разобрали и за что можно похвалить ${st.name}, над чем работаем и какое задано ДЗ. Пиши сразу готовый текст сообщения для родителей!`;
+    try {
+      const planRes = await executeFunctionCall('generate_lesson_plan', { prompt });
+      aiReport = planRes.generated_plan || '';
+    } catch (e) {}
+  }
+
   if (!aiReport) {
     aiReport = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${st.name}* (${dateStr}).\n\n📚 *Тема урока:* ${lesson?.topic || 'Практика и разбор правил'}\n${doss.vocab ? `🔤 *Слова урока:* ${doss.vocab}\n` : ''}${rawHw ? `📌 *Домашнее задание:* ${rawHw}\n` : ''}Спасибо за поддержку! 🌟`;
   }
@@ -611,6 +626,20 @@ async function sendParentLessonReportBot(st, lesson) {
     await bot.sendMessage(doss.parentTgId, aiReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
       return bot.sendMessage(doss.parentTgId, aiReport, { reply_markup: { inline_keyboard: kb } });
     });
+
+    // Duplicate exact copy to teacher/admin so teacher sees word-for-word what parent sees
+    const adminId = CHAT_ID || ADMIN_CHAT_ID;
+    if (adminId && String(adminId) !== String(doss.parentTgId)) {
+      try {
+        const adminRepHeader = `👀 *[Копия для преподавателя — так это видит родитель ${st.name} в Telegram]:*\n\n`;
+        await bot.sendMessage(adminId, adminRepHeader + aiReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
+          return bot.sendMessage(adminId, adminRepHeader + aiReport, { reply_markup: { inline_keyboard: kb } });
+        });
+      } catch (err) {
+        console.warn('Teacher parent copy error:', err.message);
+      }
+    }
+
     return { sent: true };
   } catch (e) {
     return { sent: false, reason: e.message };
@@ -699,6 +728,26 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
     await bot.sendMessage(doss.tgId, msg, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
       return bot.sendMessage(doss.tgId, msg, { reply_markup: { inline_keyboard: kb } });
     });
+
+    // Duplicate exact copy to teacher/admin so teacher sees word-for-word what the student receives
+    const adminId = CHAT_ID || ADMIN_CHAT_ID;
+    if (adminId && String(adminId) !== String(doss.tgId)) {
+      try {
+        if (cards.length > 0) {
+          await sendCardsToChat(adminId, cards, `🖼 [Копия для преподавателя] Карточки ДЗ для ${st.name}`).catch(() => {});
+        }
+        const adminHeader = `👀 *[Копия для преподавателя — так это видит ${st.name} в Telegram]:*\n\n`;
+        await bot.sendMessage(adminId, adminHeader + msg, {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: kb }
+        }).catch(() => {
+          return bot.sendMessage(adminId, adminHeader + msg, { reply_markup: { inline_keyboard: kb } });
+        });
+      } catch (err) {
+        console.warn('Teacher copy error:', err.message);
+      }
+    }
+
     return { sent: true };
   } catch (e) {
     return { sent: false, reason: e.message };
@@ -718,7 +767,7 @@ async function processLessonQueues() {
       for (const pls of queuedParentLessons) {
         let rawHw = pls.homework || '';
         let customReport = null;
-        const repMatch = rawHw.match(/\[КАСТОМНЫЙ_ОТЧЕТ\]:([\s\S]*?)\[\/КАСТОМНЫЙ_ОТЧЕТ\]/);
+        const repMatch = rawHw.match(/\[КАСТОМНЫЙ_ОТЧЕТ\]:([\s\S]*?)\[\/КАСТОМНЫЙ_ОТЧЕТ\]/) || rawHw.match(/\[ОТЧЕТ_РОДИТЕЛЮ\]:([\s\S]*?)\[\/ОТЧЕТ_РОДИТЕЛЮ\]/);
         if (repMatch) {
           customReport = repMatch[1].trim();
           rawHw = rawHw.replace(repMatch[0], '').trim();
@@ -728,25 +777,23 @@ async function processLessonQueues() {
         if (pls.students) {
           const doss = parseStudentDossierBot(pls.students);
           if (customReport) {
+            const kb = [
+              [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pls.students.id}` }],
+              [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pls.students.id}` }]
+            ];
             if (doss.parentTgId) {
-              const kb = [
-                [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pls.students.id}` }],
-                [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pls.students.id}` }]
-              ];
               await bot.sendMessage(doss.parentTgId, customReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
                 return bot.sendMessage(doss.parentTgId, customReport, { reply_markup: { inline_keyboard: kb } });
               });
-              if (adminId) {
-                await bot.sendMessage(adminId, `👨‍👩‍👧 *Отчёт успешно отправлен в Telegram родителю ученика ${pls.students.name}!* \n\n${customReport}`, { parse_mode: 'Markdown' }).catch(() => {});
-              }
-            } else if (adminId) {
-              await bot.sendMessage(adminId, `⚠️ Не удалось отправить отчёт: родитель ученика *${pls.students.name}* ещё не нажал Start в боте!`, { parse_mode: 'Markdown' }).catch(() => {});
+            }
+            if (adminId) {
+              const adminRepHeader = `👀 *[Копия для преподавателя — так это видит родитель ${pls.students.name} в Telegram]:*\n\n`;
+              await bot.sendMessage(adminId, adminRepHeader + customReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
+                return bot.sendMessage(adminId, adminRepHeader + customReport, { reply_markup: { inline_keyboard: kb } });
+              });
             }
           } else {
-            const pRes = await sendParentLessonReportBot(pls.students, { ...pls, homework: cleanedHw });
-            if (pRes.sent && adminId) {
-              await bot.sendMessage(adminId, `👨‍👩‍👧 *С веб-сайта:* ИИ-отчёт об уроке успешно отправлен в Telegram родителю ученика *${pls.students.name}*!`, { parse_mode: 'Markdown' }).catch(() => {});
-            }
+            await sendParentLessonReportBot(pls.students, { ...pls, homework: cleanedHw });
           }
         }
       }

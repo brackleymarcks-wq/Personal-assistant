@@ -168,6 +168,14 @@ const TutoringPage = {
                   <button id="ls-generate-ai" class="btn btn-ghost" style="font-size:12px;color:var(--accent);display:flex;align-items:center;gap:4px;padding:2px 8px;min-height:auto;"><i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ</button>
                 </div>
                 <textarea id="ls-homework" class="form-input" rows="3" placeholder="Что задано на следующий раз?"></textarea>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+                  <button type="button" id="ls-btn-preview-tg" class="btn btn-secondary btn-xs" style="font-size:11px;display:flex;align-items:center;gap:4px;" title="Посмотреть, как сообщение будет выглядеть для ученика в Telegram">
+                    <i data-lucide="smartphone" style="width:12px;height:12px;color:#3b82f6;"></i>
+                    <span id="ls-preview-toggle-text">📱 Предпросмотр ДЗ в Telegram</span>
+                  </button>
+                  <span style="font-size:11px;color:var(--text-muted);">👀 Копия ДЗ также придёт вам в личку Telegram</span>
+                </div>
+                <div id="ls-tg-preview-box" class="hidden" style="margin-top:8px;"></div>
                 <div style="margin-top:10px;">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <label class="form-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;">
@@ -258,7 +266,7 @@ const TutoringPage = {
 
         <!-- Homework & Materials Dispatcher Modal -->
         <div id="hw-dispatcher-modal" class="modal-overlay hidden">
-          <div class="modal" style="max-width: 680px; width: 95%;">
+          <div class="modal" style="max-width: 740px; width: 95%; max-height: 90vh; overflow-y: auto;">
             <div class="modal-header">
               <h2 class="modal-title" id="hw-disp-title"><i data-lucide="send"></i> Отправка ДЗ и материалов в Telegram</h2>
               <button class="modal-close" id="hw-disp-close"><i data-lucide="x"></i></button>
@@ -311,11 +319,32 @@ const TutoringPage = {
                 <textarea id="hw-disp-scenario" class="form-input" rows="3" style="font-size:12px;" placeholder="Вставьте сюда конспект или материалы урока из Perplexity (слова, правила, глаголы, примеры). Бот запомнит этот сценарий и по запросу ученика (кнопки «5 слов», «5 глаголов», «Тестик») будет подкидывать именно эти материалы!"></textarea>
               </div>
 
-              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg-primary);border-radius:10px;border:1px solid var(--border-light);">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg-primary);border-radius:10px;border:1px solid var(--border-light);margin-bottom:12px;">
                 <input id="hw-disp-send-parent" type="checkbox" style="cursor:pointer;" />
                 <label for="hw-disp-send-parent" style="font-size:12px;color:var(--text-primary);cursor:pointer;margin:0;">
                   👨‍👩‍👧 Также отправить это домашнее задание и карточки родителю в Telegram
                 </label>
+              </div>
+
+              <!-- Live Telegram Message Preview for Student -->
+              <div class="form-group" style="margin-top:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <label class="form-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;font-weight:700;color:var(--text-primary);">
+                    <i data-lucide="smartphone" style="width:14px;height:14px;color:#3b82f6;"></i>
+                    <span>📱 Предпросмотр сообщения ученику в Telegram (точно так это увидит ученик)</span>
+                  </label>
+                  <span style="font-size:11px;color:var(--text-muted);">Обновляется на лету</span>
+                </div>
+                <div id="hw-disp-live-preview"></div>
+              </div>
+
+              <!-- Live Telegram Report Preview for Parent (if checkbox checked) -->
+              <div id="hw-disp-parent-preview-section" class="form-group hidden" style="margin-top:12px;">
+                <label class="form-label" style="margin-bottom:6px;display:flex;align-items:center;gap:6px;font-weight:700;color:#8b5cf6;">
+                  <i data-lucide="users" style="width:14px;height:14px;color:#8b5cf6;"></i>
+                  <span>👨‍👩‍👧 Предпросмотр отчёта родителю в Telegram</span>
+                </label>
+                <div id="hw-disp-parent-live-preview"></div>
               </div>
             </div>
             <div class="modal-footer" style="display:flex; gap:8px; justify-content:flex-end;">
@@ -329,15 +358,32 @@ const TutoringPage = {
 
         <!-- Report Preview & Action Modal -->
         <div id="report-modal" class="modal-overlay hidden">
-          <div class="modal" style="max-width: 640px; width: 95%;">
+          <div class="modal" style="max-width: 740px; width: 95%; max-height: 90vh; overflow-y: auto;">
             <div class="modal-header">
-              <h2 class="modal-title" id="report-modal-title"><i data-lucide="bar-chart-2"></i> Отчёт об успеваемости</h2>
+              <h2 class="modal-title" id="report-modal-title"><i data-lucide="bar-chart-2"></i> Отчёт для родителей</h2>
               <button class="modal-close" id="report-modal-close"><i data-lucide="x"></i></button>
             </div>
             <div class="modal-body">
               <div id="report-modal-status" style="margin-bottom:12px; font-size:13px; padding:10px 12px; border-radius:8px;"></div>
-              <label class="form-label">Текст отчёта (можно отредактировать перед отправкой):</label>
-              <textarea id="report-modal-text" class="form-input" style="height:280px; font-size:13px; line-height:1.5; font-family:inherit; resize:vertical;"></textarea>
+              
+              <div class="form-group">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <label class="form-label" style="margin-bottom:0;">Текст отчёта (можно отредактировать перед отправкой):</label>
+                  <button type="button" id="report-modal-btn-ai" class="btn btn-ghost" style="font-size:11px;color:var(--accent);display:flex;align-items:center;gap:4px;padding:2px 6px;">
+                    <i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ
+                  </button>
+                </div>
+                <textarea id="report-modal-text" class="form-input" style="height:140px; font-size:13px; line-height:1.5; font-family:inherit; resize:vertical;"></textarea>
+              </div>
+
+              <!-- Live Telegram Message Preview for Parent -->
+              <div class="form-group" style="margin-top:14px;">
+                <label class="form-label" style="margin-bottom:6px;display:flex;align-items:center;gap:6px;font-weight:700;color:#8b5cf6;">
+                  <i data-lucide="smartphone" style="width:14px;height:14px;color:#8b5cf6;"></i>
+                  <span>📱 Предпросмотр отчёта родителю в Telegram (точно так это увидит родитель)</span>
+                </label>
+                <div id="report-modal-live-preview"></div>
+              </div>
             </div>
             <div class="modal-footer" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
               <button type="button" class="btn btn-secondary btn-sm" id="report-modal-copy"><i data-lucide="copy" style="width:14px;height:14px;"></i> Скопировать</button>
@@ -891,6 +937,11 @@ const TutoringPage = {
         const scenario = document.getElementById('ls-scenario')?.value?.trim() || '';
         const homework = await Gemini.generateTutoringAI('homework', { name: st.name, grade: st.grade, ...this.parseStudentDossier(st) }, { topic, scenario }, this.getPrevConductedLesson(st.id, ls?.date));
         document.getElementById('ls-homework').value = homework;
+        const pBox = document.getElementById('ls-tg-preview-box');
+        if (pBox) {
+          pBox.classList.remove('hidden');
+          this.updateLessonModalTgPreview();
+        }
         UI.toast('Домашка сгенерирована!', 'success');
       } catch (e) {
         UI.toast('Ошибка ИИ: ' + e.message, 'error');
@@ -900,6 +951,25 @@ const TutoringPage = {
         if (window.lucide) window.lucide.createIcons();
       }
     };
+
+    const prevToggleBtn = document.getElementById('ls-btn-preview-tg');
+    const previewBox = document.getElementById('ls-tg-preview-box');
+    if (prevToggleBtn && previewBox) {
+      prevToggleBtn.onclick = () => {
+        previewBox.classList.toggle('hidden');
+        if (!previewBox.classList.contains('hidden')) {
+          this.updateLessonModalTgPreview();
+        }
+      };
+    }
+    const hwTextarea = document.getElementById('ls-homework');
+    if (hwTextarea) {
+      hwTextarea.oninput = () => {
+        if (previewBox && !previewBox.classList.contains('hidden')) {
+          this.updateLessonModalTgPreview();
+        }
+      };
+    }
 
     document.getElementById('lesson-modal-save').onclick = () => this.saveLesson(ls?.id);
     document.getElementById('lesson-modal-cancel').onclick = () => modal.classList.add('hidden');
@@ -1176,6 +1246,173 @@ const TutoringPage = {
     await this.load();
   },
 
+  cleanHomeworkText(rawHw) {
+    if (!rawHw) return '';
+    return rawHw
+      .replace(/\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/g, '')
+      .replace(/\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/g, '')
+      .replace(/\[ПРЕЗЕНТАЦИЯ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ\]/g, '')
+      .replace(/\[КАСТОМНЫЙ_ОТЧЕТ\]:[\s\S]*?\[\/КАСТОМНЫЙ_ОТЧЕТ\]/g, '')
+      .replace(/\[ОТЧЕТ_РОДИТЕЛЮ\]:[\s\S]*?\[\/ОТЧЕТ_РОДИТЕЛЮ\]/g, '')
+      .split(/\\?n?\[МАТЕРИАЛЫ\]:/)[0]
+      .replace('[ДЗ_ПРОВЕРЕНО]', '')
+      .replace('[ДЗ_СДАНО]', '')
+      .replace('[ОТПРАВИТЬ_В_ТГ]', '')
+      .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
+      .replace('[ПЕРЕНЕСЕН_В_ТГ]', '')
+      .trim();
+  },
+
+  formatTelegramPreviewHtml(text) {
+    if (!text) return '';
+    let html = this.escapeHtml(text);
+    html = html.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+    html = html.replace(/\*(.*?)\*/g, '<b>$1</b>');
+    html = html.replace(/_([^_]+)_/g, '<i>$1</i>');
+    html = html.replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,0.1);padding:1px 4px;border-radius:4px;font-family:monospace;font-size:11px;">$1</code>');
+    html = html.replace(/\n/g, '<br>');
+    return html;
+  },
+
+  renderTelegramPreviewBubble({
+    type = 'student',
+    recipientName = '',
+    topic = '',
+    cleanHw = '',
+    vocab = '',
+    cards = [],
+    streak = 0,
+    customReportText = ''
+  }) {
+    const timeNow = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+    if (type === 'parent') {
+      const parentBody = customReportText || `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${recipientName}*.\n\n📚 *Тема урока:* ${topic || 'Практика'}\n${vocab ? `🔤 *Слова урока:* ${vocab}\n` : ''}${cleanHw ? `📌 *Домашнее задание:* ${cleanHw}\n` : ''}🔥 *Серия занятий:* ${streak || 0} ДЗ подряд!\nСпасибо за поддержку! 🌟`;
+      return `
+        <div style="background:#18222d;border-radius:12px;padding:12px;color:#e1e3e6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.45;box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:100%;">
+          <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:8px;margin-bottom:10px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#a855f7);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;">👨‍👩‍👧</div>
+              <div>
+                <div style="font-weight:700;color:#fff;font-size:12px;line-height:1.2;">Репетитор Бот</div>
+                <div style="font-size:10px;color:#c084fc;">@gor_pavlovskiy_bot • отчёт родителю</div>
+              </div>
+            </div>
+            <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(168,85,247,0.15);color:#c084fc;font-weight:600;">📱 Telegram родителя</span>
+          </div>
+
+          <div style="background:#212d3b;border-radius:12px 12px 12px 2px;padding:12px 14px;border:1px solid rgba(255,255,255,0.06);">
+            <div style="color:#f1f5f9;white-space:pre-wrap;">${this.formatTelegramPreviewHtml(parentBody)}</div>
+            <div style="text-align:right;font-size:10px;color:#64748b;margin-top:6px;">${timeNow} ✓✓</div>
+          </div>
+
+          <div style="margin-top:8px;display:flex;flex-direction:column;gap:5px;">
+            <div style="background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;font-weight:600;color:#c084fc;cursor:default;">
+              📊 Запросить сводный отчёт о прогрессе
+            </div>
+            <div style="background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;font-weight:600;color:#c084fc;cursor:default;">
+              📚 Посмотреть текущее ДЗ ребёнка
+            </div>
+          </div>
+
+          <div style="margin-top:10px;padding:6px 10px;border-radius:8px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.25);font-size:11px;color:#c084fc;display:flex;align-items:center;gap:6px;">
+            <span>👀 <b>Точная копия:</b> При отправке этот же отчёт мгновенно продублируется вам в личку Telegram!</span>
+          </div>
+        </div>
+      `;
+    }
+
+    // Default: student view
+    return `
+      <div style="background:#18222d;border-radius:12px;padding:12px;color:#e1e3e6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.45;box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:100%;">
+        <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:8px;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#38bdf8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;">🤖</div>
+            <div>
+              <div style="font-weight:700;color:#fff;font-size:12px;line-height:1.2;">Репетитор Бот</div>
+              <div style="font-size:10px;color:#38bdf8;">@gor_pavlovskiy_bot • онлайн</div>
+            </div>
+          </div>
+          <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(56,189,248,0.15);color:#38bdf8;font-weight:600;">📱 Telegram ученика</span>
+        </div>
+
+        ${cards && cards.length > 0 ? `
+          <div style="margin-bottom:10px;">
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;display:flex;align-items:center;gap:4px;">
+              <span>🖼 Прикреплённые карточки (${cards.length} шт.):</span>
+            </div>
+            <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;">
+              ${cards.map(c => `
+                <div style="width:60px;height:60px;border-radius:6px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);background:#000;flex-shrink:0;">
+                  <img src="${c}" style="width:100%;height:100%;object-fit:cover;" />
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        <div style="background:#212d3b;border-radius:12px 12px 12px 2px;padding:12px 14px;border:1px solid rgba(255,255,255,0.06);">
+          <div style="font-weight:700;color:#60a5fa;margin-bottom:4px;">🇬🇧 Привет, ${this.escapeHtml(recipientName || 'Ученик')}!</div>
+          <div style="color:#cbd5e1;margin-bottom:10px;font-size:12px;">Итоги нашего урока и домашнее задание на следующий раз:</div>
+
+          ${topic ? `<div style="margin-bottom:6px;">📚 <b>Тема:</b> <span style="color:#f8fafc;">${this.escapeHtml(topic)}</span></div>` : ''}
+          ${vocab ? `<div style="margin-bottom:6px;">🔤 <b>Полезные слова (Vocabulary):</b> <span style="color:#cbd5e1;">${this.escapeHtml(vocab)}</span></div>` : ''}
+
+          ${cleanHw ? `
+            <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);">
+              <div style="font-weight:700;color:#fbbf24;margin-bottom:4px;">📌 Домашнее задание:</div>
+              <div style="color:#f1f5f9;white-space:pre-wrap;">${this.formatTelegramPreviewHtml(cleanHw)}</div>
+            </div>
+          ` : '<div style="color:#94a3b8;font-style:italic;margin-top:6px;">(Текст ДЗ пока не заполнен)</div>'}
+
+          ${cards && cards.length > 0 ? `<div style="margin-top:8px;color:#94a3b8;font-size:11px;">🖼 <b>Прикреплено карточек к уроку:</b> ${cards.length} шт. (отправлены выше)</div>` : ''}
+          <div style="margin-top:8px;color:#f97316;font-size:12px;font-weight:600;">🔥 Твоя серия (Streak): ${streak || 0} ДЗ подряд без пропусков!</div>
+
+          <div style="margin-top:10px;font-size:11px;color:#94a3b8;font-style:italic;">Когда выполнишь — нажми кнопку ниже, пришли фото тетрадки или напиши ответ! 💪</div>
+          
+          <div style="text-align:right;font-size:10px;color:#64748b;margin-top:4px;">${timeNow} ✓✓</div>
+        </div>
+
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:5px;">
+          <div style="background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;font-weight:600;color:#fff;cursor:default;">
+            ✅ Я сделал(а) ДЗ!
+          </div>
+          <div style="display:flex;gap:5px;">
+            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">🔤 5 слов урока</div>
+            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">⚡ 5 глаголов</div>
+          </div>
+          <div style="display:flex;gap:5px;">
+            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">📝 Тестик по уроку</div>
+            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">🎮 Мини-игра</div>
+          </div>
+        </div>
+
+        <div style="margin-top:10px;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);font-size:11px;color:#93c5fd;display:flex;align-items:center;gap:6px;">
+          <span>👀 <b>Точная копия:</b> При отправке этот же пост с карточками и кнопками продублируется вам в личку Telegram!</span>
+        </div>
+      </div>
+    `;
+  },
+
+  updateLessonModalTgPreview() {
+    const container = document.getElementById('ls-tg-preview-box');
+    if (!container) return;
+    const studentId = document.getElementById('ls-student')?.value;
+    const st = this.students.find(s => s.id === studentId) || { name: 'Ученик' };
+    const topic = document.getElementById('ls-topic')?.value || '';
+    const hwText = document.getElementById('ls-homework')?.value || '';
+    const dossier = this.parseStudentDossier(st);
+    container.innerHTML = this.renderTelegramPreviewBubble({
+      type: 'student',
+      recipientName: st.name,
+      topic: topic,
+      cleanHw: this.cleanHomeworkText(hwText),
+      vocab: dossier.vocab || '',
+      cards: this.attachedCards || [],
+      streak: dossier.streak || 0
+    });
+  },
+
   renderLessonMemoryBanner(studentId, lessonDate = null) {
     const banner = document.getElementById('ls-memory-banner');
     if (!banner) return;
@@ -1184,10 +1421,12 @@ const TutoringPage = {
     const dossier = this.parseStudentDossier(st);
     const prev = this.getPrevConductedLesson(studentId, lessonDate);
     const ebb = this.getEbbinghausLesson(studentId, lessonDate);
-    const prevHwRaw = prev ? ((prev.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].trim()) : '';
+    const prevHwRaw = prev ? (prev.homework || '').trim() : '';
     const isChecked = prevHwRaw.includes('[ДЗ_ПРОВЕРЕНО]');
     const isSubmitted = prevHwRaw.includes('[ДЗ_СДАНО]');
-    const cleanHw = prevHwRaw.replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').replace('[ОТПРАВИТЬ_В_ТГ]', '').trim();
+    const hasPres = prevHwRaw.includes('[ПРЕЗЕНТАЦИЯ]');
+    const hasScenario = prevHwRaw.includes('[СЦЕНАРИЙ_УРОКА]');
+    const cleanHw = this.cleanHomeworkText(prevHwRaw);
 
     banner.innerHTML = `
       <div style="padding:10px 12px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:12px;display:flex;flex-direction:column;gap:4px;">
@@ -1197,6 +1436,8 @@ const TutoringPage = {
         </div>
         ${prev ? `<div>⏪ <b>Прошлая тема:</b> ${this.escapeHtml(prev.topic || 'Не указана')}</div>` : '<div style="color:var(--text-muted);">Проведённых уроков пока нет</div>'}
         ${cleanHw ? `<div style="color:${isChecked ? 'var(--success)' : 'var(--warning)'};">📌 <b>Заданное ДЗ:</b> ${this.escapeHtml(cleanHw)} ${isSubmitted && !isChecked ? '<span style="color:var(--accent);font-weight:700;">📬 (Сдано учеником в ТГ!)</span>' : ''} ${isChecked ? '✅ (Проверено)' : `<button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:1px 6px;margin-left:6px;" onclick="TutoringPage.markPrevHwChecked('${prev.id}').then(()=>TutoringPage.renderLessonMemoryBanner('${studentId}'))">✅ Отметить проверенным</button>`}</div>` : ''}
+        ${hasPres ? `<div style="font-size:11px;color:#0d9488;">📎 <b>Материалы:</b> К прошлому уроку прикреплена презентация (PDF/PPTX)</div>` : ''}
+        ${hasScenario ? `<div style="font-size:11px;color:#0d9488;">📋 <b>Сценарий:</b> В базе сохранён полный конспект урока</div>` : ''}
         ${ebb ? `<div style="color:#0d9488;font-weight:600;">🔄 <b>Кривая Эббингауза (повторить тему ~2 нед. назад, ${new Date(ebb.date).toLocaleDateString('ru-RU')}):</b> ${this.escapeHtml(ebb.topic)}</div>` : ''}
         ${dossier.unit ? `<div>📖 <b>Учебник / Unit:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}
         ${dossier.errors ? `<div>⚠️ <b>Слабые места:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}
@@ -1440,9 +1681,10 @@ const TutoringPage = {
     const topicVal = (!document.getElementById('lesson-modal')?.classList.contains('hidden') && document.getElementById('ls-topic')?.value)
       ? document.getElementById('ls-topic').value
       : (ls?.topic || 'English Practice Session');
-    const hwVal = (!document.getElementById('lesson-modal')?.classList.contains('hidden') && document.getElementById('ls-homework')?.value)
+    const rawHwSource = (!document.getElementById('lesson-modal')?.classList.contains('hidden') && document.getElementById('ls-homework')?.value)
       ? document.getElementById('ls-homework').value
-      : ((ls?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').trim());
+      : (ls?.homework || '');
+    const hwVal = this.cleanHomeworkText(rawHwSource);
 
     let overlay = document.getElementById('student-zen-board-overlay');
     if (overlay) overlay.remove();
@@ -1587,26 +1829,56 @@ const TutoringPage = {
     const scenMatch = rawHw.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
     const existingScenario = scenMatch ? scenMatch[1].trim() : '';
 
-    const cleanHwText = rawHw
-      .replace(/\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/, '')
-      .replace(/\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/, '')
-      .replace(/\[МАТЕРИАЛЫ\]:[\s\S]*/, '')
-      .replace('[ДЗ_ПРОВЕРЕНО]', '')
-      .replace('[ДЗ_СДАНО]', '')
-      .replace('[ОТПРАВИТЬ_В_ТГ]', '')
-      .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
-      .trim();
+    const cleanHwText = this.cleanHomeworkText(rawHw);
 
+    this._currentDispatcherStudent = st;
     document.getElementById('hw-disp-topic').value = ls?.topic || '';
     document.getElementById('hw-disp-text').value = cleanHwText || '';
     document.getElementById('hw-disp-scenario').value = existingScenario || '';
     document.getElementById('hw-disp-send-parent').checked = !!dossier.parentTgId;
 
     this.renderDispatcherCardsPreview();
+    this.updateDispatcherPreview(st);
     this.bindDispatcherModalEvents(st, ls);
 
     modal.classList.remove('hidden');
     if (window.lucide) lucide.createIcons();
+  },
+
+  updateDispatcherPreview(st) {
+    if (!st) st = this._currentDispatcherStudent;
+    if (!st) return;
+    const container = document.getElementById('hw-disp-live-preview');
+    if (!container) return;
+    const topic = document.getElementById('hw-disp-topic')?.value || '';
+    const hwText = document.getElementById('hw-disp-text')?.value || '';
+    const dossier = this.parseStudentDossier(st);
+    container.innerHTML = this.renderTelegramPreviewBubble({
+      type: 'student',
+      recipientName: st.name,
+      topic: topic,
+      cleanHw: hwText,
+      vocab: dossier.vocab || '',
+      cards: this.dispatcherCards || [],
+      streak: dossier.streak || 0
+    });
+
+    const sendParentChecked = document.getElementById('hw-disp-send-parent')?.checked;
+    const parentSection = document.getElementById('hw-disp-parent-preview-section');
+    const parentContainer = document.getElementById('hw-disp-parent-live-preview');
+    if (parentSection && parentContainer) {
+      if (sendParentChecked) {
+        parentSection.classList.remove('hidden');
+        const parentDraft = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${st.name}*.\n\n📚 *Тема урока:* ${topic || 'Практика'}\n${dossier.vocab ? `🔤 *Слова урока:* ${dossier.vocab}\n` : ''}${hwText ? `📌 *Домашнее задание:* ${hwText}\n` : ''}🔥 *Серия занятий:* ${dossier.streak || 0} ДЗ подряд!\nСпасибо за поддержку! 🌟`;
+        parentContainer.innerHTML = this.renderTelegramPreviewBubble({
+          type: 'parent',
+          recipientName: 'Родитель',
+          customReportText: parentDraft
+        });
+      } else {
+        parentSection.classList.add('hidden');
+      }
+    }
   },
 
   renderDispatcherCardsPreview() {
@@ -1627,6 +1899,7 @@ const TutoringPage = {
   removeDispatcherCard(idx) {
     this.dispatcherCards.splice(idx, 1);
     this.renderDispatcherCardsPreview();
+    if (this._currentDispatcherStudent) this.updateDispatcherPreview(this._currentDispatcherStudent);
   },
 
   addDispatcherCard(dataUrl) {
@@ -1634,6 +1907,7 @@ const TutoringPage = {
     if (this.dispatcherCards.length >= 10) return UI.toast('Максимум 10 карточек на урок', 'warning');
     this.dispatcherCards.push(dataUrl);
     this.renderDispatcherCardsPreview();
+    if (this._currentDispatcherStudent) this.updateDispatcherPreview(this._currentDispatcherStudent);
     UI.toast('Карточка прикреплена!', 'success');
   },
 
@@ -1648,6 +1922,13 @@ const TutoringPage = {
     const genCardsBtn = document.getElementById('hw-disp-btn-gen-cards');
     const importPplxBtn = document.getElementById('hw-disp-btn-import-pplx');
     const aiHwBtn = document.getElementById('hw-disp-btn-ai-hw');
+    const topicEl = document.getElementById('hw-disp-topic');
+    const textEl = document.getElementById('hw-disp-text');
+    const sendParentEl = document.getElementById('hw-disp-send-parent');
+
+    if (topicEl) topicEl.oninput = () => this.updateDispatcherPreview(st);
+    if (textEl) textEl.oninput = () => this.updateDispatcherPreview(st);
+    if (sendParentEl) sendParentEl.onchange = () => this.updateDispatcherPreview(st);
 
     closeBtn.onclick = () => modal.classList.add('hidden');
     cancelBtn.onclick = () => modal.classList.add('hidden');
@@ -1727,9 +2008,11 @@ const TutoringPage = {
             document.getElementById('hw-disp-text').value = parsed.homework;
           }
           document.getElementById('hw-disp-scenario').value = rawText.trim();
+          this.updateDispatcherPreview(st);
           UI.toast('Конспект из Perplexity вставлен в материалы урока!', 'success');
         } catch(e) {
           document.getElementById('hw-disp-scenario').value = rawText.trim();
+          this.updateDispatcherPreview(st);
           UI.toast('Текст конспекта вставлен в сценарий!', 'info');
         }
       };
@@ -1746,6 +2029,7 @@ const TutoringPage = {
           const scenario = document.getElementById('hw-disp-scenario')?.value?.trim() || '';
           const hw = await Gemini.generateTutoringAI('homework', { name: st.name, grade: st.grade, ...dossier }, { topic, scenario }, ls);
           document.getElementById('hw-disp-text').value = hw;
+          this.updateDispatcherPreview(st);
           UI.toast('ДЗ сгенерировано!', 'success');
         } catch (e) {
           UI.toast('Ошибка ИИ: ' + e.message, 'error');
@@ -1795,7 +2079,9 @@ const TutoringPage = {
 
         compositeHw = `[ОТПРАВИТЬ_В_ТГ] ${compositeHw}`;
         if (sendToParent) {
-          compositeHw += ' [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]';
+          const dossier = this.parseStudentDossier(st);
+          const parentReportDraft = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${st.name}*.\n\n📚 *Тема урока:* ${topic || 'Практика английского'}\n${dossier.vocab ? `🔤 *Слова урока:* ${dossier.vocab}\n` : ''}${hwText ? `📌 *Домашнее задание:* ${hwText}\n` : ''}🔥 *Серия занятий:* ${dossier.streak || 0} ДЗ подряд!\nСпасибо за поддержку! 🌟`;
+          compositeHw += `\n[ОТЧЕТ_РОДИТЕЛЮ]:\n${parentReportDraft}\n[/ОТЧЕТ_РОДИТЕЛЮ] [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]`;
         }
 
         await DB.updateLesson(lessonTarget.id, {
@@ -1817,7 +2103,7 @@ const TutoringPage = {
         }
 
         modal.classList.add('hidden');
-        UI.toast(`🚀 Домашнее задание и материалы отправлены ${st.name} в Telegram!`, 'success');
+        UI.toast(`🚀 Домашнее задание отправлено ${st.name} в Telegram! Точная копия сообщения отправлена вам в бот.`, 'success');
         await this.load();
       } catch (err) {
         UI.toast('Ошибка отправки: ' + err.message, 'error');
@@ -1866,46 +2152,139 @@ const TutoringPage = {
     const currentHwText = modalOpen ? document.getElementById('ls-homework')?.value?.trim() : '';
     const currentTopicText = modalOpen ? document.getElementById('ls-topic')?.value?.trim() : '';
 
-    if (!dossier.parentTgId) {
-      if (dossier.parentTgUser) {
-        const reportText = customReportText || await Gemini.generateTutoringAI('parent_msg', { name: st.name, grade: st.grade, ...dossier }, { topic: currentTopicText || ls?.topic || 'Английский язык', homework: currentHwText || ls?.homework || '' }, ls);
-        try { await navigator.clipboard.writeText(reportText); } catch (e) {}
-        const cleanUser = dossier.parentTgUser.replace('@', '').trim();
-        window.open(`https://t.me/${cleanUser}?text=${encodeURIComponent(reportText)}`, '_blank');
+    const modal = document.getElementById('report-modal');
+    const title = document.getElementById('report-modal-title');
+    const statusDiv = document.getElementById('report-modal-status');
+    const textarea = document.getElementById('report-modal-text');
+    const copyBtn = document.getElementById('report-modal-copy');
+    const sendMeBtn = document.getElementById('report-modal-send-me');
+    const sendParentBtn = document.getElementById('report-modal-send-parent');
+    const closeBtn = document.getElementById('report-modal-close');
+    const aiGenBtn = document.getElementById('report-modal-btn-ai');
+
+    title.innerHTML = `<i data-lucide="bar-chart-2"></i> Отчёт для родителей: ${this.escapeHtml(st.name)}`;
+
+    if (dossier.parentTgId) {
+      statusDiv.style.background = 'rgba(34, 197, 94, 0.12)';
+      statusDiv.style.border = '1px solid rgba(34, 197, 94, 0.35)';
+      statusDiv.style.color = 'var(--text-primary)';
+      statusDiv.innerHTML = `🟢 <b>Родитель подключён к ТГ-боту</b> (${dossier.parentTgUser || 'ID: ' + dossier.parentTgId}). Сообщение уйдёт родителю в Telegram, а копия — вам!`;
+      sendParentBtn.disabled = false;
+      sendParentBtn.style.opacity = '1';
+      sendParentBtn.innerHTML = `<i data-lucide="send" style="width:14px;height:14px;"></i> Отправить родителю в ТГ`;
+    } else if (dossier.parentTgUser) {
+      statusDiv.style.background = 'rgba(234, 179, 8, 0.12)';
+      statusDiv.style.border = '1px solid rgba(234, 179, 8, 0.35)';
+      statusDiv.style.color = 'var(--text-primary)';
+      statusDiv.innerHTML = `⚠️ <b>Родитель ещё не в боте, но указан @${dossier.parentTgUser.replace('@','')}.</b> Нажав кнопку, вы откроете диалог со скопированным текстом.`;
+      sendParentBtn.disabled = false;
+      sendParentBtn.style.opacity = '1';
+      sendParentBtn.innerHTML = `📲 Открыть чат с родителем`;
+    } else {
+      statusDiv.style.background = 'rgba(234, 179, 8, 0.12)';
+      statusDiv.style.border = '1px solid rgba(234, 179, 8, 0.35)';
+      statusDiv.style.color = 'var(--text-primary)';
+      statusDiv.innerHTML = `⚠️ <b>Родитель ещё не подключён к боту.</b> Текст отчёта будет скопирован, и вы сможете отправить ссылку-приглашение:`;
+      sendParentBtn.disabled = false;
+      sendParentBtn.style.opacity = '1';
+      sendParentBtn.innerHTML = `🔗 Скопировать ссылку родителю`;
+    }
+
+    // Determine report text
+    let initialReport = customReportText;
+    if (!initialReport) {
+      const existingMatch = (ls?.homework || '').match(/\[КАСТОМНЫЙ_ОТЧЕТ\]:([\s\S]*?)\[\/КАСТОМНЫЙ_ОТЧЕТ\]/) || (ls?.homework || '').match(/\[ОТЧЕТ_РОДИТЕЛЮ\]:([\s\S]*?)\[\/ОТЧЕТ_РОДИТЕЛЮ\]/);
+      if (existingMatch && existingMatch[1].trim()) {
+        initialReport = existingMatch[1].trim();
+      }
+    }
+
+    if (!initialReport) {
+      const topic = currentTopicText || ls?.topic || 'Практика английского языка';
+      const hwClean = this.cleanHomeworkText(currentHwText || ls?.homework || '');
+      const dateStr = ls?.date ? new Date(ls.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : 'сегодня';
+      initialReport = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${st.name}* (${dateStr}).\n\n📚 *Тема урока:* ${topic}\n${dossier.vocab ? `🔤 *Слова урока:* ${dossier.vocab}\n` : ''}${hwClean ? `📌 *Домашнее задание:* ${hwClean}\n` : ''}🔥 *Серия занятий (Streak):* ${dossier.streak || 0} ДЗ подряд!\n\nСпасибо за поддержку! 🌟`;
+    }
+
+    textarea.value = initialReport;
+
+    const updateReportPreview = () => {
+      const prevContainer = document.getElementById('report-modal-live-preview');
+      if (prevContainer) {
+        prevContainer.innerHTML = this.renderTelegramPreviewBubble({
+          type: 'parent',
+          recipientName: st.name,
+          customReportText: textarea.value
+        });
+      }
+    };
+
+    textarea.oninput = updateReportPreview;
+    updateReportPreview();
+
+    if (aiGenBtn) {
+      aiGenBtn.onclick = async () => {
+        aiGenBtn.disabled = true;
+        aiGenBtn.textContent = '⏳ Генерирую...';
+        try {
+          const topic = currentTopicText || ls?.topic || 'Английский язык';
+          const hwClean = this.cleanHomeworkText(currentHwText || ls?.homework || '');
+          const newRep = await Gemini.generateTutoringAI('parent_msg', { name: st.name, grade: st.grade, ...dossier }, { topic, homework: hwClean }, ls);
+          textarea.value = newRep;
+          updateReportPreview();
+          UI.toast('Отчёт сгенерирован!', 'success');
+        } catch(e) {
+          UI.toast('Ошибка ИИ: ' + e.message, 'error');
+        } finally {
+          aiGenBtn.disabled = false;
+          aiGenBtn.innerHTML = '<i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ';
+          if (window.lucide) lucide.createIcons();
+        }
+      };
+    }
+
+    sendParentBtn.onclick = async () => {
+      const textToSend = textarea.value.trim();
+      if (!textToSend) return UI.toast('Текст отчёта пуст', 'warning');
+
+      if (!dossier.parentTgId) {
+        if (dossier.parentTgUser) {
+          try { await navigator.clipboard.writeText(textToSend); } catch(e){}
+          const cleanUser = dossier.parentTgUser.replace('@', '').trim();
+          window.open(`https://t.me/${cleanUser}?text=${encodeURIComponent(textToSend)}`, '_blank');
+          modal.classList.add('hidden');
+          return;
+        }
+        await this.copyParentBotInvite(studentId);
+        modal.classList.add('hidden');
         return;
       }
-      UI.toast(`Родитель (${st.name}) ещё не подключён к ТГ-боту — копирую ссылку-приглашение!`, 'warning');
-      await this.copyParentBotInvite(studentId);
-      return;
-    }
 
-    // Если родитель подключен к боту (есть parentTgId):
-    if (!ls && modalOpen && (currentTopicText || currentHwText)) {
-      const dt = document.getElementById('ls-date')?.value || new Date().toISOString();
-      ls = await DB.createLesson({
-        student_id: studentId,
-        date: dt,
-        topic: currentTopicText || 'Английский язык',
-        homework: currentHwText || '',
-        status: 'Проведен',
-        paid: false
-      });
-      this.lessons.unshift(ls);
-    }
+      await this.sendCustomReportToParentTelegram(studentId, textToSend);
+      modal.classList.add('hidden');
+    };
 
-    if (ls) {
-      const baseHw = (modalOpen && currentHwText) ? currentHwText : (ls.homework || '');
-      const clean = baseHw.replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
-      await DB.updateLesson(ls.id, {
-        topic: (modalOpen && currentTopicText) ? currentTopicText : ls.topic,
-        homework: `${clean} [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]`.trim()
-      });
-      UI.toast(`👨‍👩‍👧 Команда передана боту! В течение 5 секунд ИИ-отчёт об уроке уйдёт родителю (${st.name}) в Telegram.`, 'success');
-      return;
-    }
+    sendMeBtn.onclick = async () => {
+      const textToSend = textarea.value.trim();
+      if (!textToSend) return UI.toast('Текст отчёта пуст', 'warning');
+      await this.sendCustomReportToTeacherTelegram(studentId, textToSend);
+      modal.classList.add('hidden');
+    };
 
-    // Если проведенных уроков пока нет, формируем сводный отчёт о прогрессе через модалку
-    return this.generateMonthlyReport(studentId);
+    copyBtn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(textarea.value.trim());
+        UI.toast('Текст отчёта скопирован в буфер!', 'success');
+      } catch (e) {
+        prompt('Скопируйте текст:', textarea.value.trim());
+      }
+    };
+
+    closeBtn.onclick = () => modal.classList.add('hidden');
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
+
+    modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
   },
 
   attachedCards: [],
