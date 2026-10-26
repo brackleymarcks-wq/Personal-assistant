@@ -4639,7 +4639,7 @@ cron.schedule('* * * * *', async () => {
     }
     await processLessonQueues();
     const future3hMax = new Date(now.getTime() + 185 * 60000);
-    const future3hMin = new Date(now.getTime() + 175 * 60000);
+    const future3hMin = new Date(now.getTime() + 115 * 60000); // 2–3 часа до начала урока
     const { data: lessons3h } = await db.from('lessons').select('*, students(*)').eq('status', 'Запланирован').gte('date', future3hMin.toISOString()).lte('date', future3hMax.toISOString());
     for (const ls3 of (lessons3h || [])) {
       const key3h = `hw3h_${ls3.id}`;
@@ -4647,10 +4647,24 @@ cron.schedule('* * * * *', async () => {
         notifiedEvents.add(key3h);
         const doss = parseStudentDossierBot(ls3.students);
         if (doss.tgId) {
+          const timeStr = new Date(ls3.date).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' });
           const { data: prev } = await db.from('lessons').select('*').eq('student_id', ls3.student_id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
           if (prev && prev.homework && !prev.homework.includes('[ДЗ_ПРОВЕРЕНО]') && !prev.homework.includes('[ДЗ_СДАНО]')) {
-            const timeStr = new Date(ls3.date).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' });
             await sendHomeworkToStudentBot(ls3.students, prev, true, `сегодня в ${timeStr}`);
+          } else {
+            const remindMsg = `⏰ *Привет, ${ls3.students.name}!*\nСегодня в *${timeStr}* у нас урок английского с Игорем! 🇬🇧\n\n💡 Повтори 5 слов перед занятием, чтобы размяться и заработать баллы:`;
+            const remindKb = [
+              [{ text: '🔤 5 слов урока', callback_data: `student_words:${ls3.students.id}` }],
+              [{ text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${ls3.students.id}:0` }],
+              [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${ls3.students.id}` }]
+            ];
+            await bot.sendMessage(doss.tgId, remindMsg, {
+              parse_mode: 'Markdown',
+              reply_markup: { inline_keyboard: remindKb }
+            }).catch(() => {});
+          }
+          if (CHAT_ID) {
+            bot.sendMessage(CHAT_ID, `⏰ Отправил напоминание *${ls3.students.name}* о сегодняшнем уроке в *${timeStr}*!`, { parse_mode: 'Markdown' }).catch(() => {});
           }
         }
       }
