@@ -617,15 +617,50 @@ async function sendParentLessonReportBot(st, lesson) {
   }
 }
 
+
+function extractAttachedCards(homeworkText) {
+  if (!homeworkText) return { cleanHw: '', cards: [] };
+  const match = homeworkText.match(/\[КАРТОЧКИ_ДЗ\]:([\s\S]*?)\[\/КАРТОЧКИ_ДЗ\]/);
+  if (!match) return { cleanHw: homeworkText, cards: [] };
+  const cards = match[1].trim().split('||').map(s => s.trim()).filter(Boolean);
+  const cleanHw = homeworkText.replace(match[0], '').trim();
+  return { cleanHw, cards };
+}
+
+async function sendCardsToChat(chatId, cards, captionPrefix = '🖼 Карточка к уроку') {
+  if (!cards || cards.length === 0) return;
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    try {
+      if (card.startsWith('data:image/')) {
+        const base64Data = card.replace(/^data:image\/\w+;base64,/, '');
+        await bot.sendPhoto(chatId, Buffer.from(base64Data, 'base64'), { caption: `${captionPrefix} #${i + 1}` });
+      } else if (card.startsWith('http')) {
+        await bot.sendPhoto(chatId, card, { caption: `${captionPrefix} #${i + 1}` });
+      }
+    } catch (e) {
+      console.error('Failed to send card to', chatId, e.message);
+    }
+  }
+}
+
 async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLessonDateStr = '') {
   const doss = parseStudentDossierBot(st);
   if (!doss.tgId) return { sent: false, reason: 'no_tg_id' };
-  const rawHw = (lesson?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0]
+  
+  const { cleanHw: noCardsHw, cards } = extractAttachedCards(lesson?.homework || '');
+  const rawHw = noCardsHw.split('\\n[МАТЕРИАЛЫ]:')[0]
     .replace('[ДЗ_ПРОВЕРЕНО]', '')
     .replace('[ДЗ_СДАНО]', '')
     .replace('[ОТПРАВИТЬ_В_ТГ]', '')
+    .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
     .trim();
-  if (!rawHw && !lesson?.topic) return { sent: false, reason: 'empty_hw' };
+  if (!rawHw && !lesson?.topic && cards.length === 0) return { sent: false, reason: 'empty_hw' };
+
+  // 1. Send cards first if any
+  if (cards.length > 0) {
+    await sendCardsToChat(doss.tgId, cards, '🖼 Карточка к ДЗ');
+  }
 
   const header = isReminder
     ? `⏰ *Привет, ${st.name}!*\nНапоминаю про домашнее задание по английскому языку${nextLessonDateStr ? ` к уроку *${nextLessonDateStr}*` : ''} 🇬🇧`
@@ -635,12 +670,20 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
   if (lesson?.topic) msg += `📚 *Тема:* ${lesson.topic}\n`;
   if (doss.vocab) msg += `🔤 *Полезные слова (Vocabulary):* ${doss.vocab}\n`;
   if (rawHw) msg += `\n📌 *Домашнее задание:*\n${rawHw}\n`;
-  if (doss.streak > 0) msg += `🔥 *Твоя серия (Streak):* ${doss.streak} ДЗ подряд без пропусков!\n`;
-  msg += `\n_Когда выполнишь — нажми кнопку ниже, пришли фото/текст или запиши голосовое на английском!_ 💪`;
+  if (cards.length > 0) msg += `\n🖼 *Прикреплено карточек к уроку:* ${cards.length} шт. (отправлены выше)`;
+  msg += `\n🔥 *Твоя серия (Streak):* ${doss.streak || 0} ДЗ подряд без пропусков!\n`;
+  msg += `\n_Когда выполнишь — нажми кнопку ниже, пришли фото тетрадки или напиши ответ!_ 💪`;
 
   const kb = [
     [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lesson.id}` }],
-    [{ text: '🎯 Потренировать мои слова (Мини-квиз)', callback_data: 'student_quiz' }],
+    [
+      { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` },
+      { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` }
+    ],
+    [
+      { text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` },
+      { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }
+    ],
     [{ text: '👨‍👩‍👧 Я родитель (переключить режим)', callback_data: `switch_to_parent:${st.id}` }]
   ];
   try {
@@ -2148,7 +2191,14 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     const welcomeSt = `👋 *Привет, ${st.name}!*\nЯ бот-помощник Игоря по английскому языку 🇬🇧\n\nСюда я буду присылать:\n• 📌 Твои домашние задания и новые слова после урока\n• ⏰ Напоминания перед занятием, чтобы ничего не забыть\n\nА ещё ты можешь прямо сюда *отправлять выполненную домашку* (текстом или фотографией тетрадки) — я сразу передам её Игорю!`;
     await bot.sendMessage(incomingChatId, welcomeSt, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }], [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${st.id}` }]] }
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }],
+          [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }, { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` }],
+          [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }],
+          [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${st.id}` }]
+        ]
+      }
     }).catch(() => bot.sendMessage(incomingChatId, welcomeSt));
 
     await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Ученик подключился к боту!*\n👤 *${st.name}* (${doss.tgUser || 'ID: ' + incomingChatId}) нажал Start.\nТеперь бот будет сам отправлять ему ДЗ и напоминалки в личку! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
@@ -2172,7 +2222,14 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     if (found) {
       return bot.sendMessage(incomingChatId, `👋 Привет, *${found.student.name}*! Нажми кнопку ниже, чтобы посмотреть своё домашнее задание, или просто отправь мне сюда выполненное ДЗ (текстом или фото тетрадки)! 🇬🇧`, {
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }, { text: '🎯 Тренажёр слов', callback_data: 'student_quiz' }], [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${found.student.id}` }]] }
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }],
+            [{ text: '🔤 5 слов урока', callback_data: `student_words:${found.student.id}` }, { text: '⚡ 5 глаголов', callback_data: `student_verbs:${found.student.id}` }],
+            [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${found.student.id}` }, { text: '🎮 Мини-игра', callback_data: `student_game:${found.student.id}` }],
+            [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${found.student.id}` }]
+          ]
+        }
       });
     }
     return bot.sendMessage(incomingChatId, '🔒 Это закрытый бот для учеников по английскому языку. Пожалуйста, перейдите по персональной ссылке-приглашению от преподавателя!');
@@ -2521,12 +2578,27 @@ bot.on('callback_query', async (query) => {
       const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
       await bot.answerCallbackQuery(query.id, { text: '📚 Загружаю данные о ДЗ...' });
       if (!lastLs) return bot.sendMessage(chatId, `По ученику *${st.name}* пока нет записанных уроков.`, { parse_mode: 'Markdown' });
-      const rawHw = (lastLs.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0];
-      const isDone = rawHw.includes('[ДЗ_СДАНО]') || rawHw.includes('[ДЗ_ПРОВЕРЕНО]');
-      const cleanHw = rawHw.replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').replace('[ОТПРАВИТЬ_В_ТГ]', '').replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
+      const { cleanHw: noCardsHw, cards } = extractAttachedCards(lastLs.homework || '');
+      const isDone = noCardsHw.includes('[ДЗ_СДАНО]') || noCardsHw.includes('[ДЗ_ПРОВЕРЕНО]');
+      const cleanHw = noCardsHw.split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').replace('[ОТПРАВИТЬ_В_ТГ]', '').replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
       const dStr = new Date(lastLs.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-      const msg = `📚 *Текущее домашнее задание (${st.name}):*\n📅 Урок от: ${dStr}\n📖 *Тема:* ${lastLs.topic || 'Английский язык'}\n📌 *Задание:* ${cleanHw || 'Без письменного задания'}\n\nСтатус выполнения: ${isDone ? '✅ *Уже выполнено / сдано ребёнком!*' : '⏳ *В процессе выполнения*'}`;
-      await bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, msg));
+      
+      let msg = `📚 *Текущее домашнее задание (${st.name}):*\n📅 Урок от: ${dStr}\n📖 *Тема:* ${lastLs.topic || 'Английский язык'}\n📌 *Задание:* ${cleanHw || 'Без письменного задания'}`;
+      if (cards.length > 0) msg += `\n🖼 *Прикреплено карточек:* ${cards.length} шт. (отправляю ниже)`;
+      msg += `\n\nСтатус выполнения: ${isDone ? '✅ *Уже выполнено / сдано ребёнком!*' : '⏳ *В процессе выполнения*'}`;
+      
+      await bot.sendMessage(chatId, msg, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔤 5 слов урока ребёнка', callback_data: `student_words:${st.id}` }, { text: '📝 Проверить ребёнка (тестик)', callback_data: `student_poll_quiz:${st.id}` }]
+          ]
+        }
+      }).catch(() => bot.sendMessage(chatId, msg));
+
+      if (cards.length > 0) {
+        await sendCardsToChat(chatId, cards, `🖼 Карточка к ДЗ (${st.name})`);
+      }
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -2553,6 +2625,224 @@ bot.on('callback_query', async (query) => {
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
+
+  } else if (data && (data.startsWith('student_words:') || data === 'student_words')) {
+    const studentId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) {
+        const pFound = await findParentByTgChatId(chatId);
+        st = pFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      await bot.answerCallbackQuery(query.id, { text: '🔤 Загружаю 5 слов...' });
+      const doss = parseStudentDossierBot(st);
+      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+
+      const wordsPrompt = `Ты — весёлый репетитор английского для ${st.name} (${st.grade || ''}).
+Активный словарь ученика: "${doss.vocab || 'adventure, challenge, journey, explore, succeed'}".
+Последняя тема урока: "${lastLs?.topic || 'General English'}".
+
+Выбери или составь ровно 5 полезных английских слов из этого урока/словаря.
+Для каждого слова напиши:
+1. Слово + транскрипция [IPA] + перевод на русский
+2. Короткий живой пример предложения с этим словом на английском и перевод в скобках.
+
+Формат:
+🔤 *5 слов урока (${st.name}):*
+1. *Word* [wɜːd] — Слово
+   _It is an example sentence._ (Это пример предложения.)
+...
+В конце добавь вопрос: "Какое слово тебе понравилось больше всего? Напиши мне в ответ предложение с ним!"`;
+
+      const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: wordsPrompt });
+      const text = genRes.generated_plan || '1. *Explore* [ɪkˈsplɔː] — Исследовать\n2. *Challenge* [ˈtʃælɪndʒ] — Вызов';
+
+      const kb = [
+        [{ text: '📝 Пройти тестик по этим словам', callback_data: `student_poll_quiz:${st.id}` }],
+        [{ text: '⚡ 5 важных глаголов', callback_data: `student_verbs:${st.id}` }]
+      ];
+      await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => bot.sendMessage(chatId, text));
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('student_verbs:') || data === 'student_verbs')) {
+    const studentId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) {
+        const pFound = await findParentByTgChatId(chatId);
+        st = pFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      await bot.answerCallbackQuery(query.id, { text: '⚡ Загружаю 5 глаголов...' });
+      const doss = parseStudentDossierBot(st);
+      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+
+      const verbsPrompt = `Ты — преподаватель английского для ${st.name} (${st.grade || ''}).
+Тема: "${lastLs?.topic || 'English Verbs'}". Ошибки: "${doss.errors || 'глагольные формы'}".
+Составь 5 ключевых неправильных/важных глаголов к текущему уровню:
+Для каждого глагола:
+1. 3 формы: V1 - V2 - V3 + перевод
+2. 1 короткое классное предложение в прошедшем или настоящем времени с переводом.
+
+Формат:
+⚡ *5 ключевых глаголов с формами:*
+1. *make – made – made* [meɪk] — делать / создавать
+   _She made a delicious cake._ (Она сделала вкусный торт.)
+...
+В конце: "Попробуй составить одно предложение с любым глаголом и пришли мне!"`;
+
+      const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: verbsPrompt });
+      const text = genRes.generated_plan || '1. *go – went – gone* — идти';
+      const kb = [
+        [{ text: '📝 Пройти тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
+        [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }]
+      ];
+      await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => bot.sendMessage(chatId, text));
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('student_poll_quiz:') || data === 'student_poll_quiz')) {
+    const studentId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) {
+        const pFound = await findParentByTgChatId(chatId);
+        st = pFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      await bot.answerCallbackQuery(query.id, { text: '📝 Создаю опрос-квиз...' });
+      const doss = parseStudentDossierBot(st);
+      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+
+      const pollPrompt = `Ты — методист по английскому для ${st.name} (${st.grade || ''}).
+Тема урока: "${lastLs?.topic || 'English Grammar'}".
+Ошибки ученика: "${doss.errors || 'was/were, -s в Present Simple, неправильные глаголы'}".
+Слова: "${doss.vocab || 'daily routine, school, hobbies'}".
+
+Придумай 1 быстрый, интерактивный тест-вопрос (Telegram Quiz Poll).
+Верни строго в формате JSON:
+{
+  "question": "Вопрос с пропуском или выбором правильного варианта (до 250 символов)?",
+  "options": ["Вариант A", "Вариант B", "Вариант C"],
+  "correct_id": 0,
+  "explanation": "Короткое понятное объяснение правила на русском языке (до 200 символов)"
+}`;
+
+      const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: pollPrompt });
+      let parsedQuiz = null;
+      try {
+        const jsonMatch = genRes.generated_plan.match(/\{[\s\S]*\}/);
+        if (jsonMatch) parsedQuiz = JSON.parse(jsonMatch[0]);
+      } catch (err) {}
+
+      if (!parsedQuiz || !parsedQuiz.options || parsedQuiz.options.length < 2) {
+        parsedQuiz = {
+          question: "Choose the correct verb form: Yesterday we ___ to the cinema.",
+          options: ["went", "go", "goes"],
+          correct_id: 0,
+          explanation: "Yesterday указывает на Past Simple, вторая форма глагола go — went!"
+        };
+      }
+
+      await bot.sendPoll(chatId, `🎯 Квиз (${st.name}): ${parsedQuiz.question}`, parsedQuiz.options.slice(0, 4), {
+        type: 'quiz',
+        correct_option_id: Number(parsedQuiz.correct_id) || 0,
+        explanation: (parsedQuiz.explanation || 'Отлично!').slice(0, 200),
+        is_anonymous: false
+      });
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('student_game:') || data === 'student_game')) {
+    const studentId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      await bot.answerCallbackQuery(query.id, { text: '🎮 Запускаю мини-игру...' });
+      const doss = parseStudentDossierBot(st);
+
+      const gamePrompt = `Ты — геймифицированный ИИ-тренер английского для ${st.name} (${st.grade || ''}).
+Интересы: "${doss.interests || 'игры, кино, приключения'}".
+Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}".
+
+Предложи 1 классную 2-минутную игру или загадку на английском языке (Word Detective или English Riddle).
+Короткий сюжет (3-4 строки) + загадка на английском с переводом ключевых слов.
+НЕ пиши ответ сразу! Напиши: "Напиши свою отгадку сюда в чат, и проверим!"`;
+
+      const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: gamePrompt });
+      const text = genRes.generated_plan || '🎮 *English Riddle Time!*\nWhat has keys but no locks, space but no room, and you can enter but never go outside?\n(Напиши свою догадку в ответном сообщении!)';
+
+      await bot.sendMessage(chatId, `🎮 *Мини-игра для ${st.name}:*\n\n${text}`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, text));
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('send_parsed_rep:')) {
+    const parts = data.split(':');
+    const stId = parts[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', stId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      const doss = parseStudentDossierBot(st);
+      if (!doss.parentTgId) {
+        return bot.answerCallbackQuery(query.id, { text: 'Родитель ещё не подключён к боту!', show_alert: true });
+      }
+      await bot.answerCallbackQuery(query.id, { text: '👨‍👩‍👧 Отправляю отчёт родителю...' });
+      const repText = query.message?.text || '';
+      const repMatch = repText.match(/👨‍👩‍👧 *Отчёт для родителей:*\n([sS]*)/);
+      const toSend = repMatch ? repMatch[1].trim() : repText;
+
+      await bot.sendMessage(doss.parentTgId, toSend, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
+          ]
+        }
+      }).catch(() => bot.sendMessage(doss.parentTgId, toSend));
+
+      await bot.sendMessage(chatId, `✅ Отчёт успешно доставлен родителю ученика *${st.name}* в Telegram!`, { parse_mode: 'Markdown' });
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+
   } else if (data === 'student_quiz') {
     try {
       const pFound = await findParentByTgChatId(chatId);
@@ -3394,7 +3684,63 @@ bot.on('message', async (msg) => {
     }
     const st = found.student;
     let studentText = msg.text || '';
+    const isPhotoSubmission = !!(msg.photo && msg.photo.length > 0);
     const isVoiceSubmission = !!(msg.voice || msg.video_note);
+    
+    // Vision AI for student notebook photo submission
+    if (isPhotoSubmission) {
+      try {
+        bot.sendChatAction(chatId, 'typing');
+        const photo = msg.photo[msg.photo.length - 1];
+        const photoUrl = await bot.getFileLink(photo.file_id);
+        const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+        const cleanHw = (lastLs?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim();
+
+        const newStreak = await incrementStudentStreakBot(st);
+        if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
+          await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
+        }
+
+        // Student feedback
+        await bot.sendMessage(chatId, `📸 *Фото тетрадки принято, ${st.name}!* 🌟\nЯ передал его Игорю на проверку!\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+10 XP)* 🏆`, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }, { text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }]
+            ]
+          }
+        }).catch(() => {});
+
+        // Forward photo to Igor
+        await bot.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
+          caption: `📸 *Домашнее задание от ${st.name} (фото тетрадки)*\n📌 Заданное ДЗ: _${cleanHw || 'Без текста'}_\n🔥 Серия: ${newStreak} ДЗ`,
+          parse_mode: 'Markdown'
+        }).catch(() => {});
+
+        // Call Vision OCR to transcribe English handwriting and find mistakes
+        try {
+          const ocrPrompt = `Ты — чуткий преподаватель английского языка. Ученик ${st.name} (${st.grade || ''}) прислал фото тетрадки с выполненным домашним заданием.
+Заданное ДЗ было: "${cleanHw || 'упражнение из учебника'}".
+
+1. 🔍 РАСШИФРОВКА РУКОПИСИ: аккуратно расшифруй написанный учеником английский текст по строкам.
+2. ⚠️ ОШИБКИ И РАЗБОР: проверь правописание (spelling), грамматику и пунктуацию. Если есть ошибки — укажи правильный вариант и простое правило.
+3. 🌟 ВЕРДИКТ И ПОХВАЛА: 1-2 ободряющие фразы для ученика.`;
+
+          const ocrAnalysis = await callAPI(ocrPrompt, { isVision: true, imageUrl: photoUrl });
+          if (ocrAnalysis) {
+            await bot.sendMessage(ADMIN_CHAT_ID, `🤖 *ИИ-разбор рукописи (${st.name}):*\n\n${ocrAnalysis}`, {
+              parse_mode: 'Markdown',
+              reply_markup: lastLs ? { inline_keyboard: [[{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]] } : undefined
+            }).catch(() => bot.sendMessage(ADMIN_CHAT_ID, `🤖 ИИ-разбор рукописи (${st.name}):\n\n${ocrAnalysis}`));
+          }
+        } catch (visionErr) {
+          console.error('Vision OCR error:', visionErr.message);
+        }
+        return;
+      } catch (photoErr) {
+        console.error('Photo submission error:', photoErr.message);
+      }
+    }
     if (isVoiceSubmission) {
       try {
         bot.sendChatAction(chatId, 'typing');

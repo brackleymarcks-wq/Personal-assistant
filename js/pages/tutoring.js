@@ -14,7 +14,7 @@ const TutoringPage = {
             <div class="page-title" style="font-size:24px;font-weight:800;background:linear-gradient(90deg, var(--accent), var(--accent-vibrant));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Репетиторство 🇬🇧</div>
             <div class="page-subtitle" id="tutoring-subtitle" style="font-size:13px;color:var(--text-secondary);margin-top:4px;">Управление учениками и финансами</div>
           </div>
-          <div class="page-actions" style="display:flex;gap:12px;"><button class="btn btn-secondary" id="auto-schedule-btn" style="display:flex;align-items:center;gap:6px;border-radius:12px;color:var(--accent);border-color:var(--accent-alpha);" title="Создать запланированные уроки на 7 дней вперед по расписанию учеников"><i data-lucide="calendar-plus" style="width:16px;height:16px;"></i> Авто-расписание на неделю</button>
+          <div class="page-actions" style="display:flex;gap:12px;">
             <button class="btn btn-secondary" id="add-student-btn" style="display:flex;align-items:center;gap:6px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
               <i data-lucide="user-plus" style="width:16px;height:16px;"></i>
               Добавить ученика
@@ -168,6 +168,39 @@ const TutoringPage = {
                   <button id="ls-generate-ai" class="btn btn-ghost" style="font-size:12px;color:var(--accent);display:flex;align-items:center;gap:4px;padding:2px 8px;min-height:auto;"><i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ</button>
                 </div>
                 <textarea id="ls-homework" class="form-input" rows="3" placeholder="Что задано на следующий раз?"></textarea>
+                <div style="margin-top:10px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <label class="form-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;">
+                      <i data-lucide="image" style="width:14px;height:14px;color:var(--accent);"></i>
+                      <span>Карточки и материалы ДЗ (PNG / Картинки)</span>
+                    </label>
+                    <div style="display:flex;gap:6px;">
+                      <button type="button" id="ls-btn-gen-cards" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0d9488;border-color:rgba(13,148,136,0.35);" title="Сгенерировать стильные PNG-карточки слов для отправки в Telegram">🎨 Создать карточки (PNG)</button>
+                      <button type="button" id="ls-btn-add-card-file" class="btn btn-secondary btn-xs" style="font-size:11px;" title="Прикрепить PNG/JPG с диска">📎 Прикрепить PNG</button>
+                    </div>
+                  </div>
+                  <input type="file" id="ls-card-file-input" accept="image/*" multiple style="display:none;" />
+                  <div id="ls-cards-dropzone" style="border:2px dashed var(--border-light);border-radius:10px;padding:12px;text-align:center;cursor:pointer;background:var(--bg-primary);transition:border-color 0.2s;" title="Перетащите сюда PNG или нажмите Ctrl+V для вставки из буфера">
+                    <div style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:6px;">
+                      <i data-lucide="upload-cloud" style="width:16px;height:16px;color:var(--accent);"></i>
+                      <span>Перетащите PNG-карточки сюда, выберите файл или вставьте из буфера (<b>Ctrl+V</b>)</span>
+                    </div>
+                    <div id="ls-cards-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
+                  </div>
+                </div>
+
+                <div style="margin-top:12px;padding:12px;border-radius:12px;background:linear-gradient(145deg, rgba(13,148,136,0.06), rgba(99,102,241,0.06));border:1px solid rgba(13,148,136,0.25);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <label class="form-label" style="margin-bottom:0;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:6px;">
+                      <i data-lucide="mic" style="width:14px;height:14px;color:#0d9488;"></i> Итоги урока (Дебрифинг преподавателя)
+                    </label>
+                    <div style="display:flex;gap:6px;">
+                      <button type="button" id="ls-btn-voice-rec" class="btn btn-secondary btn-xs" style="font-size:11px;display:flex;align-items:center;gap:4px;" title="Надиктовать голосом итоги урока"><i data-lucide="mic" style="width:12px;height:12px;"></i> <span id="ls-voice-rec-text">Надиктовать</span></button>
+                      <button type="button" id="ls-btn-process-debrief" class="btn btn-primary btn-xs" style="font-size:11px;background:#0d9488;border-color:#0d9488;color:#fff;" title="Разобрать ИИ: обновить ошибки, пополнить словарь и составить отчёт родителям">✨ Разобрать в отчёт и ошибки</button>
+                    </div>
+                  </div>
+                  <textarea id="ls-debrief-notes" class="form-input" rows="2" style="font-size:12px;" placeholder="Надиктуйте или запишите своими словами: что прошли, что получилось, где ошибся (например: путал was/were, забывал -s), какие новые слова взяли..."></textarea>
+                </div>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
                   <button type="button" id="ls-ai-warmup" class="btn btn-secondary btn-xs" style="font-size:11px;padding:4px 8px;">🎲 Разминка (Warm-up 5м)</button>
                   <button type="button" id="ls-ai-blitz" class="btn btn-secondary btn-xs" style="font-size:11px;padding:4px 8px;">🔍 Блиц-проверка прошлого ДЗ</button>
@@ -338,6 +371,24 @@ const TutoringPage = {
 
         // Extract notes from schedule
         const dossier = this.parseStudentDossier(st);
+        // Find latest homework lesson for this student
+        const lastHwLesson = this.lessons
+          .filter(l => l.student_id === st.id && l.homework && l.homework.trim())
+          .sort((a,b) => new Date(b.date) - new Date(a.date))[0];
+        let hwStatusBadge = '';
+        if (lastHwLesson) {
+          const rawHw = lastHwLesson.homework || '';
+          const isDone = rawHw.includes('[ДЗ_СДАНО]');
+          const isChecked = rawHw.includes('[ДЗ_ПРОВЕРЕНО]');
+          const cleanHwText = rawHw.split('\\n[МАТЕРИАЛЫ]:')[0].split('\\n[КАРТОЧКИ_ДЗ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').replace('[ОТПРАВИТЬ_В_ТГ]', '').replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
+          if (isDone && !isChecked) {
+            hwStatusBadge = `<div style="margin-top:8px;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:6px;"><span style="color:#2563eb;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📬 Сдано в ТГ: ${this.escapeHtml(cleanHwText || 'Домашка')}</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${lastHwLesson.id}')">✅ Проверено</button></div>`;
+          } else if (isChecked) {
+            hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);font-size:11px;color:var(--success);display:flex;align-items:center;gap:6px;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> <span>✅ ДЗ проверено: ${this.escapeHtml(cleanHwText || 'Задание')}</span></div>`;
+          } else if (cleanHwText) {
+            hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;color:var(--accent);"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">ДЗ: ${this.escapeHtml(cleanHwText)}</span></div>`;
+          }
+        }
         const displaySchedule = dossier.schedule || 'Нет расписания';
         if (displaySchedule.includes('\\n[ЗАМЕТКИ]:')) {
           displaySchedule = displaySchedule.split('\\n[ЗАМЕТКИ]:')[0];
@@ -361,7 +412,7 @@ const TutoringPage = {
                   ${st.name.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <div style="font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:6px;">${this.escapeHtml(st.name)}${dossier.streak > 0 ? `<span title="Ударный режим ученика (ДЗ подряд)" style="font-size:11px;padding:1px 6px;border-radius:10px;background:rgba(249,115,22,0.15);color:#f97316;font-weight:800;">🔥 ${dossier.streak}</span>` : ''}</div>
+                  <div style="font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:6px;">${this.escapeHtml(st.name)}<span title="Ударный режим (выполненных ДЗ подряд без пропусков)" style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(249,115,22,0.15);color:#f97316;font-weight:800;border:1px solid rgba(249,115,22,0.3);display:inline-flex;align-items:center;gap:3px;">🔥 ${dossier.streak || 0} ДЗ</span></div>
                   <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${this.escapeHtml(st.grade || 'Уровень не указан')}</div>
                 </div>
               </div>
@@ -378,7 +429,7 @@ const TutoringPage = {
               ${debtBadge}
             </div>
             ${(dossier.unit || dossier.interests || dossier.errors) ? `<div style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">${dossier.unit ? `<div style="color:var(--accent);">📖 <b>Программа:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}${dossier.errors ? `<div style="color:var(--warning);">⚠️ <b>Ошибки:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}</div>` : ''}
-            </div>
+            ${hwStatusBadge}
 
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-light); width: 100%;">
               ${unpaidCount > 0 ? `
@@ -464,7 +515,7 @@ const TutoringPage = {
                 </div>
                 <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;display:flex;flex-direction:column;gap:4px;">
                   ${ls.topic ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="book" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(ls.topic)}</span></div>` : ''} 
-                  ${displayHomework ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(displayHomework.replace('[ДЗ_ПРОВЕРЕНО]', '✅ '))}</span></div>` : ''}
+                  ${displayHomework ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(displayHomework.replace('[ДЗ_ПРОВЕРЕНО]', '✅ ').replace('[ДЗ_СДАНО]', '📬 '))}</span> ${(ls.homework || '').includes('[ДЗ_СДАНО]') && !(ls.homework || '').includes('[ДЗ_ПРОВЕРЕНО]') ? `<span style="font-size:10px;background:rgba(59,130,246,0.15);color:#3b82f6;font-weight:700;padding:2px 6px;border-radius:6px;display:inline-flex;align-items:center;gap:2px;">📬 Сдано в ТГ!</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${ls.id}')">✅ Проверено</button>` : ((ls.homework || '').includes('[ДЗ_ПРОВЕРЕНО]') ? `<span style="font-size:10px;background:rgba(16,185,129,0.12);color:var(--success);font-weight:700;padding:2px 6px;border-radius:6px;">✅ Проверено</span>` : '')}</div>` : ''}
                   ${(ls.status === 'Запланирован' && prevDoneLesson && prevHwClean) ? `<div style="margin-top:4px;padding:6px 8px;border-radius:8px;background:${prevHwChecked ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.12)'};border:1px solid ${prevHwChecked ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.3)'};font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${prevHwChecked ? '✅ ДЗ проверено:' : '📌 <b>Проверить ДЗ:</b>'} ${this.escapeHtml(prevHwClean)}</span>${!prevHwChecked ? `<button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${prevDoneLesson.id}')">✅ Проверено</button>` : ''}</div>` : ''}
                   ${ls.status === 'Запланирован' ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;color:#0d9488;border-color:rgba(13,148,136,0.35);background:rgba(13,148,136,0.06);" onclick="event.stopPropagation(); TutoringPage.launchPerplexity('${ls.student_id}', '${ls.id}')">🔮 В Perplexity</button><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;" onclick="event.stopPropagation(); TutoringPage.openZenBoard('${ls.id}')">🖥 Экран ученика</button></div>` : ''}
                   ${displayMaterials ? `<div style="display:flex;align-items:center;gap:6px;color:var(--accent);"><i data-lucide="paperclip" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${hasLinks ? `<a href="${displayMaterials}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:underline;">Материалы прикреплены</a>` : this.escapeHtml(displayMaterials)}</span></div>` : ''}
@@ -649,6 +700,11 @@ const TutoringPage = {
     delBtn.style.display = ls ? '' : 'none';
 
     // AI Generation click
+    // Extract attached cards
+    this.attachedCards = this.parseCardsFromHomework(ls?.homework || '');
+    this.renderCardsPreview();
+    this.bindLessonModalMediaAndDebrief(ls, sSelect.value);
+
     this.renderLessonMemoryBanner(sSelect.value, ls?.date);
     sSelect.onchange = () => this.renderLessonMemoryBanner(sSelect.value, ls?.date);
     const outBox = document.getElementById('ls-ai-output-box');
@@ -742,11 +798,15 @@ const TutoringPage = {
         homework = (homework ? homework + '\n' : '') + '[ПЕРЕНЕСЕН_В_ТГ]';
       }
     }
-    const materials = document.getElementById('ls-materials').value.trim();
-    { if (materials) {
-      homework += '\\n[МАТЕРИАЛЫ]:\\n' + materials;
+    // Clean old cards & serialize current cards
+    homework = homework.replace(/\\n\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/, '').trim();
+    if (this.attachedCards && this.attachedCards.length > 0) {
+      homework += '\\n[КАРТОЧКИ_ДЗ]:\\n' + this.attachedCards.join('||') + '\\n[/КАРТОЧКИ_ДЗ]';
     }
 
+    const materials = document.getElementById('ls-materials').value.trim();
+    if (materials) {
+      homework += '\\n[МАТЕРИАЛЫ]:\\n' + materials;
     }
     if (id) {
       const oldLs = this.lessons.find(l => l.id === id);
@@ -1454,6 +1514,303 @@ const TutoringPage = {
 
     // Если проведенных уроков пока нет, формируем сводный отчёт о прогрессе через модалку
     return this.generateMonthlyReport(studentId);
+  },
+
+  attachedCards: [],
+  _voiceRec: null,
+
+  parseCardsFromHomework(rawHw) {
+    if (!rawHw) return [];
+    const match = rawHw.match(/\[КАРТОЧКИ_ДЗ\]:([\s\S]*?)\[\/КАРТОЧКИ_ДЗ\]/);
+    if (!match) return [];
+    return match[1].trim().split('||').map(s => s.trim()).filter(Boolean);
+  },
+
+  renderCardsPreview() {
+    const container = document.getElementById('ls-cards-preview');
+    if (!container) return;
+    if (!this.attachedCards || this.attachedCards.length === 0) {
+      container.innerHTML = '<span style="font-size:11px;color:var(--text-muted);">Нет прикреплённых карточек</span>';
+      return;
+    }
+    container.innerHTML = this.attachedCards.map((card, idx) => {
+      const isImg = card.startsWith('data:image') || card.startsWith('http');
+      return `
+        <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border-light);background:#000;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
+          <img src="${card}" style="width:100%;height:100%;object-fit:cover;cursor:pointer;" onclick="window.open('${card}')" title="Нажмите для просмотра во весь экран" />
+          <button type="button" onclick="event.stopPropagation(); TutoringPage.removeCard(${idx})" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;cursor:pointer;font-size:10px;display:flex;align-items:center;justify-content:center;">✕</button>
+        </div>
+      `;
+    }).join('');
+    if (window.lucide) window.lucide.createIcons();
+  },
+
+  removeCard(idx) {
+    this.attachedCards.splice(idx, 1);
+    this.renderCardsPreview();
+  },
+
+  addCardDataUrl(dataUrl) {
+    if (!this.attachedCards) this.attachedCards = [];
+    if (this.attachedCards.length >= 10) return UI.toast('Максимум 10 карточек на урок', 'warning');
+    this.attachedCards.push(dataUrl);
+    this.renderCardsPreview();
+    UI.toast('Карточка прикреплена к ДЗ!', 'success');
+  },
+
+  bindLessonModalMediaAndDebrief(ls, studentId) {
+    const fileInput = document.getElementById('ls-card-file-input');
+    const addFileBtn = document.getElementById('ls-btn-add-card-file');
+    const dropzone = document.getElementById('ls-cards-dropzone');
+    const genCardsBtn = document.getElementById('ls-btn-gen-cards');
+    const voiceRecBtn = document.getElementById('ls-btn-voice-rec');
+    const processDebriefBtn = document.getElementById('ls-btn-process-debrief');
+
+    if (addFileBtn && fileInput) {
+      addFileBtn.onclick = () => fileInput.click();
+      fileInput.onchange = (e) => {
+        const files = Array.from(e.target.files || []);
+        files.forEach(file => {
+          if (!file.type.startsWith('image/')) return;
+          const reader = new FileReader();
+          reader.onload = (ev) => this.addCardDataUrl(ev.target.result);
+          reader.readAsDataURL(file);
+        });
+        fileInput.value = '';
+      };
+    }
+
+    if (dropzone) {
+      dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.borderColor = 'var(--accent)'; };
+      dropzone.ondragleave = () => { dropzone.style.borderColor = 'var(--border-light)'; };
+      dropzone.ondrop = (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--border-light)';
+        const files = Array.from(e.dataTransfer.files || []);
+        files.forEach(file => {
+          if (!file.type.startsWith('image/')) return;
+          const reader = new FileReader();
+          reader.onload = (ev) => this.addCardDataUrl(ev.target.result);
+          reader.readAsDataURL(file);
+        });
+      };
+      dropzone.onclick = (e) => {
+        if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'IMG') fileInput.click();
+      };
+    }
+
+    // Paste image from clipboard anywhere in lesson modal
+    const modalEl = document.getElementById('lesson-modal');
+    if (modalEl && !modalEl._pasteBound) {
+      modalEl._pasteBound = true;
+      modalEl.addEventListener('paste', (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (const item of items) {
+          if (item.type.indexOf('image') !== -1) {
+            const blob = item.getAsFile();
+            const reader = new FileReader();
+            reader.onload = (ev) => this.addCardDataUrl(ev.target.result);
+            reader.readAsDataURL(blob);
+          }
+        }
+      });
+    }
+
+    if (genCardsBtn) {
+      genCardsBtn.onclick = () => this.promptGenerateCards(studentId);
+    }
+
+    if (voiceRecBtn) {
+      voiceRecBtn.onclick = () => this.toggleVoiceDebrief();
+    }
+
+    if (processDebriefBtn) {
+      processDebriefBtn.onclick = () => this.processTeacherDebrief(studentId, ls?.id);
+    }
+  },
+
+  async promptGenerateCards(studentId) {
+    const st = this.students.find(s => s.id === studentId);
+    const dossier = st ? this.parseStudentDossier(st) : {};
+    const defaultWords = dossier.vocab || 'adventure, challenge, discover, explore, achieve';
+    const wordsInput = prompt('Введите слова через запятую для генерации красивых PNG-карточек (или нажмите ОК, чтобы взять активный словарь ученика):', defaultWords);
+    if (!wordsInput || !wordsInput.trim()) return;
+
+    const words = wordsInput.split(/[,;\r\n]+/).map(w => w.trim()).filter(Boolean).slice(0, 5);
+    UI.toast(`Генерирую ${words.length} PNG-карточек...`, 'info');
+    for (const w of words) {
+      const cardPng = await this.renderWordCardCanvas(w);
+      this.addCardDataUrl(cardPng);
+    }
+  },
+
+  async renderWordCardCanvas(word) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 800;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+
+    // Gradient Background
+    const grad = ctx.createLinearGradient(0, 0, 800, 480);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(1, '#1e293b');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 800, 480);
+
+    // Decorative glow circle
+    const glow = ctx.createRadialGradient(400, 240, 20, 400, 240, 300);
+    glow.addColorStop(0, 'rgba(13, 148, 136, 0.25)');
+    glow.addColorStop(1, 'rgba(15, 23, 42, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, 800, 480);
+
+    // Border
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(16, 16, 768, 448);
+
+    // Header badge
+    ctx.fillStyle = '#0d9488';
+    ctx.beginPath();
+    ctx.arc(48, 48, 16, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = 'bold 18px Inter, system-ui, sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('ENGLISH FLASHCARD', 74, 54);
+
+    // Main English Word
+    ctx.font = 'bold 54px Inter, system-ui, sans-serif';
+    ctx.fillStyle = '#f8fafc';
+    ctx.textAlign = 'center';
+    ctx.fillText(word, 400, 220);
+
+    // Footer hint
+    ctx.font = '16px Inter, system-ui, sans-serif';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('Gor Pavlovskiy • Репетиторство по английскому', 400, 430);
+
+    return canvas.toDataURL('image/png');
+  },
+
+  toggleVoiceDebrief() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      return UI.toast('Голосовой ввод не поддерживается браузером. Вы можете печатать текст в поле заметки!', 'warning');
+    }
+
+    const btnText = document.getElementById('ls-voice-rec-text');
+    const debriefArea = document.getElementById('ls-debrief-notes');
+
+    if (this._voiceRec) {
+      this._voiceRec.stop();
+      this._voiceRec = null;
+      if (btnText) btnText.textContent = 'Надиктовать';
+      UI.toast('Запись остановлена', 'info');
+      return;
+    }
+
+    try {
+      const rec = new SpeechRecognition();
+      rec.lang = 'ru-RU';
+      rec.continuous = true;
+      rec.interimResults = true;
+
+      rec.onstart = () => {
+        if (btnText) btnText.textContent = '🔴 Слушаю...';
+        UI.toast('Слушаю вас! Надиктовывайте итоги урока...', 'info');
+      };
+
+      rec.onresult = (event) => {
+        let transcript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript + ' ';
+        }
+        if (debriefArea) debriefArea.value = transcript.trim();
+      };
+
+      rec.onerror = (e) => {
+        console.error('Speech rec error:', e);
+        if (btnText) btnText.textContent = 'Надиктовать';
+        this._voiceRec = null;
+      };
+
+      rec.onend = () => {
+        if (btnText) btnText.textContent = 'Надиктовать';
+        this._voiceRec = null;
+      };
+
+      this._voiceRec = rec;
+      rec.start();
+    } catch (e) {
+      UI.toast('Ошибка запуска микрофона: ' + e.message, 'error');
+    }
+  },
+
+  async processTeacherDebrief(studentId, lessonId = null) {
+    const rawNotes = document.getElementById('ls-debrief-notes')?.value?.trim();
+    if (!rawNotes) return UI.toast('Сначала надиктуйте или запишите итоги урока!', 'warning');
+
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return UI.toast('Выберите ученика', 'warning');
+
+    const procBtn = document.getElementById('ls-btn-process-debrief');
+    if (procBtn) { procBtn.disabled = true; procBtn.textContent = '⏳ Разбираю...'; }
+
+    try {
+      const dossier = this.parseStudentDossier(st);
+      const res = await Gemini.parseTeacherDebrief(rawNotes, { name: st.name, grade: st.grade, ...dossier });
+
+      // 1. Update Student profile if new errors or words
+      let updatedErrors = dossier.errors || '';
+      if (res.errors) {
+        updatedErrors = updatedErrors ? `${updatedErrors}, ${res.errors}` : res.errors;
+      }
+      let updatedVocab = dossier.vocab || '';
+      if (res.words) {
+        updatedVocab = updatedVocab ? `${updatedVocab}, ${res.words}` : res.words;
+      }
+
+      if (res.errors || res.words) {
+        const newSched = this.serializeStudentDossier(
+          dossier.schedule,
+          dossier.interests,
+          updatedErrors,
+          updatedVocab,
+          dossier.notes,
+          dossier.perplexity,
+          dossier.unit,
+          dossier.tgId,
+          dossier.tgUser,
+          dossier.streak,
+          dossier.parentTgId,
+          dossier.parentTgUser
+        );
+        await DB.updateStudent(st.id, { schedule: newSched });
+        st.schedule = newSched;
+      }
+
+      // 2. Populate Homework textarea
+      if (res.homework) {
+        const hwEl = document.getElementById('ls-homework');
+        if (hwEl) hwEl.value = res.homework;
+      }
+
+      // 3. Open Report Modal with polite parent report
+      if (res.parent_report) {
+        UI.toast('Дебрифинг успешно разобран! Ошибки и словарь обновлены, отчёт готов к отправке.', 'success');
+        await this.generateMonthlyReport(studentId);
+        const repTextEl = document.getElementById('report-modal-text');
+        if (repTextEl) repTextEl.value = res.parent_report;
+      } else {
+        UI.toast('Дебрифинг разобран, ошибки и словарь сохранены!', 'success');
+      }
+
+    } catch (e) {
+      UI.toast('Ошибка разбора дебрифинга: ' + e.message, 'error');
+    } finally {
+      if (procBtn) { procBtn.disabled = false; procBtn.textContent = '✨ Разобрать в отчёт и ошибки'; }
+    }
   },
 
   escapeHtml(str) {
