@@ -649,6 +649,50 @@ async function sendParentLessonReportBot(st, lesson) {
 
 
 
+async function getLatestLessonWithMaterials(studentId) {
+  if (!studentId) return null;
+  // 1. Try to find the latest lesson with an attached scenario
+  const { data: withScen } = await db.from('lessons')
+    .select('*')
+    .eq('student_id', studentId)
+    .ilike('homework', '%[СЦЕНАРИЙ_УРОКА]%')
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (withScen && withScen.homework) return withScen;
+
+  // 2. Try latest conducted lesson with non-empty homework
+  const { data: lastCondHw } = await db.from('lessons')
+    .select('*')
+    .eq('student_id', studentId)
+    .eq('status', 'Проведен')
+    .neq('homework', '')
+    .not('homework', 'is', null)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastCondHw && lastCondHw.homework) return lastCondHw;
+
+  // 3. Fallback to latest conducted lesson
+  const { data: lastCond } = await db.from('lessons')
+    .select('*')
+    .eq('student_id', studentId)
+    .eq('status', 'Проведен')
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastCond) return lastCond;
+
+  // 4. Fallback to any latest lesson for this student
+  const { data: anyLs } = await db.from('lessons')
+    .select('*')
+    .eq('student_id', studentId)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return anyLs || null;
+}
+
 const studentPracticeProgress = {};
 function getPracticeProgress(studentId, lessonId) {
   const key = `${studentId}_${lessonId || 'curr'}`;
@@ -2776,7 +2820,7 @@ bot.on('callback_query', async (query) => {
     try {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
-      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+      const lastLs = await getLatestLessonWithMaterials(st.id);
       await bot.answerCallbackQuery(query.id, { text: '📚 Загружаю данные о ДЗ...' });
       if (!lastLs) return bot.sendMessage(chatId, `По ученику *${st.name}* пока нет записанных уроков.`, { parse_mode: 'Markdown' });
       const { cleanHw: noCardsHw, cards } = extractAttachedCards(lastLs.homework || '');
@@ -2847,7 +2891,7 @@ bot.on('callback_query', async (query) => {
 
       await bot.answerCallbackQuery(query.id, { text: '🔤 Загружаю 5 новых слов...' });
       const doss = parseStudentDossierBot(st);
-      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+      const lastLs = await getLatestLessonWithMaterials(st.id);
 
       const scenario = extractLessonScenario(lastLs?.homework || '');
       const prog = getPracticeProgress(st.id, lastLs?.id);
@@ -2924,7 +2968,7 @@ ${scenario ? `СТРОГО ИСПОЛЬЗУЙ МАТЕРИАЛЫ И СЛОВАР
 
       await bot.answerCallbackQuery(query.id, { text: '⚡ Загружаю 5 новых глаголов...' });
       const doss = parseStudentDossierBot(st);
-      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+      const lastLs = await getLatestLessonWithMaterials(st.id);
 
       const scenario = extractLessonScenario(lastLs?.homework || '');
       const prog = getPracticeProgress(st.id, lastLs?.id);
@@ -2992,7 +3036,7 @@ ${scenario ? `ИСПОЛЬЗУЙ ГЛАГОЛЫ И ПРАВИЛА ИЗ СЦЕН�
 
       await bot.answerCallbackQuery(query.id, { text: '📝 Создаю мини-тест из 3 вопросов...' });
       const doss = parseStudentDossierBot(st);
-      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+      const lastLs = await getLatestLessonWithMaterials(st.id);
 
       const scenario = extractLessonScenario(lastLs?.homework || '');
       const prog = getPracticeProgress(st.id, lastLs?.id);
@@ -3134,7 +3178,7 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
       }
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
 
-      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+      const lastLs = await getLatestLessonWithMaterials(st.id);
       const scenario = extractLessonScenario(lastLs?.homework || '');
       const cards = getLessonFlashcards(scenario, lastLs?.homework || '');
       if (idx >= cards.length) idx = 0;
@@ -3251,7 +3295,7 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
       const st = found.student;
       const doss = found.dossier;
       await bot.answerCallbackQuery(query.id, { text: '🎯 Готовлю персональный мини-квиз...' });
-      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+      const lastLs = await getLatestLessonWithMaterials(st.id);
       const quizPrompt = `Ты — дружелюбный игровой ИИ-тренер по английскому для ученика ${st.name} (${st.grade || ''}).\nСловарь ученика: ${doss.vocab || 'общая лексика по уровню'}.\nТипичные ошибки: ${doss.errors || 'грамматика времени'}.\nИнтересы: ${doss.interests || 'игры, фильмы, путешествия'}.\nПоследняя тема: ${lastLs?.topic || 'English practice'}.\n\nСоставь КОМПАКТНЫЙ (до 800 символов) увлекательный мини-квиз из 3 коротких вопросов (1: выбрать правильный вариант A/B/C, 2: вставить пропущенное слово в предложение по интересам ученика, 3: перевести короткую фразу на английский). НЕ пиши ответы сразу! Скажи ученику: "Напиши ответы 1, 2, 3 в ответном сообщении (или скажи голосом!), и я сразу проверю!"`;
       const planRes = await executeFunctionCall('generate_lesson_plan', { prompt: quizPrompt });
       const quizText = planRes.generated_plan || '1. Choose: I (was/were) happy yesterday.\n2. Translate: Я люблю путешествовать.\n3. Make a sentence with your favourite hobby!';
@@ -3279,7 +3323,7 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
         return bot.answerCallbackQuery(query.id, { text: 'Профиль ученика не найден', show_alert: true });
       }
       const st = found.student;
-      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+      const lastLs = await getLatestLessonWithMaterials(st.id);
       await bot.answerCallbackQuery(query.id, { text: '📚 Загружаю домашнее задание...' });
       if (!lastLs || !lastLs.homework) {
         return bot.sendMessage(chatId, `🎉 *${st.name}*, сейчас активного домашнего задания нет! Отдыхай или повтори слова прошлых уроков 🇬🇧`, { parse_mode: 'Markdown' });
@@ -4082,7 +4126,7 @@ bot.on('message', async (msg) => {
         bot.sendChatAction(chatId, 'typing');
         const photo = msg.photo[msg.photo.length - 1];
         const photoUrl = await bot.getFileLink(photo.file_id);
-        const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+        const lastLs = await getLatestLessonWithMaterials(st.id);
         const cleanHw = (lastLs?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim();
 
         const newStreak = await incrementStudentStreakBot(st);
