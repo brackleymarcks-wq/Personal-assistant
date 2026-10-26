@@ -642,7 +642,8 @@ async function sendCardsToChat(chatId, cards, captionPrefix = '🖼 Карточ
     try {
       if (card.startsWith('data:image/')) {
         const base64Data = card.replace(/^data:image\/\w+;base64,/, '');
-        await bot.sendPhoto(chatId, Buffer.from(base64Data, 'base64'), { caption: `${captionPrefix} #${i + 1}` });
+        const buf = Buffer.from(base64Data, 'base64');
+        await bot.sendPhoto(chatId, buf, { caption: `${captionPrefix} #${i + 1}` }, { filename: `card_${i + 1}.png`, contentType: 'image/png' });
       } else if (card.startsWith('http')) {
         await bot.sendPhoto(chatId, card, { caption: `${captionPrefix} #${i + 1}` });
       }
