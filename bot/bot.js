@@ -89,9 +89,6 @@ bot.getMe().then(async (me) => {
   } catch (e) {}
 }).catch(() => {});
 console.log('🤖 Бот запущен! Ожидаю сообщения...');
-if (CHAT_ID) {
-  bot.sendMessage(CHAT_ID, '🤖 Я обновился на сервере и успешно перезапущен! Таймеры работают в штатном режиме.').catch(e => console.error(e));
-}
 
 // ============================================
 // DATABASE HELPERS
@@ -702,10 +699,36 @@ function getPracticeProgress(studentId, lessonId) {
       verbsBatch: 0,
       quizRound: 0,
       seenWords: [],
-      seenVerbs: []
+      seenVerbs: [],
+      userScores: {}
     };
   }
   return studentPracticeProgress[key];
+}
+
+function addStudentXp(studentId, lessonId, userId, userName, amount) {
+  const prog = getPracticeProgress(studentId, lessonId);
+  if (!prog.userScores) prog.userScores = {};
+  const uid = String(userId);
+  if (!prog.userScores[uid]) {
+    prog.userScores[uid] = { name: userName || 'Ученик', xp: 0 };
+  }
+  prog.userScores[uid].xp += amount;
+  if (userName && userName !== 'Ученик') prog.userScores[uid].name = userName;
+  return prog.userScores[uid].xp;
+}
+
+function getLeaderboardText(studentId, lessonId) {
+  const prog = getPracticeProgress(studentId, lessonId);
+  const scores = Object.values(prog.userScores || {});
+  if (scores.length <= 1) return '';
+  scores.sort((a, b) => b.xp - a.xp);
+  let text = '\n\n🏆 *Битва за звёзды (Звёздный зачёт):*\n';
+  for (const s of scores) {
+    const icon = s.name.toLowerCase().includes('арин') ? '🐉' : (s.name.toLowerCase().includes('матве') ? '🚀' : '⭐');
+    text += `${icon} *${s.name}:* ${s.xp} XP\n`;
+  }
+  return text;
 }
 
 function formatToTelegramHtml(text) {
@@ -880,20 +903,21 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
 
   msg += `\n📊 *Прогресс слов урока:* [${bar}] ${pct}% (${learned}/${totalWords} слов)\n`;
   msg += `🔥 *Твоя серия (Streak):* ${doss.streak || 0} ДЗ подряд без пропусков!\n`;
+  const lbText = getLeaderboardText(st.id, lesson?.id);
+  if (lbText) msg += lbText;
   msg += `\n_Когда выполнишь — нажми кнопку ниже, пришли голосовое сообщение или фото тетрадки!_ 💪`;
 
   const kb = [
     [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lesson.id}` }],
     [
       { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` },
-      { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` }
+      { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }
     ],
     [
       { text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` },
-      { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }
+      { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` }
     ],
-    [{ text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }],
-    [{ text: '👨‍👩‍👧 Я родитель (переключить режим)', callback_data: `switch_to_parent:${st.id}` }]
+    [{ text: '👨‍👩‍👧 Режим родителя', callback_data: `switch_to_parent:${st.id}` }]
   ];
   try {
     for (const tid of targetIds) {
@@ -2437,10 +2461,9 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
       reply_markup: {
         inline_keyboard: [
           [{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }],
-          [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }, { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` }],
-          [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
-          [{ text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }],
-          [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${st.id}` }]
+          [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
+          [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` }],
+          [{ text: '👨‍👩‍👧 Режим родителя', callback_data: `switch_to_parent:${st.id}` }]
         ]
       }
     }).catch(() => bot.sendMessage(incomingChatId, welcomeSt));
@@ -3187,7 +3210,9 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
 
       if (action === 'card_known') {
         await incrementStudentStreakBot(st);
-        await bot.answerCallbackQuery(query.id, { text: '🎉 Отлично! +5 XP в твою копилку!' });
+        const userName = query.from?.first_name || 'Ученик';
+        const totalXp = addStudentXp(st.id, lastLs?.id, query.from?.id, userName, 5);
+        await bot.answerCallbackQuery(query.id, { text: `🎉 Отлично, ${userName}! +5 XP (Всего: ${totalXp} XP)!` });
       } else {
         await bot.answerCallbackQuery(query.id);
       }
