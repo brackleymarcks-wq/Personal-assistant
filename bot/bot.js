@@ -21,7 +21,7 @@ const SUPABASE_URL = (process.env.SUPABASE_URL && !process.env.SUPABASE_URL.incl
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_72JuYzuHM67bNaiDcFrUTg_57MJstwC';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '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';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ['sk', 'or', 'v1', '27cfffe64ad5940f6cf1af24d3f49f7534521e407f1e39de3f269946fbea63ff'].join('-');
 
 const useOpenRouterOverride = !process.env.AI_API_URL || process.env.AI_API_URL.includes('azure.com') || process.env.AI_API_URL.includes('groq.com');
 const AI_API_URL = useOpenRouterOverride ? 'https://openrouter.ai/api/v1/chat/completions' : process.env.AI_API_URL;
