@@ -653,6 +653,98 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
   }
 }
 
+let isProcessingLessonQueues = false;
+async function processLessonQueues() {
+  if (isProcessingLessonQueues) return;
+  isProcessingLessonQueues = true;
+  try {
+    const adminId = CHAT_ID || ADMIN_CHAT_ID;
+
+    // 1. Отчёты родителям
+    const { data: queuedParentLessons } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]%');
+    if (queuedParentLessons && queuedParentLessons.length > 0) {
+      for (const pls of queuedParentLessons) {
+        let rawHw = pls.homework || '';
+        let customReport = null;
+        const repMatch = rawHw.match(/\[КАСТОМНЫЙ_ОТЧЕТ\]:([\s\S]*?)\[\/КАСТОМНЫЙ_ОТЧЕТ\]/);
+        if (repMatch) {
+          customReport = repMatch[1].trim();
+          rawHw = rawHw.replace(repMatch[0], '').trim();
+        }
+        const cleanedHw = rawHw.replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
+        await db.from('lessons').update({ homework: cleanedHw }).eq('id', pls.id);
+        if (pls.students) {
+          const doss = parseStudentDossierBot(pls.students);
+          if (customReport) {
+            if (doss.parentTgId) {
+              const kb = [
+                [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pls.students.id}` }],
+                [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pls.students.id}` }]
+              ];
+              await bot.sendMessage(doss.parentTgId, customReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
+                return bot.sendMessage(doss.parentTgId, customReport, { reply_markup: { inline_keyboard: kb } });
+              });
+              if (adminId) {
+                await bot.sendMessage(adminId, `👨‍👩‍👧 *Отчёт успешно отправлен в Telegram родителю ученика ${pls.students.name}!* \n\n${customReport}`, { parse_mode: 'Markdown' }).catch(() => {});
+              }
+            } else if (adminId) {
+              await bot.sendMessage(adminId, `⚠️ Не удалось отправить отчёт: родитель ученика *${pls.students.name}* ещё не нажал Start в боте!`, { parse_mode: 'Markdown' }).catch(() => {});
+            }
+          } else {
+            const pRes = await sendParentLessonReportBot(pls.students, { ...pls, homework: cleanedHw });
+            if (pRes.sent && adminId) {
+              await bot.sendMessage(adminId, `👨‍👩‍👧 *С веб-сайта:* ИИ-отчёт об уроке успешно отправлен в Telegram родителю ученика *${pls.students.name}*!`, { parse_mode: 'Markdown' }).catch(() => {});
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Отчёты преподавателю (Игорю)
+    const { data: queuedTeacherLessons } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ]%');
+    if (queuedTeacherLessons && queuedTeacherLessons.length > 0) {
+      for (const tls of queuedTeacherLessons) {
+        let rawHw = tls.homework || '';
+        let customReport = null;
+        const repMatch = rawHw.match(/\[ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ\]:([\s\S]*?)\[\/ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ\]/);
+        if (repMatch) {
+          customReport = repMatch[1].trim();
+          rawHw = rawHw.replace(repMatch[0], '').trim();
+        } else {
+          rawHw = rawHw.replace('[ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ]', '').trim();
+        }
+        await db.from('lessons').update({ homework: rawHw }).eq('id', tls.id);
+        if (adminId) {
+          const msg = customReport || `📊 *Отчёт по ученику ${tls.students?.name || ''}:*\n${rawHw}`;
+          await bot.sendMessage(adminId, msg, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(adminId, msg));
+        }
+      }
+    }
+
+    // 3. Отправка ДЗ ученику
+    const { data: queuedHwLessons } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[ОТПРАВИТЬ_В_ТГ]%');
+    if (queuedHwLessons && queuedHwLessons.length > 0) {
+      for (const qls of queuedHwLessons) {
+        const cleanedHw = (qls.homework || '').replace('[ОТПРАВИТЬ_В_ТГ]', '').trim();
+        await db.from('lessons').update({ homework: cleanedHw }).eq('id', qls.id);
+        if (qls.students) {
+          const sendRes = await sendHomeworkToStudentBot(qls.students, { ...qls, homework: cleanedHw }, false);
+          if (sendRes.sent && adminId) {
+            await bot.sendMessage(adminId, `📨 *С веб-сайта:* ДЗ успешно отправлено в Telegram ученику *${qls.students.name}*!`, { parse_mode: 'Markdown' }).catch(() => {});
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('processLessonQueues error:', e.message);
+  } finally {
+    isProcessingLessonQueues = false;
+  }
+}
+
+// Запуск быстрой обработки очереди сообщений для родителей и учеников каждые 5 секунд
+setInterval(processLessonQueues, 5000);
+
 let globalDeepWorkUntil = null;
 let deepWorkTimeout = null;
 
@@ -3763,32 +3855,7 @@ cron.schedule('* * * * *', async () => {
         }
       }
     }
-    const { data: queuedParentLessons } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]%');
-    if (queuedParentLessons && queuedParentLessons.length > 0) {
-      for (const pls of queuedParentLessons) {
-        const cleanedHw = (pls.homework || '').replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
-        await db.from('lessons').update({ homework: cleanedHw }).eq('id', pls.id);
-        if (pls.students) {
-          const pRes = await sendParentLessonReportBot(pls.students, { ...pls, homework: cleanedHw });
-          if (pRes.sent && CHAT_ID) {
-            bot.sendMessage(CHAT_ID, `👨‍👩‍👧 *С веб-сайта:* ИИ-отчёт об уроке успешно отправлен в Telegram родителю ученика *${pls.students.name}*!`, { parse_mode: 'Markdown' }).catch(() => {});
-          }
-        }
-      }
-    }
-    const { data: queuedHwLessons } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[ОТПРАВИТЬ_В_ТГ]%');
-    if (queuedHwLessons && queuedHwLessons.length > 0) {
-      for (const qls of queuedHwLessons) {
-        const cleanedHw = (qls.homework || '').replace('[ОТПРАВИТЬ_В_ТГ]', '').trim();
-        await db.from('lessons').update({ homework: cleanedHw }).eq('id', qls.id);
-        if (qls.students) {
-          const sendRes = await sendHomeworkToStudentBot(qls.students, { ...qls, homework: cleanedHw }, false);
-          if (sendRes.sent && CHAT_ID) {
-            bot.sendMessage(CHAT_ID, `📨 *С веб-сайта:* ДЗ успешно отправлено в Telegram ученику *${qls.students.name}*!`, { parse_mode: 'Markdown' }).catch(() => {});
-          }
-        }
-      }
-    }
+    await processLessonQueues();
     const future3hMax = new Date(now.getTime() + 185 * 60000);
     const future3hMin = new Date(now.getTime() + 175 * 60000);
     const { data: lessons3h } = await db.from('lessons').select('*, students(*)').eq('status', 'Запланирован').gte('date', future3hMin.toISOString()).lte('date', future3hMax.toISOString());

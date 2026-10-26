@@ -204,6 +204,26 @@ const TutoringPage = {
           </div>
         </div>
 
+        <!-- Report Preview & Action Modal -->
+        <div id="report-modal" class="modal-overlay hidden">
+          <div class="modal" style="max-width: 640px; width: 95%;">
+            <div class="modal-header">
+              <h2 class="modal-title" id="report-modal-title"><i data-lucide="bar-chart-2"></i> Отчёт об успеваемости</h2>
+              <button class="modal-close" id="report-modal-close"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+              <div id="report-modal-status" style="margin-bottom:12px; font-size:13px; padding:10px 12px; border-radius:8px;"></div>
+              <label class="form-label">Текст отчёта (можно отредактировать перед отправкой):</label>
+              <textarea id="report-modal-text" class="form-input" style="height:280px; font-size:13px; line-height:1.5; font-family:inherit; resize:vertical;"></textarea>
+            </div>
+            <div class="modal-footer" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+              <button type="button" class="btn btn-secondary btn-sm" id="report-modal-copy"><i data-lucide="copy" style="width:14px;height:14px;"></i> Скопировать</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="report-modal-send-me"><i data-lucide="send" style="width:14px;height:14px;"></i> Отправить мне в ТГ</button>
+              <button type="button" class="btn btn-primary btn-sm" id="report-modal-send-parent" style="background:#8b5cf6; border-color:#8b5cf6;"><i data-lucide="send" style="width:14px;height:14px;"></i> Отправить родителю в ТГ</button>
+            </div>
+          </div>
+        </div>
+
       </div>
     `;
   },
@@ -217,6 +237,15 @@ const TutoringPage = {
     document.getElementById('add-student-btn').addEventListener('click', () => this.openStudentModal());
     document.getElementById('add-lesson-btn').addEventListener('click', () => this.openLessonModal());
     document.getElementById('auto-schedule-btn')?.addEventListener('click', () => this.autoScheduleWeek());
+    if (!this._focusBound) {
+      this._focusBound = true;
+      window.addEventListener('focus', () => {
+        const page = document.getElementById('tutoring-page');
+        if (page && !page.classList.contains('hidden')) {
+          this.load();
+        }
+      });
+    }
   },
 
   async load() {
@@ -982,26 +1011,120 @@ const TutoringPage = {
   },
 
   async generateMonthlyReport(studentId) {
+    UI.toast('Сверяю данные и формирую ИИ-отчёт...', 'info');
+    await this.load();
     const st = this.students.find(s => s.id === studentId);
     if (!st) return;
     const dossier = this.parseStudentDossier(st);
     const stLessons = this.lessons.filter(l => l.student_id === studentId && l.status === 'Проведен');
-    UI.toast('Генерирую ИИ-отчёт о прогрессе...', 'info');
     try {
       const report = await Gemini.generateTutoringAI('monthly_report', { name: st.name, grade: st.grade, ...dossier }, {}, stLessons[0], stLessons);
       try { await navigator.clipboard.writeText(report); } catch (e) {}
-      if (dossier.parentTgId || dossier.parentTgUser) {
-        if (confirm(`📊 ОТЧЁТ О ПРОГРЕССЕ (${st.name}) скопирован в буфер обмена!\n\nОтправить этот отчёт родителю в Telegram прямо сейчас?\n\n---\n${report}`)) {
-          await this.sendReportToParentTelegram(studentId, stLessons[0]?.id, report);
-        }
+
+      const modal = document.getElementById('report-modal');
+      const title = document.getElementById('report-modal-title');
+      const statusDiv = document.getElementById('report-modal-status');
+      const textarea = document.getElementById('report-modal-text');
+      const copyBtn = document.getElementById('report-modal-copy');
+      const sendMeBtn = document.getElementById('report-modal-send-me');
+      const sendParentBtn = document.getElementById('report-modal-send-parent');
+      const closeBtn = document.getElementById('report-modal-close');
+
+      title.innerHTML = `<i data-lucide="bar-chart-2"></i> Отчёт об успеваемости: ${this.escapeHtml(st.name)}`;
+      textarea.value = report;
+
+      if (dossier.parentTgId) {
+        statusDiv.style.background = 'rgba(34, 197, 94, 0.12)';
+        statusDiv.style.border = '1px solid rgba(34, 197, 94, 0.35)';
+        statusDiv.style.color = 'var(--text-primary)';
+        statusDiv.innerHTML = `🟢 <b>Родитель подключён к ТГ-боту</b> (${dossier.parentTgUser || 'ID: ' + dossier.parentTgId})! Текст скопирован в буфер обмена. Вы можете отправить его родителю в один клик:`;
+        sendParentBtn.disabled = false;
+        sendParentBtn.style.opacity = '1';
+        sendParentBtn.innerHTML = `<i data-lucide="send" style="width:14px;height:14px;"></i> Отправить родителю в ТГ`;
+        sendParentBtn.onclick = async () => {
+          await this.sendCustomReportToParentTelegram(studentId, textarea.value.trim());
+          modal.classList.add('hidden');
+        };
       } else {
-        if (confirm(`📊 ОТЧЁТ О ПРОГРЕССЕ (${st.name}) — скопирован в буфер обмена!\n\nРодитель ещё не привязан к ТГ-боту. Скопировать ссылку-приглашение для родителя?\n\n---\n${report}`)) {
+        statusDiv.style.background = 'rgba(234, 179, 8, 0.12)';
+        statusDiv.style.border = '1px solid rgba(234, 179, 8, 0.35)';
+        statusDiv.style.color = 'var(--text-primary)';
+        statusDiv.innerHTML = `⚠️ <b>Родитель ещё не подключён к боту.</b> Текст отчёта уже в буфере обмена (Ctrl+V). Перешлите родителю ссылку-приглашение:`;
+        sendParentBtn.disabled = false;
+        sendParentBtn.style.opacity = '1';
+        sendParentBtn.innerHTML = `🔗 Скопировать ссылку родителю`;
+        sendParentBtn.onclick = async () => {
           await this.copyParentBotInvite(studentId);
-        }
+        };
       }
+
+      sendMeBtn.onclick = async () => {
+        await this.sendCustomReportToTeacherTelegram(studentId, textarea.value.trim());
+        modal.classList.add('hidden');
+      };
+
+      copyBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(textarea.value.trim());
+          UI.toast('Текст отчёта скопирован в буфер!', 'success');
+        } catch (e) {
+          prompt('Скопируйте текст:', textarea.value.trim());
+        }
+      };
+
+      closeBtn.onclick = () => modal.classList.add('hidden');
+      modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
+
+      modal.classList.remove('hidden');
+      if (window.lucide) lucide.createIcons();
     } catch (e) {
       UI.toast('Ошибка генерации отчёта: ' + e.message, 'error');
     }
+  },
+
+  async sendCustomReportToParentTelegram(studentId, reportText) {
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return;
+    const dossier = this.parseStudentDossier(st);
+    if (!dossier.parentTgId) {
+      UI.toast(`Родитель ученика ${st.name} ещё не подключился к боту!`, 'warning');
+      await this.copyParentBotInvite(studentId);
+      return;
+    }
+    let ls = this.lessons.find(l => l.student_id === studentId && l.status === 'Проведен');
+    if (!ls) ls = this.lessons.find(l => l.student_id === studentId);
+    if (!ls) {
+      ls = await DB.createLesson({
+        student_id: studentId,
+        date: new Date().toISOString(),
+        topic: 'Отчёт об успеваемости',
+        status: 'Проведен',
+        paid: true
+      });
+    }
+    const cleanHw = (ls.homework || '').replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').replace(/\[КАСТОМНЫЙ_ОТЧЕТ\]:[\s\S]*?\[\/КАСТОМНЫЙ_ОТЧЕТ\]/, '').trim();
+    const newHw = `${cleanHw}\n[КАСТОМНЫЙ_ОТЧЕТ]:\n${reportText}\n[/КАСТОМНЫЙ_ОТЧЕТ] [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]`.trim();
+    await DB.updateLesson(ls.id, { homework: newHw });
+    UI.toast(`🚀 Отчёт отправляется родителю (${st.name}) в Telegram! Копия также придёт вам в бот.`, 'success');
+  },
+
+  async sendCustomReportToTeacherTelegram(studentId, reportText) {
+    const st = this.students.find(s => s.id === studentId);
+    let ls = this.lessons.find(l => l.student_id === studentId && l.status === 'Проведен');
+    if (!ls) ls = this.lessons.find(l => l.student_id === studentId);
+    if (!ls) {
+      ls = await DB.createLesson({
+        student_id: studentId,
+        date: new Date().toISOString(),
+        topic: 'Отчёт об успеваемости',
+        status: 'Проведен',
+        paid: true
+      });
+    }
+    const cleanHw = (ls.homework || '').replace('[ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ]', '').replace(/\[ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ\]:[\s\S]*?\[\/ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ\]/, '').trim();
+    const newHw = `${cleanHw}\n[ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ]:\n${reportText}\n[/ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ]`.trim();
+    await DB.updateLesson(ls.id, { homework: newHw });
+    UI.toast(`📲 Отчёт отправляется в ваш Telegram бот...`, 'success');
   },
 
   async paySingleLesson(lessonId) {
