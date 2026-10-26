@@ -545,6 +545,8 @@ function serializeStudentDossierBot(doss) {
 }
 
 const activeStudentQuizzes = new Map();
+const activeSchoolHwRequests = new Map(); // chatId -> { studentId, studentName, timestamp }
+const pendingSchoolHwApprovals = new Map(); // reqId -> { chatId, student, studentName, photoUrl, photoFileId, text, caption, createdAt }
 
 async function incrementStudentStreakBot(st) {
   if (!st || !st.id) return 1;
@@ -915,7 +917,7 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
     ],
     [
       { text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` },
-      { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` }
+      { text: '🎒 Школьное ДЗ', callback_data: `student_school_hw:${st.id}` }
     ],
     [{ text: '👨‍👩‍👧 Режим родителя', callback_data: `switch_to_parent:${st.id}` }]
   ];
@@ -2462,7 +2464,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
         inline_keyboard: [
           [{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }],
           [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
-          [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` }],
+          [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎒 Школьное ДЗ', callback_data: `student_school_hw:${st.id}` }],
           [{ text: '👨‍👩‍👧 Режим родителя', callback_data: `switch_to_parent:${st.id}` }]
         ]
       }
@@ -3329,6 +3331,79 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
+  } else if (data && data.startsWith('student_school_hw:')) {
+    const studentId = data.split(':')[1];
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const found = await findStudentByTgChatId(chatId);
+        st = found?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+      const studentName = query.from?.first_name || st.name;
+      activeSchoolHwRequests.set(String(chatId), { studentId: st.id, studentName, timestamp: Date.now() });
+      await bot.answerCallbackQuery(query.id, { text: '🎒 Жду фото или текст задания!' });
+      const promptMsg = `🎒 *Помощь со школьным ДЗ (${studentName}):*\n\nСфотографируй страницу учебника или тетради (или напиши текст упражнения) прямо сюда в чат 📸✏️.\n\nЯ отправлю его Игорю, и как только он подтвердит — подробно разберу для тебя правила и помогу всё понять!`;
+      await bot.sendMessage(chatId, promptMsg, { parse_mode: 'Markdown' });
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('approve_shw:') || data.startsWith('reject_shw:') || data.startsWith('defer_shw:'))) {
+    const parts = data.split(':');
+    const action = parts[0];
+    const reqId = parts[1];
+    const req = pendingSchoolHwApprovals.get(reqId);
+    if (!req) return bot.answerCallbackQuery(query.id, { text: 'Запрос устарел или уже обработан', show_alert: true });
+    pendingSchoolHwApprovals.delete(reqId);
+
+    if (action === 'reject_shw') {
+      await bot.answerCallbackQuery(query.id, { text: '❌ Отклонено' });
+      await bot.editMessageReplyMarkup({ inline_keyboard: [[{ text: '❌ Отклонено (решать самостоятельно)', callback_data: 'noop' }]] }, { chat_id: chatId, message_id: query.message.message_id }).catch(() => {});
+      await bot.sendMessage(req.chatId, `💡 *Привет, ${req.studentName}!* Игорь посмотрел твоё школьное задание и предлагает сначала попробовать решить его самостоятельно по правилам в тетрадке. Попробуй сам(а), а если останутся вопросы — запиши их, и мы разберём их на уроке! 💪`, { parse_mode: 'Markdown' }).catch(() => {});
+      return;
+    }
+
+    if (action === 'defer_shw') {
+      await bot.answerCallbackQuery(query.id, { text: '👨‍🏫 Разберём на уроке' });
+      await bot.editMessageReplyMarkup({ inline_keyboard: [[{ text: '👨‍🏫 Перенесено на урок', callback_data: 'noop' }]] }, { chat_id: chatId, message_id: query.message.message_id }).catch(() => {});
+      await bot.sendMessage(req.chatId, `📌 *Отличный вопрос, ${req.studentName}!* Игорь посмотрел задание — тема важная, поэтому мы подробно разберём её прямо на нашем уроке! 👍`, { parse_mode: 'Markdown' }).catch(() => {});
+      return;
+    }
+
+    if (action === 'approve_shw') {
+      await bot.answerCallbackQuery(query.id, { text: '✅ Одобрено! Генерирую разбор правил...' });
+      await bot.editMessageReplyMarkup({ inline_keyboard: [[{ text: '✅ Одобрено (ИИ объяснил правила)', callback_data: 'noop' }]] }, { chat_id: chatId, message_id: query.message.message_id }).catch(() => {});
+
+      const explainPrompt = `Ты — добрый, понятный и первоклассный преподаватель английского языка для ученика ${req.studentName} (${req.student.grade || '6 класс'}).
+Ученик попросил помочь со ШКОЛЬНЫМ домашним заданием.
+Преподаватель Игорь посмотрел задание и разрешил объяснить.
+ЗАДАНИЕ УЧЕНИКА:
+"${req.text || req.caption || 'Школьное упражнение'}"
+
+ТВОЯ ЗАДАЧА:
+Объясни ученику всё максимально наглядно, просто и поддерживающе:
+1. 💡 В чём суть задания и перевод (если есть незнакомые слова).
+2. 📖 Правило простыми словами (на русском): формулы, подсказки-маркеры (почему именно это время/форма/артикль, а не другое).
+3. ✏️ Пошаговый разбор и готовое решение каждого пункта с кратким объяснением в скобках.
+4. 🎯 Лайфхак или совет, как легко запомнить это правило.
+
+Пиши дружелюбно (обращайся на "ты"), без сложных академических терминов, используй эмодзи для наглядности.
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)! Пиши чистый текст без звездочек!`;
+
+      const planRes = await executeFunctionCall('generate_lesson_plan', { prompt: explainPrompt });
+      const explanation = planRes.generated_plan || 'Не удалось составить разбор.';
+
+      const studentMsg = `🎓 *Игорь одобрил разбор твоего школьного задания!* 🌟\n\n${explanation}\n\n_Если что-то осталось непонятным — напиши мне, разберём подробнее!_ 💪`;
+      await sendCleanMessage(req.chatId, studentMsg);
+
+      const adminCopy = `👀 *[Копия ответа ученику ${req.studentName} по школьному ДЗ]:*\n\n${explanation}`;
+      await sendCleanMessage(ADMIN_CHAT_ID, adminCopy);
+      return;
+    }
   } else if (data === 'student_my_hw') {
     try {
       const pFound = await findParentByTgChatId(chatId);
@@ -4144,6 +4219,61 @@ bot.on('message', async (msg) => {
     let studentText = msg.text || '';
     const isPhotoSubmission = !!(msg.photo && msg.photo.length > 0);
     const isVoiceSubmission = !!(msg.voice || msg.video_note);
+    
+    // Check if this is a School Homework request
+    const isSchoolHw = activeSchoolHwRequests.has(String(chatId)) ||
+      (msg.caption && /школ|school|в школе|школьн/i.test(msg.caption)) ||
+      (studentText && /школ|school|в школе|школьн/i.test(studentText));
+
+    if (isSchoolHw) {
+      activeSchoolHwRequests.delete(String(chatId));
+      const reqId = 'shw_' + Date.now();
+      const studentName = msg.from?.first_name || st.name;
+      const photo = (msg.photo && msg.photo.length > 0) ? msg.photo[msg.photo.length - 1] : null;
+      let photoUrl = null;
+      if (photo) {
+        photoUrl = await bot.getFileLink(photo.file_id).catch(() => null);
+      }
+
+      pendingSchoolHwApprovals.set(reqId, {
+        chatId,
+        student: st,
+        studentName,
+        photoUrl,
+        photoFileId: photo?.file_id,
+        text: studentText,
+        caption: msg.caption || '',
+        createdAt: Date.now()
+      });
+
+      // Feedback to student
+      await bot.sendMessage(chatId, `📬 *Школьное задание принято, ${studentName}!* 🎒\nЯ отправил его Игорю на согласование ⏳.\nКак только он посмотрит и подтвердит — я сразу пришлю тебе понятное объяснение правил и пошаговый разбор!`, { parse_mode: 'Markdown' });
+
+      // Notify Igor (Admin)
+      const kb = [
+        [
+          { text: '✅ Одобрить и объяснить (ИИ)', callback_data: `approve_shw:${reqId}` },
+          { text: '❌ Сделать самому', callback_data: `reject_shw:${reqId}` }
+        ],
+        [
+          { text: '👨‍🏫 Разберём на уроке', callback_data: `defer_shw:${reqId}` }
+        ]
+      ];
+
+      if (photo) {
+        await bot.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
+          caption: `🎒 *Запрос на разбор школьного ДЗ!*\n👤 *Ученик:* ${studentName} (${st.name})${msg.caption ? `\n💬 Комментарий: «${msg.caption}»` : ''}\n\nРазрешить боту разобрать и объяснить правило ученику?`,
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: kb }
+        }).catch(() => {});
+      } else {
+        await bot.sendMessage(ADMIN_CHAT_ID, `🎒 *Запрос на разбор школьного ДЗ!*\n👤 *Ученик:* ${studentName} (${st.name})\n\n📝 *Текст задания:*\n«${studentText}»\n\nРазрешить боту разобрать и объяснить правило ученику?`, {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: kb }
+        }).catch(() => {});
+      }
+      return;
+    }
     
     // Vision AI for student notebook photo submission
     if (isPhotoSubmission) {
