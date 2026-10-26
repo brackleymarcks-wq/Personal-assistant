@@ -237,6 +237,78 @@ const TutoringPage = {
           </div>
         </div>
 
+
+        <!-- Homework & Materials Dispatcher Modal -->
+        <div id="hw-dispatcher-modal" class="modal-overlay hidden">
+          <div class="modal" style="max-width: 680px; width: 95%;">
+            <div class="modal-header">
+              <h2 class="modal-title" id="hw-disp-title"><i data-lucide="send"></i> Отправка ДЗ и материалов в Telegram</h2>
+              <button class="modal-close" id="hw-disp-close"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+              <div id="hw-disp-status" style="margin-bottom:12px; font-size:12px; padding:8px 12px; border-radius:8px;"></div>
+              
+              <div class="form-group">
+                <label class="form-label">Тема урока</label>
+                <input id="hw-disp-topic" type="text" class="form-input" placeholder="Например: Past Simple" />
+              </div>
+
+              <div class="form-group">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <label class="form-label" style="margin-bottom:0;">📌 Домашнее задание для ученика (текст)</label>
+                  <button type="button" id="hw-disp-btn-ai-hw" class="btn btn-ghost" style="font-size:11px;color:var(--accent);display:flex;align-items:center;gap:4px;padding:2px 6px;"><i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ</button>
+                </div>
+                <textarea id="hw-disp-text" class="form-input" rows="3" placeholder="Что задано ученику? (Например: выучить слова из карточек, сделать упр. 3 на стр. 14)"></textarea>
+              </div>
+
+              <div class="form-group">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <label class="form-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;">
+                    <i data-lucide="image" style="width:14px;height:14px;color:var(--accent);"></i>
+                    <span>Прикрепленные карточки / картинки ДЗ (PNG / JPG)</span>
+                  </label>
+                  <div style="display:flex;gap:6px;">
+                    <button type="button" id="hw-disp-btn-gen-cards" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0d9488;border-color:rgba(13,148,136,0.35);">🎨 Создать карточки (PNG)</button>
+                    <button type="button" id="hw-disp-btn-add-file" class="btn btn-secondary btn-xs" style="font-size:11px;">📎 Загрузить PNG</button>
+                  </div>
+                </div>
+                <input type="file" id="hw-disp-file-input" accept="image/*" multiple style="display:none;" />
+                <div id="hw-disp-dropzone" style="border:2px dashed var(--border-light);border-radius:10px;padding:12px;text-align:center;cursor:pointer;background:var(--bg-primary);" title="Перетащите сюда PNG или нажмите Ctrl+V для вставки">
+                  <div style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:6px;">
+                    <i data-lucide="upload-cloud" style="width:16px;height:16px;color:var(--accent);"></i>
+                    <span>Перетащите PNG сюда, нажмите для выбора или вставьте скриншот из буфера (<b>Ctrl+V</b>)</span>
+                  </div>
+                  <div id="hw-disp-cards-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <label class="form-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;">
+                    <i data-lucide="file-text" style="width:14px;height:14px;color:#0d9488;"></i>
+                    <span>Сценарий и материалы урока (Конспект / Vocabulary / Правила)</span>
+                  </label>
+                  <button type="button" id="hw-disp-btn-import-pplx" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0d9488;border-color:rgba(13,148,136,0.35);">📥 Из Perplexity</button>
+                </div>
+                <textarea id="hw-disp-scenario" class="form-input" rows="3" style="font-size:12px;" placeholder="Вставьте сюда конспект или материалы урока из Perplexity (слова, правила, глаголы, примеры). Бот запомнит этот сценарий и по запросу ученика (кнопки «5 слов», «5 глаголов», «Тестик») будет подкидывать именно эти материалы!"></textarea>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg-primary);border-radius:10px;border:1px solid var(--border-light);">
+                <input id="hw-disp-send-parent" type="checkbox" style="cursor:pointer;" />
+                <label for="hw-disp-send-parent" style="font-size:12px;color:var(--text-primary);cursor:pointer;margin:0;">
+                  👨‍👩‍👧 Также отправить это домашнее задание и карточки родителю в Telegram
+                </label>
+              </div>
+            </div>
+            <div class="modal-footer" style="display:flex; gap:8px; justify-content:flex-end;">
+              <button type="button" class="btn btn-secondary" id="hw-disp-btn-cancel">Отмена</button>
+              <button type="button" class="btn btn-primary" id="hw-disp-btn-send" style="background:#3b82f6; border-color:#3b82f6; display:flex; align-items:center; gap:6px;">
+                <i data-lucide="send" style="width:14px;height:14px;"></i> Отправить ученику в Telegram
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Report Preview & Action Modal -->
         <div id="report-modal" class="modal-overlay hidden">
           <div class="modal" style="max-width: 640px; width: 95%;">
@@ -1405,36 +1477,290 @@ const TutoringPage = {
     const st = this.students.find(s => s.id === studentId);
     if (!st) return UI.toast('Выберите ученика', 'warning');
     const dossier = this.parseStudentDossier(st);
+
+    if (!dossier.tgId && !dossier.tgUser) {
+      UI.toast(`Ученик ${st.name} ещё не подключён к ТГ-боту — копирую ссылку-приглашение!`, 'info');
+      await this.copyStudentBotInvite(studentId);
+      return;
+    }
+
     let ls = lessonId ? this.lessons.find(l => l.id === lessonId) : null;
-    if (!ls || !ls.homework) {
-      ls = this.getPrevConductedLesson(studentId);
-    }
-    const modalOpen = !document.getElementById('lesson-modal')?.classList.contains('hidden');
-    const currentHwText = modalOpen ? document.getElementById('ls-homework')?.value?.trim() : '';
-    const currentTopicText = modalOpen ? document.getElementById('ls-topic')?.value?.trim() : '';
+    if (!ls) ls = this.getPrevConductedLesson(studentId);
+    if (!ls) ls = this.lessons.find(l => l.student_id === studentId);
 
+    // Open Homework Dispatcher Modal
+    this.openHwDispatcherModal(st, ls);
+  },
+
+  dispatcherCards: [],
+
+  openHwDispatcherModal(st, ls) {
+    const modal = document.getElementById('hw-dispatcher-modal');
+    if (!modal) return;
+    const dossier = this.parseStudentDossier(st);
+
+    document.getElementById('hw-disp-title').innerHTML = `<i data-lucide="send"></i> Отправка ДЗ и материалов: ${this.escapeHtml(st.name)}`;
+    
+    const statusBox = document.getElementById('hw-disp-status');
     if (dossier.tgId) {
-      if (modalOpen && currentHwText && ls) {
-        await DB.updateLesson(ls.id, { topic: currentTopicText || ls.topic, homework: `[ОТПРАВИТЬ_В_ТГ] ${currentHwText}` });
-      } else if (ls && ls.homework) {
-        const clean = ls.homework.replace('[ОТПРАВИТЬ_В_ТГ]', '').trim();
-        await DB.updateLesson(ls.id, { homework: `[ОТПРАВИТЬ_В_ТГ] ${clean}` });
-      } else {
-        return UI.toast('Сначала укажите домашнее задание в уроке!', 'warning');
-      }
-      UI.toast(`📨 Команда передана боту! В течение минуты бот отправит ДЗ в личку ${st.name} в Telegram.`, 'success');
-      return;
+      statusBox.style.background = 'rgba(34, 197, 94, 0.12)';
+      statusBox.style.border = '1px solid rgba(34, 197, 94, 0.35)';
+      statusBox.style.color = 'var(--text-primary)';
+      statusBox.innerHTML = `🟢 <b>Ученик подключён к ТГ-боту</b> (${dossier.tgUser || 'ID: ' + dossier.tgId}). Сообщение и карточки придут в личку за 5 секунд!`;
+    } else {
+      statusBox.style.background = 'rgba(234, 179, 8, 0.12)';
+      statusBox.style.border = '1px solid rgba(234, 179, 8, 0.35)';
+      statusBox.style.color = 'var(--text-primary)';
+      statusBox.innerHTML = `⚠️ <b>Ученик ещё не нажал Start в боте.</b> Откроется диалог с учеником в Telegram для прямой отправки.`;
     }
 
-    const hwToUse = currentHwText || ((ls?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim());
-    if (dossier.tgUser) {
-      const cleanUser = dossier.tgUser.replace('@', '').trim();
-      const textMsg = `Привет, ${st.name}! 👋 Напоминаю про домашнее задание по английскому:\n📌 ${hwToUse || 'Повторить слова и тему прошлого урока'}`;
-      window.open(`https://t.me/${cleanUser}?text=${encodeURIComponent(textMsg)}`, '_blank');
+    // Extract raw homework, cards, and scenario
+    const rawHw = ls?.homework || '';
+    const cardsMatch = rawHw.match(/\[КАРТОЧКИ_ДЗ\]:([\s\S]*?)\[\/КАРТОЧКИ_ДЗ\]/);
+    this.dispatcherCards = cardsMatch ? cardsMatch[1].trim().split('||').map(s=>s.trim()).filter(Boolean) : [];
+    
+    const scenMatch = rawHw.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
+    const existingScenario = scenMatch ? scenMatch[1].trim() : '';
+
+    const cleanHwText = rawHw
+      .replace(/\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/, '')
+      .replace(/\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/, '')
+      .replace(/\[МАТЕРИАЛЫ\]:[\s\S]*/, '')
+      .replace('[ДЗ_ПРОВЕРЕНО]', '')
+      .replace('[ДЗ_СДАНО]', '')
+      .replace('[ОТПРАВИТЬ_В_ТГ]', '')
+      .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
+      .trim();
+
+    document.getElementById('hw-disp-topic').value = ls?.topic || '';
+    document.getElementById('hw-disp-text').value = cleanHwText || '';
+    document.getElementById('hw-disp-scenario').value = existingScenario || '';
+    document.getElementById('hw-disp-send-parent').checked = !!dossier.parentTgId;
+
+    this.renderDispatcherCardsPreview();
+    this.bindDispatcherModalEvents(st, ls);
+
+    modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  },
+
+  renderDispatcherCardsPreview() {
+    const container = document.getElementById('hw-disp-cards-preview');
+    if (!container) return;
+    if (!this.dispatcherCards || this.dispatcherCards.length === 0) {
+      container.innerHTML = '<span style="font-size:11px;color:var(--text-muted);">Нет прикреплённых карточек</span>';
       return;
     }
-    UI.toast(`Ученик ${st.name} ещё не подключён к ТГ-боту — копирую ссылку-приглашение!`, 'info');
-    await this.copyStudentBotInvite(studentId);
+    container.innerHTML = this.dispatcherCards.map((card, idx) => `
+      <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border-light);background:#000;">
+        <img src="${card}" style="width:100%;height:100%;object-fit:cover;cursor:pointer;" onclick="window.open('${card}')" />
+        <button type="button" onclick="event.stopPropagation(); TutoringPage.removeDispatcherCard(${idx})" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;cursor:pointer;font-size:10px;display:flex;align-items:center;justify-content:center;">✕</button>
+      </div>
+    `).join('');
+  },
+
+  removeDispatcherCard(idx) {
+    this.dispatcherCards.splice(idx, 1);
+    this.renderDispatcherCardsPreview();
+  },
+
+  addDispatcherCard(dataUrl) {
+    if (!this.dispatcherCards) this.dispatcherCards = [];
+    if (this.dispatcherCards.length >= 10) return UI.toast('Максимум 10 карточек на урок', 'warning');
+    this.dispatcherCards.push(dataUrl);
+    this.renderDispatcherCardsPreview();
+    UI.toast('Карточка прикреплена!', 'success');
+  },
+
+  bindDispatcherModalEvents(st, ls) {
+    const modal = document.getElementById('hw-dispatcher-modal');
+    const closeBtn = document.getElementById('hw-disp-close');
+    const cancelBtn = document.getElementById('hw-disp-btn-cancel');
+    const sendBtn = document.getElementById('hw-disp-btn-send');
+    const fileInput = document.getElementById('hw-disp-file-input');
+    const addFileBtn = document.getElementById('hw-disp-btn-add-file');
+    const dropzone = document.getElementById('hw-disp-dropzone');
+    const genCardsBtn = document.getElementById('hw-disp-btn-gen-cards');
+    const importPplxBtn = document.getElementById('hw-disp-btn-import-pplx');
+    const aiHwBtn = document.getElementById('hw-disp-btn-ai-hw');
+
+    closeBtn.onclick = () => modal.classList.add('hidden');
+    cancelBtn.onclick = () => modal.classList.add('hidden');
+
+    if (addFileBtn && fileInput) {
+      addFileBtn.onclick = () => fileInput.click();
+      fileInput.onchange = (e) => {
+        const files = Array.from(e.target.files || []);
+        files.forEach(f => {
+          if (!f.type.startsWith('image/')) return;
+          const reader = new FileReader();
+          reader.onload = ev => this.addDispatcherCard(ev.target.result);
+          reader.readAsDataURL(f);
+        });
+        fileInput.value = '';
+      };
+    }
+
+    if (dropzone) {
+      dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.borderColor = 'var(--accent)'; };
+      dropzone.ondragleave = () => { dropzone.style.borderColor = 'var(--border-light)'; };
+      dropzone.ondrop = (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--border-light)';
+        const files = Array.from(e.dataTransfer.files || []);
+        files.forEach(f => {
+          if (!f.type.startsWith('image/')) return;
+          const reader = new FileReader();
+          reader.onload = ev => this.addDispatcherCard(ev.target.result);
+          reader.readAsDataURL(f);
+        });
+      };
+      dropzone.onclick = (e) => {
+        if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'IMG') fileInput.click();
+      };
+    }
+
+    if (!modal._pasteBound) {
+      modal._pasteBound = true;
+      modal.addEventListener('paste', (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (const item of items) {
+          if (item.type.indexOf('image') !== -1) {
+            const blob = item.getAsFile();
+            const reader = new FileReader();
+            reader.onload = ev => this.addDispatcherCard(ev.target.result);
+            reader.readAsDataURL(blob);
+          }
+        }
+      });
+    }
+
+    if (genCardsBtn) {
+      genCardsBtn.onclick = async () => {
+        const dossier = this.parseStudentDossier(st);
+        const defaultWords = dossier.vocab || 'adventure, challenge, discover, explore, achieve';
+        const wordsInput = prompt('Введите слова через запятую для создания PNG-карточек:', defaultWords);
+        if (!wordsInput || !wordsInput.trim()) return;
+        const words = wordsInput.split(/[,;\r\n]+/).map(w => w.trim()).filter(Boolean).slice(0, 5);
+        for (const w of words) {
+          const cardPng = await this.renderWordCardCanvas(w);
+          this.addDispatcherCard(cardPng);
+        }
+      };
+    }
+
+    if (importPplxBtn) {
+      importPplxBtn.onclick = async () => {
+        const rawText = prompt(`📥 Вставьте конспект / материалы урока из Perplexity для ${st.name}:`);
+        if (!rawText || !rawText.trim()) return;
+        try {
+          const parsed = await Gemini.parsePerplexityLesson(rawText, st.name);
+          if (parsed.topic && !document.getElementById('hw-disp-topic').value) {
+            document.getElementById('hw-disp-topic').value = parsed.topic;
+          }
+          if (parsed.homework && !document.getElementById('hw-disp-text').value) {
+            document.getElementById('hw-disp-text').value = parsed.homework;
+          }
+          document.getElementById('hw-disp-scenario').value = rawText.trim();
+          UI.toast('Конспект из Perplexity вставлен в материалы урока!', 'success');
+        } catch(e) {
+          document.getElementById('hw-disp-scenario').value = rawText.trim();
+          UI.toast('Текст конспекта вставлен в сценарий!', 'info');
+        }
+      };
+    }
+
+    if (aiHwBtn) {
+      aiHwBtn.onclick = async () => {
+        const topic = document.getElementById('hw-disp-topic').value.trim();
+        if (!topic) return UI.toast('Укажите тему урока', 'warning');
+        aiHwBtn.disabled = true;
+        aiHwBtn.textContent = '⏳ Генерирую...';
+        try {
+          const dossier = this.parseStudentDossier(st);
+          const hw = await Gemini.generateTutoringAI('homework', { name: st.name, grade: st.grade, ...dossier }, { topic }, ls);
+          document.getElementById('hw-disp-text').value = hw;
+          UI.toast('ДЗ сгенерировано!', 'success');
+        } catch (e) {
+          UI.toast('Ошибка ИИ: ' + e.message, 'error');
+        } finally {
+          aiHwBtn.disabled = false;
+          aiHwBtn.innerHTML = '<i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ';
+          if (window.lucide) lucide.createIcons();
+        }
+      };
+    }
+
+    sendBtn.onclick = async () => {
+      const topic = document.getElementById('hw-disp-topic').value.trim();
+      const hwText = document.getElementById('hw-disp-text').value.trim();
+      const scenarioText = document.getElementById('hw-disp-scenario').value.trim();
+      const sendToParent = document.getElementById('hw-disp-send-parent').checked;
+
+      if (!hwText && this.dispatcherCards.length === 0) {
+        return UI.toast('Напишите текст ДЗ или прикрепите карточки!', 'warning');
+      }
+
+      sendBtn.disabled = true;
+      sendBtn.textContent = '⏳ Отправляю...';
+
+      try {
+        let lessonTarget = ls;
+        if (!lessonTarget) {
+          lessonTarget = await DB.createLesson({
+            student_id: st.id,
+            date: new Date().toISOString(),
+            topic: topic || 'Английский язык',
+            homework: '',
+            status: 'Проведен',
+            paid: false
+          });
+          this.lessons.unshift(lessonTarget);
+        }
+
+        // Build composite homework string
+        let compositeHw = hwText;
+        if (this.dispatcherCards.length > 0) {
+          compositeHw += `\n[КАРТОЧКИ_ДЗ]:\n${this.dispatcherCards.join('||')}\n[/КАРТОЧКИ_ДЗ]`;
+        }
+        if (scenarioText) {
+          compositeHw += `\n[СЦЕНАРИЙ_УРОКА]:\n${scenarioText}\n[/СЦЕНАРИЙ_УРОКА]`;
+        }
+
+        compositeHw = `[ОТПРАВИТЬ_В_ТГ] ${compositeHw}`;
+        if (sendToParent) {
+          compositeHw += ' [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]';
+        }
+
+        await DB.updateLesson(lessonTarget.id, {
+          topic: topic || lessonTarget.topic,
+          homework: compositeHw
+        });
+
+        // Also update student vocabulary if new words found in scenario
+        if (scenarioText) {
+          try {
+            const dossier = this.parseStudentDossier(st);
+            const parsed = await Gemini.parsePerplexityLesson(scenarioText, st.name);
+            if (parsed.new_vocab) {
+              const updatedVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
+              const newSched = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, updatedVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser);
+              await DB.updateStudent(st.id, { schedule: newSched });
+            }
+          } catch(e) {}
+        }
+
+        modal.classList.add('hidden');
+        UI.toast(`🚀 Домашнее задание и материалы отправлены ${st.name} в Telegram!`, 'success');
+        await this.load();
+      } catch (err) {
+        UI.toast('Ошибка отправки: ' + err.message, 'error');
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i data-lucide="send" style="width:14px;height:14px;"></i> Отправить ученику в Telegram';
+        if (window.lucide) lucide.createIcons();
+      }
+    };
   },
 
   async copyParentBotInvite(studentId) {

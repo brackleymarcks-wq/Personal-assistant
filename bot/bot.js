@@ -618,12 +618,20 @@ async function sendParentLessonReportBot(st, lesson) {
 }
 
 
+
+function extractLessonScenario(homeworkText) {
+  if (!homeworkText) return '';
+  const match = homeworkText.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
+  return match ? match[1].trim() : '';
+}
+
 function extractAttachedCards(homeworkText) {
   if (!homeworkText) return { cleanHw: '', cards: [] };
-  const match = homeworkText.match(/\[КАРТОЧКИ_ДЗ\]:([\s\S]*?)\[\/КАРТОЧКИ_ДЗ\]/);
-  if (!match) return { cleanHw: homeworkText, cards: [] };
+  let cleanHw = homeworkText.replace(/\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/, '').trim();
+  const match = cleanHw.match(/\[КАРТОЧКИ_ДЗ\]:([\s\S]*?)\[\/КАРТОЧКИ_ДЗ\]/);
+  if (!match) return { cleanHw, cards: [] };
   const cards = match[1].trim().split('||').map(s => s.trim()).filter(Boolean);
-  const cleanHw = homeworkText.replace(match[0], '').trim();
+  cleanHw = cleanHw.replace(match[0], '').trim();
   return { cleanHw, cards };
 }
 
@@ -2648,8 +2656,9 @@ bot.on('callback_query', async (query) => {
       const doss = parseStudentDossierBot(st);
       const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
 
+      const scenario = extractLessonScenario(lastLs?.homework || '');
       const wordsPrompt = `Ты — весёлый репетитор английского для ${st.name} (${st.grade || ''}).
-Активный словарь ученика: "${doss.vocab || 'adventure, challenge, journey, explore, succeed'}".
+${scenario ? `СТРОГО ИСПОЛЬЗУЙ МАТЕРИАЛЫ И СЛОВАРЬ ИЗ СЦЕНАРИЯ УРОКА ПРЕПОДАВАТЕЛЯ:\n"${scenario}"\n` : `Активный словарь ученика: "${doss.vocab || 'adventure, challenge, journey, explore, succeed'}"\n`}
 Последняя тема урока: "${lastLs?.topic || 'General English'}".
 
 Выбери или составь ровно 5 полезных английских слов из этого урока/словаря.
@@ -2697,7 +2706,9 @@ bot.on('callback_query', async (query) => {
       const doss = parseStudentDossierBot(st);
       const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
 
+      const scenario = extractLessonScenario(lastLs?.homework || '');
       const verbsPrompt = `Ты — преподаватель английского для ${st.name} (${st.grade || ''}).
+${scenario ? `ИСПОЛЬЗУЙ ГЛАГОЛЫ И ПРАВИЛА ИЗ СЦЕНАРИЯ УРОКА ПРЕПОДАВАТЕЛЯ:\n"${scenario}"\n` : ''}
 Тема: "${lastLs?.topic || 'English Verbs'}". Ошибки: "${doss.errors || 'глагольные формы'}".
 Составь 5 ключевых неправильных/важных глаголов к текущему уровню:
 Для каждого глагола:
@@ -2743,7 +2754,9 @@ bot.on('callback_query', async (query) => {
       const doss = parseStudentDossierBot(st);
       const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
 
+      const scenario = extractLessonScenario(lastLs?.homework || '');
       const pollPrompt = `Ты — методист по английскому для ${st.name} (${st.grade || ''}).
+${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И ПРАВИЛАМ ИЗ ЭТОГО СЦЕНАРИЯ УРОКА:\n"${scenario}"\n` : ''}
 Тема урока: "${lastLs?.topic || 'English Grammar'}".
 Ошибки ученика: "${doss.errors || 'was/were, -s в Present Simple, неправильные глаголы'}".
 Слова: "${doss.vocab || 'daily routine, school, hobbies'}".
