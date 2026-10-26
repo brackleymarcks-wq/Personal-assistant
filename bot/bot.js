@@ -699,6 +699,58 @@ async function sendCleanMessage(chatId, text, options = {}) {
   }
 }
 
+async function sendTtsAudio(chatId, phrase, title = 'Произношение слов', caption = '🔊 Послушай произношение на английском') {
+  if (!phrase || !phrase.trim()) return;
+  try {
+    const ttsUrl = 'https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=' + encodeURIComponent(phrase.trim().slice(0, 300));
+    const res = await fetch(ttsUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (res.ok) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      await bot.sendAudio(chatId, buf, {
+        title: title,
+        performer: 'English Tutor',
+        caption: caption
+      }, { filename: 'pronunciation.mp3', contentType: 'audio/mpeg' }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('TTS sendAudio error:', err.message);
+  }
+}
+
+function getLessonFlashcards(scenarioText, hwText) {
+  const cards = [];
+  const text = (scenarioText || '') + '\n' + (hwText || '');
+  const lines = text.split('\n');
+  for (const l of lines) {
+    const m = l.match(/[•\d\-*]*\s*([A-Za-z\s-]+)\s*(?:[\[\/](.*?)[\]\/])?\s*[—–-]\s*([^(\n]+)(?:\((.*?)\))?/);
+    if (m && m[1] && m[3]) {
+      const en = m[1].trim();
+      const ipa = m[2] ? `[${m[2].trim()}]` : '';
+      const ru = m[3].trim();
+      const ex = m[4] ? m[4].trim() : '';
+      if (en.length >= 2 && ru.length >= 2 && !en.startsWith('http') && !en.startsWith('Unit') && !cards.find(c => c.en.toLowerCase() === en.toLowerCase())) {
+        cards.push({ en, ipa, ru, ex });
+      }
+    }
+  }
+
+  if (cards.length === 0) {
+    return [
+      { en: 'danger', ipa: '[ˈdeɪndʒə]', ru: 'опасность', ex: 'Many animals are in danger.' },
+      { en: 'dangerous', ipa: '[ˈdeɪndʒərəs]', ru: 'опасный', ex: 'A wild wolf can be dangerous.' },
+      { en: 'endangered', ipa: '[ɪnˈdeɪndʒəd]', ru: 'под угрозой исчезновения', ex: 'The bison is an endangered animal.' },
+      { en: 'wildlife', ipa: '[ˈwaɪldlaɪf]', ru: 'дикая природа', ex: 'We must protect wildlife.' },
+      { en: 'naturalist', ipa: '[ˈnætʃrəlɪst]', ru: 'натуралист', ex: 'A naturalist studies nature.' },
+      { en: 'suitcase', ipa: '[ˈsuːtkeɪs]', ru: 'чемодан', ex: 'She has just packed her suitcase.' },
+      { en: 'to rescue', ipa: '[ˈreskjuː]', ru: 'спасать', ex: 'He has rescued a kitten.' },
+      { en: 'species', ipa: '[ˈspiːʃiːz]', ru: 'вид / виды животных', ex: 'There are rare species in the forest.' },
+      { en: 'recently', ipa: '[ˈriːsntli]', ru: 'недавно', ex: 'I have seen a bison recently.' },
+      { en: 'beaver', ipa: '[ˈbiːvə]', ru: 'бобр', ex: 'The beaver builds a dam.' }
+    ];
+  }
+  return cards;
+}
+
 function extractLessonScenario(homeworkText) {
   if (!homeworkText) return '';
   const match = homeworkText.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
@@ -760,8 +812,17 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
   if (doss.vocab) msg += `🔤 *Полезные слова (Vocabulary):* ${doss.vocab}\n`;
   if (rawHw) msg += `\n📌 *Домашнее задание:*\n${rawHw}\n`;
   if (cards.length > 0) msg += `\n🖼 *Прикреплено карточек к уроку:* ${cards.length} шт. (отправлены выше)`;
-  msg += `\n🔥 *Твоя серия (Streak):* ${doss.streak || 0} ДЗ подряд без пропусков!\n`;
-  msg += `\n_Когда выполнишь — нажми кнопку ниже, пришли фото тетрадки или напиши ответ!_ 💪`;
+  // Calculate progress bar
+  const prog = getPracticeProgress(st.id, lesson?.id);
+  const totalWords = 20;
+  const learned = Math.min(prog.seenWords.length, totalWords);
+  const pct = Math.round((learned / totalWords) * 100);
+  const filled = Math.round(pct / 10);
+  const bar = '▓'.repeat(filled) + '░'.repeat(10 - filled);
+
+  msg += `\n📊 *Прогресс слов урока:* [${bar}] ${pct}% (${learned}/${totalWords} слов)\n`;
+  msg += `🔥 *Твоя серия (Streak):* ${doss.streak || 0} ДЗ подряд без пропусков!\n`;
+  msg += `\n_Когда выполнишь — нажми кнопку ниже, пришли голосовое сообщение или фото тетрадки!_ 💪`;
 
   const kb = [
     [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lesson.id}` }],
@@ -771,8 +832,9 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
     ],
     [
       { text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` },
-      { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }
+      { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }
     ],
+    [{ text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }],
     [{ text: '👨‍👩‍👧 Я родитель (переключить режим)', callback_data: `switch_to_parent:${st.id}` }]
   ];
   try {
@@ -2302,7 +2364,8 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
         inline_keyboard: [
           [{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }],
           [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }, { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` }],
-          [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }],
+          [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
+          [{ text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }],
           [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${st.id}` }]
         ]
       }
@@ -2333,7 +2396,8 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
           inline_keyboard: [
             [{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }],
             [{ text: '🔤 5 слов урока', callback_data: `student_words:${found.student.id}` }, { text: '⚡ 5 глаголов', callback_data: `student_verbs:${found.student.id}` }],
-            [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${found.student.id}` }, { text: '🎮 Мини-игра', callback_data: `student_game:${found.student.id}` }],
+            [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${found.student.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${found.student.id}:0` }],
+            [{ text: '🎮 Мини-игра', callback_data: `student_game:${found.student.id}` }],
             [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${found.student.id}` }]
           ]
         }
@@ -2782,21 +2846,31 @@ ${scenario ? `СТРОГО ИСПОЛЬЗУЙ МАТЕРИАЛЫ И СЛОВАР
       const rawText = genRes.generated_plan || '1. Explore [ɪkˈsplɔː] — Исследовать\n2. Challenge [ˈtʃælɪndʒ] — Вызов';
 
       // Parse and track seen words
+      const extractedWords = [];
       const lines = rawText.split('\n');
       for (const line of lines) {
         const m = line.match(/^\d+\.\s+([A-Za-z\s-]+)(?:\[|$|—)/);
         if (m && m[1]) {
           const w = m[1].trim();
           if (!prog.seenWords.includes(w)) prog.seenWords.push(w);
+          extractedWords.push(w);
         }
       }
 
       const kb = [
-        [{ text: '📝 Пройти тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
-        [{ text: '⚡ 5 важных глаголов', callback_data: `student_verbs:${st.id}` }],
-        [{ text: '🔤 Ещё 5 слов урока', callback_data: `student_words:${st.id}` }]
+        [{ text: '📝 Пройти тестик (3 вопроса)', callback_data: `student_poll_quiz:${st.id}` }],
+        [
+          { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` },
+          { text: '⚡ 5 важных глаголов', callback_data: `student_verbs:${st.id}` }
+        ],
+        [{ text: '🔤 Следующие 5 слов урока', callback_data: `student_words:${st.id}` }]
       ];
       await sendCleanMessage(chatId, rawText, { reply_markup: { inline_keyboard: kb } });
+
+      // Send audio pronunciation via Google TTS
+      if (extractedWords.length > 0) {
+        await sendTtsAudio(chatId, extractedWords.join('. ') + '.', `Произношение слов (порция ${prog.wordsBatch})`, '🔊 Послушай, как звучат эти слова на английском');
+      }
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -3013,6 +3087,92 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
+  } else if (data && (data.startsWith('student_flashcards:') || data.startsWith('flip_card:') || data.startsWith('card_known:'))) {
+    const parts = data.split(':');
+    const action = parts[0];
+    const studentId = parts[1];
+    let idx = parseInt(parts[2] || '0', 10);
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+      const scenario = extractLessonScenario(lastLs?.homework || '');
+      const cards = getLessonFlashcards(scenario, lastLs?.homework || '');
+      if (idx >= cards.length) idx = 0;
+      if (idx < 0) idx = 0;
+      const c = cards[idx];
+
+      if (action === 'card_known') {
+        await incrementStudentStreakBot(st);
+        await bot.answerCallbackQuery(query.id, { text: '🎉 Отлично! +5 XP в твою копилку!' });
+      } else {
+        await bot.answerCallbackQuery(query.id);
+      }
+
+      if (action === 'flip_card') {
+        const cardHtml = `🃏 <b>Флеш-карточка ${idx + 1} из ${cards.length}:</b>\n\n🇬🇧 <b>${c.en}</b> ${c.ipa || ''}\n\n🇷🇺 <b>Перевод:</b> ${c.ru}\n${c.ex ? `💡 <i>Пример: ${c.ex}</i>` : ''}`;
+        const kb = [
+          [
+            { text: '✅ Знал(а)! (+5 XP)', callback_data: `card_known:${st.id}:${(idx + 1) % cards.length}` },
+            { text: '🔄 Повторить позже', callback_data: `student_flashcards:${st.id}:${(idx + 1) % cards.length}` }
+          ],
+          [
+            { text: '🔊 Озвучить слово', callback_data: `say_word:${st.id}:${encodeURIComponent(c.en)}` },
+            { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }
+          ]
+        ];
+        if (query.message) {
+          await bot.editMessageText(cardHtml, {
+            chat_id: chatId,
+            message_id: query.message.message_id,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: kb }
+          }).catch(() => {
+            return sendCleanMessage(chatId, cardHtml, { reply_markup: { inline_keyboard: kb } });
+          });
+        } else {
+          await sendCleanMessage(chatId, cardHtml, { reply_markup: { inline_keyboard: kb } });
+        }
+      } else {
+        // Show front of card
+        const cardHtml = `🃏 <b>Флеш-карточка ${idx + 1} из ${cards.length}:</b>\n\n🇬🇧 <b>${c.en}</b> ${c.ipa || ''}\n\n<i>Вспомни перевод про себя, а затем нажми кнопку ниже!</i> 👇`;
+        const kb = [
+          [{ text: '👀 Перевернуть карточку', callback_data: `flip_card:${st.id}:${idx}` }],
+          [
+            { text: '➡️ Следующая', callback_data: `student_flashcards:${st.id}:${(idx + 1) % cards.length}` },
+            { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }
+          ]
+        ];
+        if (query.message && action !== 'card_known') {
+          await bot.editMessageText(cardHtml, {
+            chat_id: chatId,
+            message_id: query.message.message_id,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: kb }
+          }).catch(() => {
+            return sendCleanMessage(chatId, cardHtml, { reply_markup: { inline_keyboard: kb } });
+          });
+        } else {
+          await sendCleanMessage(chatId, cardHtml, { reply_markup: { inline_keyboard: kb } });
+        }
+      }
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('say_word:')) {
+    const parts = data.split(':');
+    const word = decodeURIComponent(parts[2] || '');
+    await bot.answerCallbackQuery(query.id, { text: `🔊 Озвучиваю: ${word}` });
+    await sendTtsAudio(chatId, word, word, `🔊 Произношение: ${word}`);
   } else if (data && data.startsWith('send_parsed_rep:')) {
     const parts = data.split(':');
     const stId = parts[1];
