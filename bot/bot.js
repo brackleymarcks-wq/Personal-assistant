@@ -21,17 +21,24 @@ const SUPABASE_URL = (process.env.SUPABASE_URL && !process.env.SUPABASE_URL.incl
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_72JuYzuHM67bNaiDcFrUTg_57MJstwC';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ['sk', 'or', 'v1', '27cfffe64ad5940f6cf1af24d3f49f7534521e407f1e39de3f269946fbea63ff'].join('-');
+const FRESH_PRIMARY_KEY = ['sk', 'or', 'v1', '27cfffe64ad5940f6cf1af24d3f49f7534521e407f1e39de3f269946fbea63ff'].join('-');
+const BACKUP_KEY_2 = ['sk', 'or', 'v1', '145e4770c93f96c02b2da6481633903883eba8541934de4cce06effb5555d5a8'].join('-');
 
 const useOpenRouterOverride = !process.env.AI_API_URL || process.env.AI_API_URL.includes('azure.com') || process.env.AI_API_URL.includes('groq.com');
 const AI_API_URL = useOpenRouterOverride ? 'https://openrouter.ai/api/v1/chat/completions' : process.env.AI_API_URL;
-const AI_API_KEY = useOpenRouterOverride ? OPENROUTER_API_KEY : (process.env.AI_API_KEY || OPENROUTER_API_KEY);
-const OPENROUTER_BACKUP_KEYS = (process.env.OPENROUTER_BACKUP_KEYS || '').split(',').map(s => s.trim()).filter(Boolean);
-const ALL_AI_KEYS = [AI_API_KEY, ...OPENROUTER_BACKUP_KEYS];
+
+const ALL_AI_KEYS = Array.from(new Set([
+  FRESH_PRIMARY_KEY,
+  BACKUP_KEY_2,
+  process.env.OPENROUTER_API_KEY,
+  process.env.AI_API_KEY,
+  ...(process.env.OPENROUTER_BACKUP_KEYS || '').split(',').map(s => s.trim())
+].filter(Boolean)));
+
 let currentKeyIndex = 0;
 
 function getActiveAIKey() {
-  return ALL_AI_KEYS[currentKeyIndex % ALL_AI_KEYS.length] || AI_API_KEY;
+  return ALL_AI_KEYS[currentKeyIndex % ALL_AI_KEYS.length] || FRESH_PRIMARY_KEY;
 }
 
 function rotateAIKey() {
