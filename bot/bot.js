@@ -41,6 +41,8 @@ function getActiveAIKey() {
   return ALL_AI_KEYS[currentKeyIndex % ALL_AI_KEYS.length] || FRESH_PRIMARY_KEY;
 }
 
+const AI_API_KEY = FRESH_PRIMARY_KEY;
+
 function rotateAIKey() {
   if (ALL_AI_KEYS.length > 1) {
     currentKeyIndex = (currentKeyIndex + 1) % ALL_AI_KEYS.length;
