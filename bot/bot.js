@@ -14,6 +14,29 @@ const cheerio = require('cheerio');
 dns.setDefaultResultOrder('ipv4first');
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Bypass SSL issues
 
+// --- CRASH GUARDIAN: Emergency alert directly to Telegram if server ever crashes ---
+function sendEmergencyCrashAlert(err) {
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const adminId = process.env.TELEGRAM_CHAT_ID || '521675050';
+    if (!token || !adminId) return;
+    const msg = `🚨 *Внимание: сбой сервера бота!*\n\nОшибка:\n\`\`\`\n${String(err?.stack || err?.message || err).slice(0, 1000)}\n\`\`\`\nСервер будет автоматически перезапущен Amvera.`;
+    fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: adminId, text: msg, parse_mode: 'Markdown' })
+    }).catch(() => {});
+  } catch (e) {}
+}
+process.on('uncaughtException', (err) => {
+  console.error('CRITICAL UNCAUGHT EXCEPTION:', err);
+  sendEmergencyCrashAlert(err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
+// -----------------------------------------------------------------------------------
+
 // ---- Config ----
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 let CHAT_ID = process.env.TELEGRAM_CHAT_ID || '521675050';
