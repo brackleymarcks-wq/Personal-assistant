@@ -123,6 +123,7 @@ try {
 }
 
 const ADMIN_CHAT_ID = String(process.env.TELEGRAM_CHAT_ID || '521675050');
+const activePolls = new Map();
 let BOT_USERNAME = '';
 bot.getMe().then(async (me) => {
   BOT_USERNAME = me?.username || '';
@@ -962,18 +963,7 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
   if (lbText) msg += lbText;
   msg += `\n_Когда выполнишь — нажми кнопку ниже, пришли голосовое сообщение или фото тетрадки!_ 💪`;
 
-  const kb = [
-    [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lesson.id}` }],
-    [
-      { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` },
-      { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }
-    ],
-    [
-      { text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` },
-      { text: '🎒 Школьное ДЗ', callback_data: `student_school_hw:${st.id}` }
-    ],
-    [{ text: '👨‍👩‍👧 Режим родителя', callback_data: `switch_to_parent:${st.id}` }]
-  ];
+  const kb = buildStudentKeyboard(st, lesson);
   try {
     for (const tid of targetIds) {
       if (cards.length > 0) {
@@ -1842,7 +1832,7 @@ async function executeFunctionCall(name, args) {
         const user = await getUser();
         const searchName = (args.student_name || '').trim();
         const { data: allSt } = await db.from('students').select('*').eq('user_id', user.id);
-        let st = (allSt || []).find(s => s.name.toLowerCase().includes(searchName.toLowerCase()) || searchName.toLowerCase().split(/\s+/).some(w => w.length > 2 && s.name.toLowerCase().includes(w)));
+        let st = matchStudent(allSt, searchName);
         if (!st) {
           const { data: newSt } = await db.from('students').insert({ user_id: user.id, name: searchName || 'Ученик', price: 0 }).select().maybeSingle();
           st = newSt;
@@ -1964,8 +1954,7 @@ async function executeFunctionCall(name, args) {
       case 'add_lesson': {
         const user = await getUser();
         const { data: allSt } = await db.from('students').select('*').eq('user_id', user.id);
-        const searchWords = (args.student_name || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
-        let st = (allSt || []).find(s => s.name.toLowerCase().includes((args.student_name || '').toLowerCase()) || searchWords.some(w => s.name.toLowerCase().includes(w.slice(0, -1))));
+        let st = matchStudent(allSt, args.student_name);
         if (!st) {
           const { data: newSt } = await db.from('students').insert({ user_id: user.id, name: args.student_name, price: 0 }).select().single();
           st = newSt;
@@ -2350,8 +2339,11 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
     const message = choice.message;
 
     if ((!message.tool_calls || message.tool_calls.length === 0) && message.content && message.content.includes('<function=')) {
-      const fnMatch = message.content.match(/<function=([a-zA-Z0-9_]+)>([\s\S]*?)<\/function>/);
-      if (fnMatch) {
+      const toolCalls = [];
+      const fnRegex = /<function=([a-zA-Z0-9_]+)>([\s\S]*?)<\/function>/g;
+      let fnMatch;
+      let counter = 0;
+      while ((fnMatch = fnRegex.exec(message.content)) !== null) {
         const fnName = fnMatch[1].trim();
         const fnBody = fnMatch[2];
         const parsedArgs = {};
@@ -2366,11 +2358,14 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
             parsedArgs[pName] = pValRaw;
           }
         }
-        message.tool_calls = [{
-          id: 'xml_call_' + Date.now(),
+        toolCalls.push({
+          id: 'xml_call_' + Date.now() + '_' + (++counter),
           type: 'function',
           function: { name: fnName, arguments: JSON.stringify(parsedArgs) }
-        }];
+        });
+      }
+      if (toolCalls.length > 0) {
+        message.tool_calls = toolCalls;
       }
     }
     if (!message.tool_calls || message.tool_calls.length === 0) {
@@ -3102,13 +3097,19 @@ ${scenario ? `СТРОГО ИСПОЛЬЗУЙ МАТЕРИАЛЫ И СЛОВАР
 
       const kb = [
         [{ text: '📝 Пройти тестик (3 вопроса)', callback_data: `student_poll_quiz:${st.id}` }],
-        [
-          { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` },
-          { text: '⚡ 5 важных глаголов', callback_data: `student_verbs:${st.id}` }
-        ],
+        [{ text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
         [{ text: '🔤 Следующие 5 слов урока', callback_data: `student_words:${st.id}` }]
       ];
       await sendCleanMessage(chatId, rawText, { reply_markup: { inline_keyboard: kb } });
+
+      // Notify Igor (teacher) in Telegram
+      const wordsList = extractedWords.length > 0 ? extractedWords.map(w => '• ' + w).join('\n') : rawText;
+      await bot.sendMessage(ADMIN_CHAT_ID,
+        `🔤 <b>${st.name}</b> изучает слова урока в боте! (Порция #${prog.wordsBatch})\n\n` +
+        `📚 <b>Тема:</b> ${lastLs?.topic || 'Английский'}\n` +
+        `📝 <b>Слова:</b>\n${wordsList}`,
+        { parse_mode: 'HTML' }
+      ).catch(() => {});
 
       // Send audio pronunciation via Google TTS
       if (extractedWords.length > 0) {
@@ -3182,6 +3183,91 @@ ${scenario ? `ИСПОЛЬЗУЙ ГЛАГОЛЫ И ПРАВИЛА ИЗ СЦЕН�
         [{ text: '⚡ Ещё 5 глаголов', callback_data: `student_verbs:${st.id}` }]
       ];
       await sendCleanMessage(chatId, rawText, { reply_markup: { inline_keyboard: kb } });
+
+      // Notify Igor (teacher) in Telegram
+      await bot.sendMessage(ADMIN_CHAT_ID,
+        `⚡ <b>${st.name}</b> тренирует глаголы урока! (Порция #${prog.verbsBatch})\n\n` +
+        `📚 <b>Тема:</b> ${lastLs?.topic || 'Глаголы'}\n` +
+        `📝 <b>Глаголы:</b>\n${lines.filter(l => l.match(/^\d+\./)).join('\n') || rawText}`,
+        { parse_mode: 'HTML' }
+      ).catch(() => {});
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('student_grammar_rule:') || data === 'student_grammar_rule')) {
+    const studentId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) {
+        const pFound = await findParentByTgChatId(chatId);
+        st = pFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      await bot.answerCallbackQuery(query.id, { text: '🧩 Загружаю грамматику и практику...' });
+      const doss = parseStudentDossierBot(st);
+      const lastLs = await getLatestLessonWithMaterials(st.id);
+      const topic = ((lastLs?.topic || '') + ' ' + (st.name || '')).toLowerCase();
+      const textContent = ((lastLs?.homework || '') + ' ' + (doss.errors || '')).toLowerCase();
+
+      let ruleTitle = '🧩 Грамматическое правило урока';
+      let ruleFocus = 'ключевое правило урока';
+      if (topic.includes('местоимен') || topic.includes('pronoun') || topic.includes('whose') || topic.includes('owner') || topic.includes("'s") || textContent.includes('притяжательн')) {
+        ruleTitle = '🧩 Чей это питомец? Притяжательные местоимения (my, your, his, her, its, our, their) и правило \'s';
+        ruleFocus = 'притяжательные местоимения (my, your, his, her, its, our, their), вопрос Whose is it? и притяжательный падеж \'s (например: Tom\'s dog, Emma\'s cat)';
+      } else if (topic.includes('сравнен') || topic.includes('compar')) {
+        ruleTitle = '⚡ Степени сравнения прилагательных (Degrees of Comparison)';
+        ruleFocus = 'степени сравнения: fast - faster - the fastest, interesting - more interesting - the most interesting';
+      } else if (topic.includes('артикл') || topic.includes('article') || topic.includes(' the ')) {
+        ruleTitle = '⚡ Артикли (the vs a/an vs без артикля)';
+        ruleFocus = 'употребление the с морями, океанами, реками vs Lake без the';
+      } else if (topic.includes('shopping') || topic.includes('магазин')) {
+        ruleTitle = '🛒 Разговорные фразы в магазине (Shopping phrases)';
+        ruleFocus = 'фразы в магазине: How much is...?, Can I have...?, I would like...';
+      }
+
+      const prompt = `Ты — добрый, увлекательный преподаватель английского для ${st.name} (${st.grade || '4-6 класс'}).
+Тема урока: "${lastLs?.topic || 'English'}".
+Грамматический фокус: ${ruleFocus}.
+Материалы/конспект: "${(lastLs?.homework || '').slice(0, 500)}".
+
+ТВОЯ ЗАДАЧА:
+1. Объясни это правило максимально просто, понятно и с юмором для школьника (не более 5-6 строк).
+2. Дай 3 наглядных примера с разбором:
+   1. Пример 1 (вопрос и ответ на английском + перевод на русский)
+   2. Пример 2
+   3. Пример 3
+3. В конце дай 1 мини-задание на самопроверку: "Напиши мне в ответ, как сказать по-английски: [...]"
+
+ПРАВИЛА ОФОРМЛЕНИЯ (СТРОГО):
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)! Никаких звездочек!
+- Только чистый текст с эмодзи и отступами!`;
+
+      const genRes = await executeFunctionCall('generate_lesson_plan', { prompt });
+      const rawText = genRes.generated_plan || `${ruleTitle}\n\nПовтори материалы урока и составь предложение!`;
+
+      const kb = [
+        [{ text: '📝 Пройти тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
+        [{ text: '🔤 Слова урока', callback_data: `student_words:${st.id}` }],
+        [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lastLs?.id || ''}` }]
+      ];
+
+      await sendCleanMessage(chatId, `${ruleTitle}\n\n${rawText}`, { reply_markup: { inline_keyboard: kb } });
+
+      await bot.sendMessage(ADMIN_CHAT_ID,
+        `🧩 <b>${st.name}</b> открыл(а) тренировку грамматики:\n` +
+        `📚 <b>${ruleTitle}</b>\n` +
+        `Ученик получил разбор правила и задание на самопроверку.`,
+        { parse_mode: 'HTML' }
+      ).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -3211,16 +3297,17 @@ ${scenario ? `ИСПОЛЬЗУЙ ГЛАГОЛЫ И ПРАВИЛА ИЗ СЦЕН�
       const prog = getPracticeProgress(st.id, lastLs?.id);
       prog.quizRound++;
 
-      const pollPrompt = `Ты — методист по английскому для ${st.name} (${st.grade || '6 класс'}).
-${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И ПРАВИЛАМ ИЗ СЦЕНАРИЯ УРОКА:\n"${scenario}"\n` : ''}
-Тема урока: "${lastLs?.topic || 'English Grammar'}".
+      const pollPrompt = `Ты — методист по английскому для ${st.name} (${st.grade || 'школьник'}).
+${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, СЛОВАРЮ И ПРАВИЛАМ ИЗ СЦЕНАРИЯ УРОКА:\n"${scenario}"\n` : ''}
+Тема урока: "${lastLs?.topic || 'English'}".
+Словарь и ошибки: "${doss.vocab || ''} | ${doss.errors || ''}".
 Раунд тестирования: #${prog.quizRound}.
 
 ТВОЯ ЗАДАЧА:
-Составь МИНИ-ТЕСТ РОВНО ИЗ 3 РАЗНЫХ ВОПРОСОВ (Telegram Quiz Polls) по разным правилам урока:
-- Вопрос 1: Разница Present Perfect vs Past Simple (yesterday vs already/yet)
-- Вопрос 2: Ловушка теста (been to vs gone to ИЛИ артикли the с морями/океанами vs Lake без the)
-- Вопрос 3: Особое множественное число (deer, species, bison, wolves) ИЛИ V3 форма глагола.
+Составь МИНИ-ТЕСТ РОВНО ИЗ 3 РАЗНЫХ ВОПРОСОВ (Telegram Quiz Polls) СТРОГО ПО ТЕМЕ «${lastLs?.topic || 'English'}» ДЛЯ ЭТОГО УЧЕНИКА:
+- Вопрос 1: Новое слово или фраза по теме урока (с контекстным переводом или выбором верного слова).
+- Вопрос 2: Главное грамматическое правило этого урока (например: притяжательные местоимения my/his/her/their/'s, если тема про них; или времена глаголов; или степени сравнения).
+- Вопрос 3: Практическая фраза/ситуация по материалам урока.
 Каждый новый раунд меняй вопросы, не повторяйся!
 
 Верни СТРОГО валидный JSON массив из 3 объектов без markdown-обертки:
@@ -3253,26 +3340,71 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
       } catch (err) {}
 
       if (!Array.isArray(quizList) || quizList.length === 0) {
-        quizList = [
-          {
-            question: "1/3. Choose the correct form: She ___ her suitcase ten minutes ago.",
-            options: ["packed", "has packed", "packs"],
-            correct_id: 0,
-            explanation: "Ago указывает на точное время в прошлом -> Past Simple (packed)!"
-          },
-          {
-            question: "2/3. He is not at home now. He has ___ to Africa.",
-            options: ["gone", "been", "went"],
-            correct_id: 0,
-            explanation: "Gone to значит 'уехал и сейчас ещё там'! Been to — 'съездил и вернулся'."
-          },
-          {
-            question: "3/3. In Bielaviezhskaja Pushcha there are many wild ___.",
-            options: ["wolves", "wolfs", "wolfes"],
-            correct_id: 0,
-            explanation: "Множественное число от wolf — wolves (f меняется на ves)!"
-          }
-        ];
+        const topLow = ((lastLs?.topic || '') + ' ' + (st.name || '')).toLowerCase();
+        if (topLow.includes('местоимен') || topLow.includes('pronoun') || topLow.includes('whose') || topLow.includes('owner') || topLow.includes("'s")) {
+          quizList = [
+            {
+              question: "1/3. Look! This is Tom. It is ___ dog.",
+              options: ["his", "her", "their"],
+              correct_id: 0,
+              explanation: "Tom — мальчик (он/he), поэтому 'его собака' — his dog!"
+            },
+            {
+              question: "2/3. Whose cat is this? — It's ___ cat.",
+              options: ["Emma's", "Emmas", "Emma is"],
+              correct_id: 0,
+              explanation: "Притяжательный падеж образуется с апострофом: Emma's cat (кошка Эммы)!"
+            },
+            {
+              question: "3/3. We love our house. ___ roof is red.",
+              options: ["Its", "It's", "Their"],
+              correct_id: 0,
+              explanation: "Для неодушевленных предметов (house) притяжательное местоимение — Its (его крыша)!"
+            }
+          ];
+        } else if (topLow.includes('shop') || topLow.includes('магазин')) {
+          quizList = [
+            {
+              question: "1/3. ___ is this T-shirt? — It's 15 pounds.",
+              options: ["How much", "How many", "How old"],
+              correct_id: 0,
+              explanation: "О цене спрашиваем: How much is...?"
+            },
+            {
+              question: "2/3. Can I ___ this jacket on, please?",
+              options: ["try", "wear", "put"],
+              correct_id: 0,
+              explanation: "Примерить одежду — try on!"
+            },
+            {
+              question: "3/3. I'd like a kilo ___ apples, please.",
+              options: ["of", "to", "for"],
+              correct_id: 0,
+              explanation: "Килограмм яблок — a kilo of apples!"
+            }
+          ];
+        } else {
+          quizList = [
+            {
+              question: "1/3. Choose the correct form: She ___ her suitcase ten minutes ago.",
+              options: ["packed", "has packed", "packs"],
+              correct_id: 0,
+              explanation: "Ago указывает на точное время в прошлом -> Past Simple (packed)!"
+            },
+            {
+              question: "2/3. He is not at home now. He has ___ to Africa.",
+              options: ["gone", "been", "went"],
+              correct_id: 0,
+              explanation: "Gone to значит 'уехал и сейчас ещё там'! Been to — 'съездил и вернулся'."
+            },
+            {
+              question: "3/3. In Bielaviezhskaja Pushcha there are many wild ___.",
+              options: ["wolves", "wolfs", "wolfes"],
+              correct_id: 0,
+              explanation: "Множественное число от wolf — wolves (f меняется на ves)!"
+            }
+          ];
+        }
       }
 
       await bot.sendMessage(chatId, `🎯 <b>Мини-тест по уроку для ${st.name} (Раунд ${prog.quizRound}):</b>\nОтвечай прямо на вопросы викторины ниже 👇`, { parse_mode: 'HTML' });
@@ -3280,17 +3412,31 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
       for (let i = 0; i < quizList.length; i++) {
         const q = quizList[i];
         if (q.options && q.options.length >= 2) {
-          await bot.sendPoll(chatId, q.question, q.options.slice(0, 4), {
+          const sentPoll = await bot.sendPoll(chatId, q.question, q.options.slice(0, 4), {
             type: 'quiz',
             correct_option_id: Number(q.correct_id) || 0,
             explanation: (q.explanation || 'Молодец!').slice(0, 200),
             is_anonymous: false
           });
+          if (sentPoll?.poll?.id) {
+            activePolls.set(sentPoll.poll.id, {
+              studentName: st.name,
+              question: q.question,
+              options: q.options.slice(0, 4),
+              correctId: Number(q.correct_id) || 0,
+              explanation: q.explanation || ''
+            });
+          }
           if (i < quizList.length - 1) {
             await new Promise(r => setTimeout(r, 400));
           }
         }
       }
+
+      await bot.sendMessage(ADMIN_CHAT_ID,
+        `📝 <b>${st.name}</b> запустил(а) мини-тест по теме «${lastLs?.topic || 'Английский'}» (Раунд #${prog.quizRound})! Ждём ответы ученика...`,
+        { parse_mode: 'HTML' }
+      ).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -3359,6 +3505,14 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
         const userName = query.from?.first_name || 'Ученик';
         const totalXp = addStudentXp(st.id, lastLs?.id, query.from?.id, userName, 5);
         await bot.answerCallbackQuery(query.id, { text: `🎉 Отлично, ${userName}! +5 XP (Всего: ${totalXp} XP)!` });
+        if (c) {
+          await bot.sendMessage(ADMIN_CHAT_ID,
+            `🃏 <b>${st.name}</b> (${userName}) выучил(а) флеш-карточку:\n` +
+            `🇬🇧 <b>${c.en}</b> — ${c.ru}\n` +
+            `⭐ +5 XP (Всего: ${totalXp} XP)`,
+            { parse_mode: 'HTML' }
+          ).catch(() => {});
+        }
       } else {
         await bot.answerCallbackQuery(query.id);
       }
@@ -3836,6 +3990,31 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ И 
       console.error('Callback query lesson_pay error:', e);
       bot.answerCallbackQuery(query.id, { text: '❌ Ошибка: ' + e.message, show_alert: true });
     }
+  }
+});
+
+
+// Обработка ответов учеников на мини-тесты (Quiz Polls) в Telegram
+bot.on('poll_answer', async (answer) => {
+  try {
+    const pollInfo = activePolls.get(answer.poll_id);
+    if (!pollInfo) return;
+    const chosenIdx = answer.option_ids?.[0];
+    const isCorrect = chosenIdx === pollInfo.correctId;
+    const chosenText = (chosenIdx !== undefined && pollInfo.options[chosenIdx]) ? pollInfo.options[chosenIdx] : 'Не выбран';
+    const correctText = pollInfo.options[pollInfo.correctId] || '';
+    const userDisplay = answer.user ? `${answer.user.first_name || ''} ${answer.user.last_name || ''} (@${answer.user.username || ''})`.trim() : pollInfo.studentName;
+
+    const emoji = isCorrect ? '✅' : '❌';
+    const alertMsg = `${emoji} <b>Результат мини-теста ученика:</b>\n\n` +
+      `👤 <b>Ученик:</b> ${pollInfo.studentName} (${userDisplay})\n` +
+      `❓ <b>Вопрос:</b> ${pollInfo.question}\n` +
+      `👉 <b>Ответ ученика:</b> ${chosenText} ${isCorrect ? '✅ (Верно!)' : `❌ (Ошибка! Правильно: ${correctText})`}\n` +
+      (pollInfo.explanation ? `💡 <i>Пояснение:</i> ${pollInfo.explanation}` : '');
+
+    await bot.sendMessage(ADMIN_CHAT_ID, alertMsg, { parse_mode: 'HTML' }).catch(() => {});
+  } catch (err) {
+    console.error('poll_answer notification error:', err);
   }
 });
 
