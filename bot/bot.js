@@ -234,9 +234,24 @@ async function getTodayEvents() {
   const minskDateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
   const start = new Date(minskDateStr + 'T00:00:00.000+03:00').toISOString();
   const end = new Date(minskDateStr + 'T23:59:59.999+03:00').toISOString();
-  const { data } = await db.from('events').select('*')
+  const { data: events } = await db.from('events').select('*')
     .gte('start_at', start).lte('start_at', end).order('start_at');
-  return data || [];
+  
+  // Also include lessons scheduled / conducted today!
+  const { data: lessons } = await db.from('lessons').select('*, students(*)')
+    .gte('date', start).lte('date', end).order('date');
+
+  const lessonEvents = (lessons || []).map(l => ({
+    id: 'lesson_' + l.id,
+    title: `🇬🇧 Урок: ${l.students?.name || 'Ученик'} (${l.topic || 'Английский'}) [${l.status}]`,
+    start_at: l.date,
+    end_at: new Date(new Date(l.date).getTime() + 60 * 60 * 1000).toISOString(),
+    is_lesson: true
+  }));
+
+  const all = [...(events || []), ...lessonEvents];
+  all.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+  return all;
 }
 
 async function getHabits() {
@@ -931,6 +946,8 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
   
   const { cleanHw: noCardsHw, cards } = extractAttachedCards(lesson?.homework || '');
   const rawHw = noCardsHw.split('\\n[МАТЕРИАЛЫ]:')[0]
+    .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*?(?=\n\n|$)/gi, '')
+    .replace(/\[(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ)\]:[\s\S]*?\[\/(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ)\]/g, '')
     .replace('[ДЗ_ПРОВЕРЕНО]', '')
     .replace('[ДЗ_СДАНО]', '')
     .replace('[ОТПРАВИТЬ_В_ТГ]', '')
@@ -1621,6 +1638,74 @@ const TOOLS = [
   }
 ];
 
+
+function matchStudent(allStudents, query) {
+  if (!allStudents || !allStudents.length || !query) return null;
+  const q = query.toLowerCase().trim();
+
+  // Priority alias routing
+  if (q.includes('курочкин') || q.includes('софа') || (q.includes('соня') && !q.includes('коршук') && !q.includes('ворон'))) {
+    const s = allStudents.find(st => st.name.toLowerCase().includes('курочкин'));
+    if (s) return s;
+  }
+  if (q.includes('коршук') || (q.includes('соня') && q.includes('коршук'))) {
+    const s = allStudents.find(st => st.name.toLowerCase().includes('коршук'));
+    if (s) return s;
+  }
+  if (q.includes('ворон') || q.includes('матвей') || q.includes('арин') || q.includes('лена')) {
+    if (q.includes('нелли')) {
+      const s = allStudents.find(st => st.name.toLowerCase().includes('нелли'));
+      if (s) return s;
+    }
+    const s = allStudents.find(st => st.name.toLowerCase().includes('воронины') || (st.name.toLowerCase().includes('арина') && st.name.toLowerCase().includes('матвей')));
+    if (s) return s;
+  }
+  if (q.includes('коцуб') || q.includes('артем') || q.includes('артём')) {
+    const s = allStudents.find(st => st.name.toLowerCase().includes('коцуб') || st.name.toLowerCase().includes('артем'));
+    if (s) return s;
+  }
+
+  // Exact match
+  const exact = allStudents.find(st => st.name.toLowerCase() === q);
+  if (exact) return exact;
+
+  // Substring
+  const sub = allStudents.find(st => st.name.toLowerCase().includes(q) || q.includes(st.name.toLowerCase()));
+  if (sub) return sub;
+
+  // Words stem
+  const words = q.split(/\s+/).filter(w => w.length >= 3);
+  for (const w of words) {
+    const stem = w.slice(0, -1);
+    const m = allStudents.find(st => st.name.toLowerCase().includes(stem));
+    if (m) return m;
+  }
+  return null;
+}
+
+function buildStudentKeyboard(st, lesson) {
+  const topic = ((lesson?.topic || '') + ' ' + (st?.name || '')).toLowerCase();
+  const textContent = ((lesson?.homework || '')).toLowerCase();
+
+  let dynamicBtn = { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` };
+  if (st.name.includes('Курочкина') || topic.includes('местоимен') || topic.includes('pronoun') || topic.includes('whose') || topic.includes('owner') || topic.includes("'s") || textContent.includes('притяжательн')) {
+    dynamicBtn = { text: '🧩 Чей питомец? (Местоимения)', callback_data: `student_grammar_rule:${st.id}` };
+  } else if (topic.includes('shopping') || topic.includes('магазин') || st.name.includes('Воронины')) {
+    dynamicBtn = { text: '🛒 В магазине (Shopping)', callback_data: `student_grammar_rule:${st.id}` };
+  } else if (topic.includes('verb') || topic.includes('глагол') || topic.includes('present perfect') || topic.includes('past simple') || st.name.includes('Коршук')) {
+    dynamicBtn = { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` };
+  }
+
+  return {
+    inline_keyboard: [
+      [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lesson?.id || ''}` }],
+      [{ text: '🔤 Слова урока', callback_data: `student_words:${st.id}` }, dynamicBtn],
+      [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }],
+      [{ text: '👨‍👩‍👧 Режим родителя', callback_data: `switch_to_parent:${st.id}` }]
+    ]
+  };
+}
+
 async function executeFunctionCall(name, args) {
   try {
     switch (name) {
@@ -1843,15 +1928,41 @@ async function executeFunctionCall(name, args) {
           if (!isNaN(parsed.getTime())) startDate = parsed;
         }
         const startIso = startDate.toISOString();
-        const { data: lesson, error } = await db.from('lessons').insert({
-          student_id: st.id,
-          date: startIso,
-          topic: args.topic || '',
-          homework: '',
-          status: 'Запланирован',
-          paid: false
-        }).select().maybeSingle();
-        if (error) return { success: false, error: error.message };
+        const startDay = startDate.toISOString().split('T')[0];
+
+        // Deduplicate: check if a lesson is already scheduled for this student today
+        const { data: existingNear } = await db.from('lessons')
+          .select('*')
+          .eq('student_id', st.id)
+          .gte('date', startDay + 'T00:00:00Z')
+          .lte('date', startDay + 'T23:59:59Z')
+          .order('date', { ascending: false });
+
+        let lesson = null;
+        const matchingSched = (existingNear || []).find(l => {
+          const lDate = new Date(l.date);
+          return Math.abs(lDate.getTime() - startDate.getTime()) < 3.5 * 3600 * 1000;
+        });
+
+        if (matchingSched) {
+          const { data: up } = await db.from('lessons').update({
+            date: startIso,
+            topic: args.topic || matchingSched.topic || '',
+            status: 'Запланирован'
+          }).eq('id', matchingSched.id).select().maybeSingle();
+          lesson = up || matchingSched;
+        } else {
+          const { data: created, error } = await db.from('lessons').insert({
+            student_id: st.id,
+            date: startIso,
+            topic: args.topic || '',
+            homework: '',
+            status: 'Запланирован',
+            paid: false
+          }).select().maybeSingle();
+          if (error) return { success: false, error: error.message };
+          lesson = created;
+        }
 
         const { data: prevList } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1);
         const prev = prevList?.[0];
@@ -1988,23 +2099,29 @@ async function executeFunctionCall(name, args) {
         }
         const dateStr = new Date().toISOString();
         const todayPrefix = getMinskDateString(0);
-        const { data: existingSched } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Запланирован').gte('date', todayPrefix + 'T00:00:00Z').order('date', { ascending: false }).limit(1).maybeSingle();
+        let homeworkToSave = args.homework || '';
+        const debriefNote = args.debrief || args.notes || (args.student_errors ? `Ошибки: ${args.student_errors}. ${args.new_vocab ? 'Новые слова: ' + args.new_vocab : ''}` : '');
+        if (debriefNote && !homeworkToSave.includes('[ДЕБРИФИНГ]')) {
+          homeworkToSave = `[ДЕБРИФИНГ]:\n${debriefNote}\n[/ДЕБРИФИНГ]\n\n${homeworkToSave}`.trim();
+        }
+
+        const { data: existingSched } = await db.from('lessons').select('*').eq('student_id', st.id).gte('date', todayPrefix + 'T00:00:00Z').order('date', { ascending: false }).limit(1).maybeSingle();
         let lesson = null;
         if (existingSched) {
           const { data: upLs } = await db.from('lessons').update({
             topic: args.topic || existingSched.topic || '',
-            homework: args.homework || existingSched.homework || '',
+            homework: homeworkToSave || existingSched.homework || '',
             status: 'Проведен',
             paid: !!args.paid
           }).eq('id', existingSched.id).select().maybeSingle();
-          lesson = upLs;
+          lesson = upLs || existingSched;
           notifiedEvents.add(`done_${existingSched.id}`);
         } else {
           const { data: newLs } = await db.from('lessons').insert({
             student_id: st.id,
             date: dateStr,
             topic: args.topic || '',
-            homework: args.homework || '',
+            homework: homeworkToSave,
             status: 'Проведен',
             paid: !!args.paid
           }).select().maybeSingle();
@@ -4708,8 +4825,8 @@ bot.on('message', async (msg) => {
     let aiGrading = null;
     if (studentText && studentText.length >= 3 && lastLs) {
       try {
-        const gradePrompt = `Ты — профессиональный, справедливый и доброжелательный преподаватель английского языка.
-Ученик ${st.name} (${st.grade || ''}) прислал ответ на домашнее задание.
+        const gradePrompt = `Ты — профессиональный методист и преподаватель английского языка.
+Ученик ${st.name} (${st.grade || ''}) сдал домашнее задание.
 ЗАДАННОЕ ДЗ:
 "${cleanHw || 'практика английского'}"
 МАТЕРИАЛЫ И СЦЕНАРИЙ УРОКА:
@@ -4718,11 +4835,15 @@ bot.on('message', async (msg) => {
 ОТВЕТ УЧЕНИКА:
 "${studentText}"
 
-ОЦЕНИ ОТВЕТ И ВЕРНИ СТРОГО JSON без markdown-обертки:
+ПРОВЕРЬ РАБОТУ И ВЕРНИ СТРОГО JSON:
 {
-  "is_fully_done": true | false,
-  "student_feedback": "Дружелюбный разбор ДЛЯ УЧЕНИКА: похвали за сделанное, укажи на ошибки и как их исправить, и ЧЁТКО напиши что ещё доделать если сдано не всё!",
-  "teacher_summary": "Краткий отчёт для учителя Игоря: статус, процент выполнения, ключевые ошибки"
+  "is_fully_done": true,
+  "score_percent": 80,
+  "what_is_done": "Чёткий список: какие упражнения/слова/номера сделаны",
+  "what_is_left": "Что осталось доделать или 'Всё сделано в полном объёме'",
+  "errors_made": "Конкретные ошибки ученика с правильным вариантом",
+  "explanation_given": "Как ты объяснил ученику ошибки и что посоветовал исправить",
+  "student_feedback": "Тёплый разбор напрямую для ученика: похвала, разбор ошибок, понятное объяснение правила и что доделать"
 }`;
 
         const gradeRes = await executeFunctionCall('generate_lesson_plan', { prompt: gradePrompt });
@@ -4745,10 +4866,9 @@ bot.on('message', async (msg) => {
         parse_mode: 'Markdown'
       }).catch(() => bot.sendMessage(chatId, aiGrading.student_feedback));
 
-      // Отправляем отчёт преподавателю
-      await bot.sendMessage(ADMIN_CHAT_ID, `✅ *ИИ автоматически ПРОВЕРИЛ И ЗАЧЁЛ ДЗ ученика ${st.name}!* (Статус в приложении: Проверено)\n\nОтвет ученика: «${studentText}»\n\n📋 *Разбор ИИ:*\n${aiGrading.teacher_summary}`, {
-        parse_mode: 'Markdown'
-      }).catch(() => {});
+      // Отправляем структурированный 4-пунктовый отчёт преподавателю Игорю
+      const teacherHwReport = `✅ *ИИ ПРОВЕРИЛ И ЗАЧЁЛ ДЗ: ${st.name}* (100% / Проверено)\n\n💬 *Ответ ученика:*\n«${studentText}»\n\n✅ *Что сделано:*\n${aiGrading.what_is_done || 'Все задания выполнены'}\n\n⏳ *Что осталось / не сделано:*\n${aiGrading.what_is_left || 'Ничего, всё готово!'}\n\n⚠️ *Ошибки ученика:*\n${aiGrading.errors_made || 'Без существенных ошибок'}\n\n💡 *Как объяснил ученику:*\n${aiGrading.explanation_given || 'Похвалил и подтвердил правильность'}`;
+      await bot.sendMessage(ADMIN_CHAT_ID, teacherHwReport, { parse_mode: 'Markdown' }).catch(() => {});
 
     } else if (aiGrading && !aiGrading.is_fully_done) {
       // 2. ДЗ выполнено частично -> статус [ДЗ_СДАНО], ученику пишем что доделать
@@ -4760,7 +4880,8 @@ bot.on('message', async (msg) => {
         parse_mode: 'Markdown'
       }).catch(() => bot.sendMessage(chatId, aiGrading.student_feedback));
 
-      await bot.sendMessage(ADMIN_CHAT_ID, `⚠️ *Ученик ${st.name} сдал ДЗ частично:*\n\n«${studentText}»\n\n📋 *Разбор ИИ:*\n${aiGrading.teacher_summary}`, {
+      const teacherPartialReport = `⚠️ *Ученик ${st.name} сдал ДЗ ЧАСТИЧНО* (${aiGrading.score_percent || 0}%)\n\n💬 *Ответ ученика:*\n«${studentText}»\n\n✅ *Что сделано:*\n${aiGrading.what_is_done || 'Часть заданий'}\n\n⏳ *Что НЕ сделано / осталось:*\n${aiGrading.what_is_left || 'Требуется завершить задание'}\n\n⚠️ *Какие ошибки допустил:*\n${aiGrading.errors_made || 'Есть неточности'}\n\n💡 *Как объяснил ученику и что исправить:*\n${aiGrading.explanation_given || aiGrading.student_feedback || 'Отправлена подсказка'}`;
+      await bot.sendMessage(ADMIN_CHAT_ID, teacherPartialReport, {
         parse_mode: 'Markdown',
         reply_markup: lastLs ? { inline_keyboard: [[{ text: '✅ Всё равно отметить проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]] } : undefined
       }).catch(() => {});
@@ -4919,15 +5040,29 @@ async function generateEveningReview() {
   const overdue = await getOverdueTasks();
   const habitLogs = await getHabitLogsToday();
   const habits = await getHabits();
+
+  // Fetch tutoring lessons conducted / scheduled today
+  const minskDateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+  const startDayIso = new Date(minskDateStr + 'T00:00:00.000+03:00').toISOString();
+  const endDayIso = new Date(minskDateStr + 'T23:59:59.999+03:00').toISOString();
+  const { data: todayLessons } = await db.from('lessons')
+    .select('*, students(*)')
+    .gte('date', startDayIso)
+    .lte('date', endDayIso)
+    .order('date');
+  const conductedLessons = (todayLessons || []).filter(l => l.status === 'Проведен');
+  const lessonsDesc = conductedLessons.map(l => `${l.students?.name || 'Ученик'} («${l.topic || 'Английский'}»)`).join(', ');
+
   const minskDayName = new Date().toLocaleDateString('en-US', { timeZone: 'Europe/Minsk', weekday: 'short' });
   const isWeekend = (minskDayName === 'Sat' || minskDayName === 'Sun');
   if (typeof completedToday !== 'undefined' && isWeekend) {
-    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: похвали за проведённые уроки и полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
+    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nПроведено уроков репетиторства сегодня: ${conductedLessons.length} (${lessonsDesc || 'нет'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: обязательно похвали за проведённые уроки английского (${conductedLessons.length > 0 ? `отлично поработал с учениками: ${lessonsDesc}` : 'отдыхал'}), похвали за полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
     return await askAI('Сгенерируй тёплый вечерний обзор выходного дня', weekendCtx, null, true, true);
   }
 
   const contextData = `
 ДАННЫЕ ДЛЯ ВЕЧЕРНЕГО ОБЗОРА:
+- ПРОВЕДЕНО УРОКОВ РЕПЕТИТОРСТВА СЕГОДНЯ: ${conductedLessons.length} (${lessonsDesc || '0'}).
 - РЕАЛЬНО ВЫПОЛНЕНО СЕГОДНЯ: ${completedToday.length} задач. (${JSON.stringify(completedToday.map(t => t.title))})
 - ЗАБРОШЕНО НА СЕГОДНЯ (осталось висеть): ${todayTasks.length} задач. (${JSON.stringify(todayTasks.map(t => t.title))})
 - ПРОСРОЧЕННЫЕ (хвосты с прошлых дней): ${overdue.length} задач. (${JSON.stringify(overdue.map(t => t.title))})
