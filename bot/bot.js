@@ -1700,8 +1700,7 @@ function buildStudentKeyboard(st, lesson) {
     inline_keyboard: [
       [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lesson?.id || ''}` }],
       [{ text: '🔤 Слова урока', callback_data: `student_words:${st.id}` }, dynamicBtn],
-      [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }],
-      [{ text: '👨‍👩‍👧 Режим родителя', callback_data: `switch_to_parent:${st.id}` }]
+      [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }]
     ]
   };
 }
@@ -2720,8 +2719,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
         inline_keyboard: [
           [{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }],
           [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
-          [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎒 Школьное ДЗ', callback_data: `student_school_hw:${st.id}` }],
-          [{ text: '👨‍👩‍👧 Режим родителя', callback_data: `switch_to_parent:${st.id}` }]
+          [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎒 Школьное ДЗ', callback_data: `student_school_hw:${st.id}` }]
         ]
       }
     }).catch(() => bot.sendMessage(incomingChatId, welcomeSt));
@@ -2752,8 +2750,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
             [{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }],
             [{ text: '🔤 5 слов урока', callback_data: `student_words:${found.student.id}` }, { text: '⚡ 5 глаголов', callback_data: `student_verbs:${found.student.id}` }],
             [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${found.student.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${found.student.id}:0` }],
-            [{ text: '🎮 Мини-игра', callback_data: `student_game:${found.student.id}` }],
-            [{ text: '👨‍👩‍👧 Я родитель (переключить на дневник родителя)', callback_data: `switch_to_parent:${found.student.id}` }]
+            [{ text: '🎮 Мини-игра', callback_data: `student_game:${found.student.id}` }]
           ]
         }
       });
@@ -3847,26 +3844,27 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, С
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
-  } else if (data && data.startsWith('student_hw_done:')) {
+    } else if (data && data.startsWith('student_hw_done:')) {
     const lessonId = data.split(':')[1];
     try {
       const { data: ls } = await db.from('lessons').select('*, students(*)').eq('id', lessonId).maybeSingle();
       const stName = ls?.students?.name || 'Ученик';
-      if (ls && !(ls.homework || '').includes('[ДЗ_СДАНО]') && !(ls.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
-        await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${ls.homework || ''}`.trim() }).eq('id', lessonId);
+      const isAlreadySubmitted = (ls?.homework || '').includes('[ДЗ_СДАНО]') || (ls?.homework || '').includes('[ДЗ_ПРОВЕРЕНО]');
+
+      if (isAlreadySubmitted) {
+        await bot.answerCallbackQuery(query.id, { text: '✅ Твоё ДЗ уже принято и находится на контроле!' });
+        return bot.sendMessage(chatId, `👍 *Отлично, ${stName}!* Твоё задание уже отправлено на проверку Игорю. Если хочешь прислать ещё фото или дополнение — просто отправь прямо сюда в чат!`, { parse_mode: 'Markdown' });
       }
-      await bot.answerCallbackQuery(query.id, { text: '🎉 Супер! Отметил, что ДЗ готово!' });
-      const newStreak = await incrementStudentStreakBot(ls?.students);
-      await bot.sendMessage(chatId, `🎉 *Молодец, ${stName}!*\nЯ передал Игорю, что ты выполнил(а) домашнее задание!\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд без пропусков! (+10 XP)* 🏆\n\nЕсли хочешь — можешь прислать сюда фото тетрадки, ответ текстом/голосом или потренировать слова в мини-квизе:`, {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '🎯 Потренировать мои слова (Мини-квиз)', callback_data: 'student_quiz' }]] }
-      }).catch(() => {});
-      const cleanHw = (ls?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim();
-      const isUpcoming = ls?.status === 'Запланирован';
-      await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *${stName}* нажал(а) кнопку **«Я сделал(а) ДЗ!»** ${isUpcoming ? '*(к предстоящему уроку)*' : ''}\n📌 Задание: _${cleanHw || 'Без текста'}_`, {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '✅ Отметить проверенным', callback_data: `lesson_hw_checked:${lessonId}` }]] }
-      }).catch(() => {});
+
+      await bot.answerCallbackQuery(query.id, { text: '📸 Нужно подтверждение выполнения!' });
+
+      // Защита от халявы: не засчитываем ДЗ по одной кнопке, требуем реальное действие!
+      const requireProofMsg = `📸 *Отлично, ${stName}! Чтобы зачесть домашку и начислить баллы (+15 XP), пришли подтверждение:*\n\n📝 *Вариант 1 (Лучше всего):* Сфотографируй тетрадь с выполненным заданием и отправь фото прямо сюда!\n💬 *Вариант 2:* Напиши свои ответы или составленные предложения текстом в чат.\n🎤 *Вариант 3:* Надиктуй чтение или ответы голосовым на английском!\n\n⏳ *Жду твой ответ!* Как только пришлёшь фото тетрадки или текст — я сразу проверю работу и передам Игорю! 🚀`;
+
+      await bot.sendMessage(chatId, requireProofMsg, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, requireProofMsg));
+
+      // Тихий лог преподавателю без ложного статуса "сдано"
+      await bot.sendMessage(ADMIN_CHAT_ID, `👀 *Ученик ${stName}* нажал кнопку «Я сделал(а) ДЗ!».\nБот запросил фото тетрадки или текст ответов. Ожидаем фактическую работу.`, { parse_mode: 'Markdown' }).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
