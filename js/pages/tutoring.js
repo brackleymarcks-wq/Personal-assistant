@@ -172,15 +172,23 @@ const TutoringPage = {
                 <div id="ls-memory-banner" style="margin-bottom:12px;"></div>
 
                 <div style="margin-bottom:12px;padding:12px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-light);">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <label class="form-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;font-weight:700;">
-                      <i data-lucide="image" style="width:14px;height:14px;color:var(--accent);"></i>
-                      <span>Материалы ДЗ (PNG / Картинки / Страница)</span>
-                    </label>
-                    <div style="display:flex;gap:6px;">
-                      <button type="button" id="ls-btn-vision-ai" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0ea5e9;border-color:rgba(14,165,233,0.4);background:rgba(14,165,233,0.06);display:flex;align-items:center;gap:4px;" title="Загрузить страницу учебника/фото и определить тему, лексику и анонс">📸 Распознать тему из PNG</button>
-                      <button type="button" id="ls-btn-gen-cards" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0d9488;border-color:rgba(13,148,136,0.35);" title="Сгенерировать PNG-карточки слов">🎨 Создать карточки</button>
-                      <button type="button" id="ls-btn-add-card-file" class="btn btn-secondary btn-xs" style="font-size:11px;" title="Прикрепить файл с диска">📎 Прикрепить PNG</button>
+                  <div style="margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                      <label class="form-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px;">
+                        <i data-lucide="image" style="width:15px;height:15px;color:var(--accent);"></i>
+                        <span>Материалы и карточки к уроку (PNG / PDF)</span>
+                      </label>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                      <button type="button" id="ls-btn-add-card-file" class="btn btn-primary btn-xs" style="background:#0284c7;border-color:#0284c7;color:#fff;font-size:11px;padding:6px 10px;font-weight:600;display:flex;align-items:center;gap:5px;" title="Выбрать файл с диска (PNG, JPG, PDF)">
+                        📁 Выбрать файл с диска
+                      </button>
+                      <button type="button" id="ls-btn-vision-ai" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#0ea5e9;border-color:rgba(14,165,233,0.4);background:rgba(14,165,233,0.06);display:flex;align-items:center;gap:4px;" title="Загрузить страницу учебника/фото и определить тему, лексику и анонс">
+                        📸 Распознать тему из файла
+                      </button>
+                      <button type="button" id="ls-btn-gen-cards" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#0d9488;border-color:rgba(13,148,136,0.35);display:flex;align-items:center;gap:4px;" title="Сгенерировать PNG-карточки слов">
+                        🎨 Создать карточки
+                      </button>
                     </div>
                   </div>
                   <input type="file" id="ls-card-file-input" accept="image/*,.pdf" multiple style="display:none;" />
@@ -2653,9 +2661,18 @@ const TutoringPage = {
       fileInput.onchange = (e) => {
         const files = Array.from(e.target.files || []);
         files.forEach(async (file) => {
-          if (!file.type.startsWith('image/')) return;
-          const compressed = await this.compressImage(file);
-          this.addCardDataUrl(compressed);
+          if (file.type.startsWith('image/')) {
+            const compressed = await this.compressImage(file);
+            this.addCardDataUrl(compressed);
+          } else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              this.attachedPresentation = ev.target.result;
+              this.renderPresentationBadge();
+              UI.toast('PDF презентация прикреплена к уроку!', 'success');
+            };
+            reader.readAsDataURL(file);
+          }
         });
         fileInput.value = '';
       };

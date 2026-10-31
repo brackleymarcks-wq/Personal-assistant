@@ -2767,6 +2767,32 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
 });
 
 // Обработка фотографий (сканер чеков)
+
+// Student document handler (PDFs, uncompressed photos)
+bot.on('document', async (msg) => {
+  const chatId = msg.chat.id;
+  if (String(chatId) === ADMIN_CHAT_ID) return;
+
+  const found = await findStudentByTgChatId(chatId);
+  if (!found) return;
+  const st = found.student;
+
+  await bot.sendMessage(chatId, `✅ Молодец, *${st.name}*! Я получил твой документ с ДЗ и уже передал его Игорю на проверку! 🌟`, { parse_mode: 'Markdown' }).catch(() => {});
+
+  const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+  if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
+    await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
+  }
+
+  await bot.sendDocument(ADMIN_CHAT_ID, msg.document.file_id, {
+    caption: `📄 *Документ/файл ДЗ от ученика: ${st.name}* (${msg.document.file_name || 'файл'})`,
+    parse_mode: 'Markdown',
+    reply_markup: lastLs ? { inline_keyboard: [[{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]] } : undefined
+  }).catch(async () => {
+    await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+  });
+});
+
 bot.on('photo', async (msg) => {
   var chatId = msg.chat.id;
   if (String(chatId) !== ADMIN_CHAT_ID) {
@@ -2796,11 +2822,14 @@ bot.on('photo', async (msg) => {
     if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
       await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
     }
-    await bot.sendMessage(ADMIN_CHAT_ID, `📬 *Ученик прислал фото ДЗ!* — *${st.name}*${msg.caption ? `\n💬 Подпись: ${msg.caption}` : ''}`, {
+    const largestPhoto = msg.photo[msg.photo.length - 1];
+    await bot.sendPhoto(ADMIN_CHAT_ID, largestPhoto.file_id, {
+      caption: `📸 *Фото тетради с ДЗ от ученика ${st.name}*\n${msg.caption ? '💬 Подпись: ' + msg.caption + '\n' : ''}🔥 Ученик выполнил письменное задание от руки!`,
       parse_mode: 'Markdown',
       reply_markup: lastLs ? { inline_keyboard: [[{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]] } : undefined
-    }).catch(() => {});
-    await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+    }).catch(async () => {
+      await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+    });
     return;
   }
   var chatId = msg.chat.id;
