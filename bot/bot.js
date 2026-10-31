@@ -1089,6 +1089,62 @@ async function processLessonQueues() {
         }
       }
     }
+
+    // 4. Анонсы предстоящих уроков ученикам и родителям
+    const { data: queuedAnnouncements } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[АНОНС_УРОКА_В_ТГ]%');
+    if (queuedAnnouncements && queuedAnnouncements.length > 0) {
+      for (const als of queuedAnnouncements) {
+        let rawHw = als.homework || '';
+        let studentAnn = null;
+        let parentAnn = null;
+
+        const sMatch = rawHw.match(/\[АНОНС_УЧЕНИКУ\]:([\s\S]*?)\[\/АНОНС_УЧЕНИКУ\]/);
+        if (sMatch) {
+          studentAnn = sMatch[1].trim();
+          rawHw = rawHw.replace(sMatch[0], '').trim();
+        }
+
+        const pMatch = rawHw.match(/\[АНОНС_РОДИТЕЛЮ\]:([\s\S]*?)\[\/АНОНС_РОДИТЕЛЮ\]/);
+        if (pMatch) {
+          parentAnn = pMatch[1].trim();
+          rawHw = rawHw.replace(pMatch[0], '').trim();
+        }
+
+        const cleanedHw = rawHw.replace('[АНОНС_УРОКА_В_ТГ]', '').replace('[ОТПРАВИТЬ_АНОНС_В_ТГ]', '').trim();
+        await db.from('lessons').update({ homework: cleanedHw }).eq('id', als.id);
+
+        if (als.students) {
+          const doss = parseStudentDossierBot(als.students);
+          let sentStudent = false;
+          let sentParent = false;
+
+          // Отправка ученику
+          if (studentAnn && doss.tgId) {
+            const sIds = String(doss.tgId).split(',').map(s => s.trim()).filter(Boolean);
+            for (const sid of sIds) {
+              await bot.sendMessage(sid, studentAnn, { parse_mode: 'Markdown' }).catch(() => {
+                return bot.sendMessage(sid, studentAnn);
+              }).then(() => { sentStudent = true; }).catch(() => {});
+            }
+          }
+
+          // Отправка родителю
+          if (parentAnn && doss.parentTgId) {
+            const pIds = String(doss.parentTgId).split(',').map(s => s.trim()).filter(Boolean);
+            for (const pid of pIds) {
+              await bot.sendMessage(pid, parentAnn, { parse_mode: 'Markdown' }).catch(() => {
+                return bot.sendMessage(pid, parentAnn);
+              }).then(() => { sentParent = true; }).catch(() => {});
+            }
+          }
+
+          if (adminId) {
+            const statusSummary = `📢 *Анонс урока отправлен!*\n👤 Ученик: *${als.students.name}*\n${sentStudent ? '✅ Ученику доставлено' : (studentAnn ? '⚠️ Ученик не подключен к ТГ' : '')}\n${sentParent ? '✅ Родителю доставлено' : (parentAnn ? '⚠️ Родитель не подключен к ТГ' : '')}`;
+            await bot.sendMessage(adminId, statusSummary, { parse_mode: 'Markdown' }).catch(() => {});
+          }
+        }
+      }
+    }
   } catch (e) {
     console.error('processLessonQueues error:', e.message);
   } finally {

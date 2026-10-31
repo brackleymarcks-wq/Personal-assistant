@@ -152,12 +152,15 @@ const TutoringPage = {
               </div>
               <div class="form-group">
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
-                  <button type="button" id="ls-btn-perplexity" class="btn btn-primary btn-xs" style="font-size:11px;padding:6px 10px;background:linear-gradient(135deg,#0d9488,#0284c7);border:none;color:#fff;display:flex;align-items:center;gap:5px;" title="Скопировать умный промпт со всей памятью об ученике и открыть его Perplexity Space">🔮 В Perplexity Space (копировать промпт)</button>
+                  <button type="button" id="ls-btn-vision-ai" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#0ea5e9;border-color:rgba(14,165,233,0.4);background:rgba(14,165,233,0.06);display:flex;align-items:center;gap:4px;" title="Загрузить страницу учебника/фото и определить тему, лексику и анонс">📸 Распознать тему из PNG</button>
+                  <button type="button" id="ls-btn-announce-tg" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#f59e0b;border-color:rgba(245,158,11,0.4);background:rgba(245,158,11,0.06);display:flex;align-items:center;gap:4px;" title="Сформировать и отправить анонс урока в Telegram ученику и родителю">📢 Анонс урока в ТГ</button>
+                  <button type="button" id="ls-btn-perplexity" class="btn btn-primary btn-xs" style="font-size:11px;padding:6px 10px;background:linear-gradient(135deg,#0d9488,#0284c7);border:none;color:#fff;display:flex;align-items:center;gap:5px;" title="Скопировать умный промпт со всей памятью об ученике и открыть его Perplexity Space">🔮 В Perplexity Space</button>
                   <button type="button" id="ls-btn-import-perplexity" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;border-color:rgba(13,148,136,0.4);color:#0d9488;" title="Вставить готовый конспект из Perplexity — ИИ сам заполнит тему, чистое ДЗ без ключей и пополнит словарь">📥 Из Perplexity</button>
                   <button type="button" id="ls-btn-zen-board" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;" title="Открыть чистый экран для демонстрации ученику в Zoom/Telegram (без цен и заметок)">🖥 Экран ученика</button>
                   <button type="button" id="ls-btn-send-tg" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#3b82f6;border-color:rgba(59,130,246,0.35);" title="Отправить домашнее задание и слова урока напрямую ученику в Telegram через бота">📨 Отправить ДЗ ученику в ТГ</button>
                   <button type="button" id="ls-btn-send-parent-tg" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#8b5cf6;border-color:rgba(139,92,246,0.35);" title="Сгенерировать и отправить отчёт об этом уроке родителю в Telegram">👨‍👩‍👧 Отчёт родителю в ТГ</button>
                 </div>
+                <input type="file" id="ls-vision-file-input" accept="image/*,.pdf" style="display:none;" />
                 <div id="ls-memory-banner" style="margin-bottom:12px;"></div>
                 <label class="form-label">Тема урока</label>
                 <input id="ls-topic" type="text" class="form-input" placeholder="Например: Past Simple" />
@@ -183,6 +186,7 @@ const TutoringPage = {
                       <span>Карточки и материалы ДЗ (PNG / Картинки)</span>
                     </label>
                     <div style="display:flex;gap:6px;">
+                      <button type="button" id="ls-btn-vision-from-cards" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0ea5e9;border-color:rgba(14,165,233,0.4);background:rgba(14,165,233,0.06);display:flex;align-items:center;gap:4px;" title="Распознать тему урока, правила и слова из фото">📸 Распознать тему</button>
                       <button type="button" id="ls-btn-gen-cards" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0d9488;border-color:rgba(13,148,136,0.35);" title="Сгенерировать стильные PNG-карточки слов для отправки в Telegram">🎨 Создать карточки (PNG)</button>
                       <button type="button" id="ls-btn-add-card-file" class="btn btn-secondary btn-xs" style="font-size:11px;" title="Прикрепить PNG/JPG с диска">📎 Прикрепить PNG</button>
                     </div>
@@ -228,7 +232,7 @@ const TutoringPage = {
                 <textarea id="ls-scenario" class="form-input" rows="4" style="font-size:12px;font-family:inherit;" placeholder="Вставьте сюда сценарий / конспект урока из Perplexity (все слайды, слова, правила). Бот запомнит этот сценарий и будет по нему подкидывать ученице 5 слов, 5 глаголов и тестик!"></textarea>
                 <input id="ls-materials" type="text" class="form-input" style="margin-top:6px;" placeholder="Ссылка на презентацию в Gamma / Google Диск / YouTube (https://...)" />
                 <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px;">
-                  <input type="file" id="ls-presentation-file" accept=".pdf,.pptx,.ppt" style="display:none;" />
+                  <input type="file" id="ls-presentation-file" accept=".pdf,.pptx,.ppt,image/*" style="display:none;" />
                   <button type="button" id="ls-btn-upload-pres" class="btn btn-secondary btn-xs" style="font-size:11px;display:inline-flex;align-items:center;gap:4px;">
                     <i data-lucide="file" style="width:12px;height:12px;"></i> 📎 Прикрепить файл презентации (PDF / PPTX)
                   </button>
@@ -389,6 +393,53 @@ const TutoringPage = {
               <button type="button" class="btn btn-secondary btn-sm" id="report-modal-copy"><i data-lucide="copy" style="width:14px;height:14px;"></i> Скопировать</button>
               <button type="button" class="btn btn-secondary btn-sm" id="report-modal-send-me"><i data-lucide="send" style="width:14px;height:14px;"></i> Отправить мне в ТГ</button>
               <button type="button" class="btn btn-primary btn-sm" id="report-modal-send-parent" style="background:#8b5cf6; border-color:#8b5cf6;"><i data-lucide="send" style="width:14px;height:14px;"></i> Отправить родителю в ТГ</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lesson Announcement Modal -->
+        <div id="announcement-modal" class="modal-overlay hidden">
+          <div class="modal" style="max-width: 740px; width: 95%; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+              <h2 class="modal-title" id="announcement-modal-title"><i data-lucide="megaphone" style="color:#f59e0b;"></i> 📢 Анонс урока в Telegram</h2>
+              <button class="modal-close" id="announcement-modal-close"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+              <div id="announcement-modal-status" style="margin-bottom:12px; font-size:13px; padding:10px 12px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border-light);"></div>
+              
+              <div class="form-group">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <label class="form-label" style="margin-bottom:0;font-weight:700;color:#3b82f6;display:flex;align-items:center;gap:6px;">
+                    <i data-lucide="user" style="width:14px;height:14px;"></i>
+                    <span>Анонс для УЧЕНИКА (в Telegram):</span>
+                  </label>
+                  <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+                    <input type="checkbox" id="announcement-send-student-check" checked />
+                    <span style="font-weight:600;">Отправить ученику</span>
+                  </label>
+                </div>
+                <textarea id="announcement-student-text" class="form-input" style="height:115px; font-size:13px; line-height:1.5; font-family:inherit; resize:vertical;" placeholder="Текст анонса для ученика..."></textarea>
+              </div>
+
+              <div class="form-group" style="margin-top:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <label class="form-label" style="margin-bottom:0;font-weight:700;color:#8b5cf6;display:flex;align-items:center;gap:6px;">
+                    <i data-lucide="users" style="width:14px;height:14px;"></i>
+                    <span>Анонс для РОДИТЕЛЯ (в Telegram):</span>
+                  </label>
+                  <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+                    <input type="checkbox" id="announcement-send-parent-check" checked />
+                    <span style="font-weight:600;">Отправить родителю</span>
+                  </label>
+                </div>
+                <textarea id="announcement-parent-text" class="form-input" style="height:115px; font-size:13px; line-height:1.5; font-family:inherit; resize:vertical;" placeholder="Текст анонса для родителя..."></textarea>
+              </div>
+            </div>
+            <div class="modal-footer" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+              <button type="button" class="btn btn-secondary btn-sm" id="announcement-modal-cancel">Отмена</button>
+              <button type="button" class="btn btn-primary btn-sm" id="announcement-modal-send" style="background:linear-gradient(135deg,#f59e0b,#d97706); border-color:#d97706; display:flex; align-items:center; gap:6px;">
+                <i data-lucide="send" style="width:14px;height:14px;"></i> Отправить анонс в Telegram
+              </button>
             </div>
           </div>
         </div>
@@ -936,6 +987,33 @@ const TutoringPage = {
     if (parentBtn) parentBtn.onclick = () => runTweeMode('parent_msg', parentBtn, '📲 Текст ученику/родителям');
     const gameBtn = document.getElementById('ls-ai-game');
     if (gameBtn) gameBtn.onclick = () => runTweeMode('game_5min', gameBtn, '🎮 Игра на 5 минут');
+    const visionBtn = document.getElementById('ls-btn-vision-ai');
+    const visionInput = document.getElementById('ls-vision-file-input');
+    if (visionBtn && visionInput) {
+      visionBtn.onclick = () => visionInput.click();
+      visionInput.onchange = (e) => {
+        const file = e.target.files?.[0];
+        if (file) this.handleVisionRecognition(file);
+        visionInput.value = '';
+      };
+    }
+    const visionCardsBtn = document.getElementById('ls-btn-vision-from-cards');
+    if (visionCardsBtn && visionInput) {
+      visionCardsBtn.onclick = () => visionInput.click();
+    }
+    const announceTgBtn = document.getElementById('ls-btn-announce-tg');
+    if (announceTgBtn) {
+      announceTgBtn.onclick = () => {
+        const stId = document.getElementById('ls-student').value;
+        const st = this.students.find(s => s.id === stId);
+        this.openAnnouncementModal(ls, st);
+      };
+    }
+    const annClose = document.getElementById('announcement-modal-close');
+    if (annClose) annClose.onclick = () => document.getElementById('announcement-modal')?.classList.add('hidden');
+    const annCancel = document.getElementById('announcement-modal-cancel');
+    if (annCancel) annCancel.onclick = () => document.getElementById('announcement-modal')?.classList.add('hidden');
+
     const pplxBtn = document.getElementById('ls-btn-perplexity');
     if (pplxBtn) pplxBtn.onclick = () => this.launchPerplexity(document.getElementById('ls-student').value, ls?.id);
     const impBtn = document.getElementById('ls-btn-import-perplexity');
@@ -2364,18 +2442,26 @@ const TutoringPage = {
     if (uploadBtn && fileInput && !uploadBtn._bound) {
       uploadBtn._bound = true;
       uploadBtn.onclick = () => fileInput.click();
-      fileInput.onchange = (e) => {
+      fileInput.onchange = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        if (file.size > 200 * 1024) {
+        if (file.type.startsWith('image/')) {
+          const dataUrl = await this.compressImage(file);
+          this.attachedPresentation = dataUrl;
+          this.renderPresentationBadge();
+          UI.toast('Изображение материалов прикреплено!', 'success');
+          this.handleVisionRecognition(dataUrl);
+          return;
+        }
+        if (file.size > 15 * 1024 * 1024) {
           if (fileInput) fileInput.value = '';
-          return UI.toast('Файл слишком большой (>200KB) для хранения в БД. Вставьте ссылку на Google Диск / Gamma в поле «Ссылка на презентацию» выше!', 'warning');
+          return UI.toast('Файл больше 15MB. Вставьте ссылку на Google Диск / Gamma в поле «Ссылка на презентацию» выше!', 'warning');
         }
         const reader = new FileReader();
         reader.onload = (ev) => {
           this.attachedPresentation = ev.target.result;
           this.renderPresentationBadge();
-          UI.toast('Презентация прикреплена к уроку!', 'success');
+          UI.toast('Материалы прикреплены к уроку!', 'success');
         };
         reader.readAsDataURL(file);
       };
@@ -2456,11 +2542,10 @@ const TutoringPage = {
       addFileBtn.onclick = () => fileInput.click();
       fileInput.onchange = (e) => {
         const files = Array.from(e.target.files || []);
-        files.forEach(file => {
+        files.forEach(async (file) => {
           if (!file.type.startsWith('image/')) return;
-          const reader = new FileReader();
-          reader.onload = (ev) => this.addCardDataUrl(ev.target.result);
-          reader.readAsDataURL(file);
+          const compressed = await this.compressImage(file);
+          this.addCardDataUrl(compressed);
         });
         fileInput.value = '';
       };
@@ -2473,11 +2558,17 @@ const TutoringPage = {
         e.preventDefault();
         dropzone.style.borderColor = 'var(--border-light)';
         const files = Array.from(e.dataTransfer.files || []);
-        files.forEach(file => {
+        let askedVision = false;
+        files.forEach(async (file) => {
           if (!file.type.startsWith('image/')) return;
-          const reader = new FileReader();
-          reader.onload = (ev) => this.addCardDataUrl(ev.target.result);
-          reader.readAsDataURL(file);
+          const compressed = await this.compressImage(file);
+          this.addCardDataUrl(compressed);
+          if (!askedVision) {
+            askedVision = true;
+            if (confirm('📸 Распознать тему урока, сценарий и лексику из этого файла через ИИ?')) {
+              this.handleVisionRecognition(compressed);
+            }
+          }
         });
       };
       dropzone.onclick = (e) => {
@@ -2494,9 +2585,9 @@ const TutoringPage = {
         for (const item of items) {
           if (item.type.indexOf('image') !== -1) {
             const blob = item.getAsFile();
-            const reader = new FileReader();
-            reader.onload = (ev) => this.addCardDataUrl(ev.target.result);
-            reader.readAsDataURL(blob);
+            this.compressImage(blob).then(compressed => {
+              this.addCardDataUrl(compressed);
+            });
           }
         }
       });
@@ -2697,6 +2788,199 @@ const TutoringPage = {
     } finally {
       if (procBtn) { procBtn.disabled = false; procBtn.textContent = '✨ Разобрать в отчёт и ошибки'; }
     }
+  },
+
+  compressImage(fileOrDataUrl, maxDim = 1400, quality = 0.82) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => {
+        if (typeof fileOrDataUrl === 'string') resolve(fileOrDataUrl);
+      };
+
+      if (typeof fileOrDataUrl === 'string') {
+        img.src = fileOrDataUrl;
+      } else {
+        const reader = new FileReader();
+        reader.onload = (e) => { img.src = e.target.result; };
+        reader.readAsDataURL(fileOrDataUrl);
+      }
+    });
+  },
+
+  async handleVisionRecognition(fileOrDataUrl) {
+    const studentId = document.getElementById('ls-student')?.value;
+    const st = this.students.find(s => s.id === studentId);
+    const dateVal = document.getElementById('ls-date')?.value;
+    const visionBtn = document.getElementById('ls-btn-vision-ai');
+
+    if (visionBtn) {
+      visionBtn.disabled = true;
+      visionBtn.innerHTML = '<i class="lucide-loader" style="width:12px;height:12px;animation:spin 1s linear infinite;"></i> Распознаю...';
+    }
+    UI.toast('🤖 Распознаю материалы урока через Vision ИИ...', 'info');
+
+    try {
+      let base64 = typeof fileOrDataUrl === 'string' ? fileOrDataUrl : await this.compressImage(fileOrDataUrl);
+      const studentCtx = st ? { name: st.name, grade: st.grade, ...this.parseStudentDossier(st) } : {};
+      const res = await Gemini.recognizeLessonImage(base64, studentCtx);
+
+      if (res.topic) {
+        const topicEl = document.getElementById('ls-topic');
+        if (topicEl) topicEl.value = res.topic;
+      }
+      if (res.scenario) {
+        const scenEl = document.getElementById('ls-scenario');
+        if (scenEl) {
+          scenEl.value = scenEl.value ? `${scenEl.value}\n\n${res.scenario}` : res.scenario;
+        }
+      }
+      if (res.vocabulary && st) {
+        const dossier = this.parseStudentDossier(st);
+        const currentVocab = dossier.vocab || '';
+        const newWords = res.vocabulary.split(',').map(w => w.trim()).filter(w => w && !currentVocab.includes(w));
+        if (newWords.length > 0) {
+          const updatedVocab = currentVocab ? `${currentVocab}, ${newWords.join(', ')}` : newWords.join(', ');
+          const newSched = this.serializeStudentDossier(
+            dossier.schedule, dossier.interests, dossier.errors, updatedVocab,
+            dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId,
+            dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser
+          );
+          await DB.updateStudent(st.id, { schedule: newSched });
+          st.schedule = newSched;
+        }
+      }
+
+      UI.toast('✅ Тема урока и лексика успешно распознаны!', 'success');
+
+      await this.openAnnouncementModal(
+        { id: this.currentLessonId, date: dateVal, topic: res.topic, scenario: res.scenario },
+        st,
+        res.announcement_student,
+        res.announcement_parent
+      );
+    } catch (err) {
+      console.error('Vision recognition error:', err);
+      UI.toast('Ошибка распознавания: ' + err.message, 'error');
+    } finally {
+      if (visionBtn) {
+        visionBtn.disabled = false;
+        visionBtn.innerHTML = '📸 Распознать тему из PNG';
+      }
+    }
+  },
+
+  async openAnnouncementModal(ls = null, st = null, customStudentAnn = '', customParentAnn = '') {
+    const modal = document.getElementById('announcement-modal');
+    if (!modal) return;
+
+    const studentId = st?.id || document.getElementById('ls-student')?.value;
+    const student = st || this.students.find(s => s.id === studentId);
+    if (!student) return UI.toast('Выберите ученика', 'warning');
+
+    const dossier = this.parseStudentDossier(student);
+    const dateVal = ls?.date || document.getElementById('ls-date')?.value;
+    const topicVal = ls?.topic || document.getElementById('ls-topic')?.value?.trim() || 'Практика английского языка';
+
+    const dStr = dateVal ? new Date(dateVal).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : 'сегодня';
+    const tStr = dateVal ? new Date(dateVal).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '17:00';
+
+    const statusDiv = document.getElementById('announcement-modal-status');
+    const studentTextarea = document.getElementById('announcement-student-text');
+    const parentTextarea = document.getElementById('announcement-parent-text');
+    const studentCheck = document.getElementById('announcement-send-student-check');
+    const parentCheck = document.getElementById('announcement-send-parent-check');
+
+    let statusHtml = '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;">';
+    statusHtml += `<div style="font-size:12px;display:flex;align-items:center;gap:6px;">👤 <b>Ученик (${this.escapeHtml(student.name)}):</b> ${dossier.tgId ? `<span style="color:var(--success);font-weight:700;">✅ В сети (${this.escapeHtml(dossier.tgUser || 'ID: ' + dossier.tgId)})</span>` : `<span style="color:#f59e0b;">⚠️ Нет Telegram ID</span>`}</div>`;
+    statusHtml += `<div style="font-size:12px;display:flex;align-items:center;gap:6px;">👨‍👩‍👧 <b>Родитель:</b> ${dossier.parentTgId ? `<span style="color:var(--success);font-weight:700;">✅ В сети (${this.escapeHtml(dossier.parentTgUser || 'ID: ' + dossier.parentTgId)})</span>` : `<span style="color:#f59e0b;">⚠️ Нет Telegram ID</span>`}</div>`;
+    statusHtml += '</div>';
+    statusDiv.innerHTML = statusHtml;
+
+    if (studentCheck) studentCheck.checked = !!dossier.tgId;
+    if (parentCheck) parentCheck.checked = !!dossier.parentTgId;
+
+    studentTextarea.value = customStudentAnn || `Привет, ${student.name}! 🚀\nСегодня (${dStr}) в ${tStr} у нас занятие по английскому!\n\n🎯 Тема урока: ${topicVal}\nПриготовь отличное настроение, скоро начинаем! 👍`;
+    parentTextarea.value = customParentAnn || `Здравствуйте! 👋\nНапоминаю, что сегодня (${dStr}) в ${tStr} состоится занятие по английскому языку с ${student.name}.\n\n📚 Тема занятия: ${topicVal}\nПосле урока пришлю подробный отчёт об успехах и домашнее задание. Спасибо за поддержку!`;
+
+    modal.classList.remove('hidden');
+
+    const sendBtn = document.getElementById('announcement-modal-send');
+    sendBtn.onclick = async () => {
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = '<i class="lucide-loader" style="width:14px;height:14px;animation:spin 1s linear infinite;"></i> Отправка...';
+
+      try {
+        const sendStudent = studentCheck?.checked;
+        const sendParent = parentCheck?.checked;
+        const sText = studentTextarea.value.trim();
+        const pText = parentTextarea.value.trim();
+
+        if (!sendStudent && !sendParent) {
+          return UI.toast('Выберите хотя бы одного получателя (ученика или родителя)', 'warning');
+        }
+
+        let queuePayload = '\n[АНОНС_УРОКА_В_ТГ]';
+        if (sendStudent && sText) {
+          queuePayload += `\n[АНОНС_УЧЕНИКУ]:\n${sText}\n[/АНОНС_УЧЕНИКУ]`;
+        }
+        if (sendParent && pText) {
+          queuePayload += `\n[АНОНС_РОДИТЕЛЮ]:\n${pText}\n[/АНОНС_РОДИТЕЛЮ]`;
+        }
+
+        let targetLessonId = ls?.id || this.currentLessonId;
+        if (!targetLessonId) {
+          const newLesson = await DB.createLesson({
+            student_id: student.id,
+            date: dateVal || new Date().toISOString(),
+            topic: topicVal,
+            homework: queuePayload,
+            status: 'Запланирован',
+            paid: false
+          });
+          targetLessonId = newLesson.id;
+        } else {
+          const existing = this.lessons.find(l => l.id === targetLessonId);
+          const cleanHw = (existing?.homework || '')
+            .replace('[АНОНС_УРОКА_В_ТГ]', '')
+            .replace(/\[АНОНС_УЧЕНИКУ\]:[\s\S]*?\[\/АНОНС_УЧЕНИКУ\]/g, '')
+            .replace(/\[АНОНС_РОДИТЕЛЮ\]:[\s\S]*?\[\/АНОНС_РОДИТЕЛЮ\]/g, '')
+            .trim();
+          await DB.updateLesson(targetLessonId, {
+            topic: topicVal,
+            homework: `${cleanHw}${queuePayload}`.trim()
+          });
+        }
+
+        UI.toast('📢 Анонс урока успешно отправлен в Telegram бот!', 'success');
+        modal.classList.add('hidden');
+        await this.load();
+      } catch (err) {
+        UI.toast('Ошибка отправки: ' + err.message, 'error');
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i data-lucide="send" style="width:14px;height:14px;"></i> Отправить анонс в Telegram';
+        if (window.lucide) lucide.createIcons();
+      }
+    };
   },
 
   escapeHtml(str) {
