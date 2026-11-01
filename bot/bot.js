@@ -4828,6 +4828,68 @@ bot.on('message', async (msg) => {
       return;
     }
 
+    const trimmed = studentText.trim();
+    const lower = trimmed.toLowerCase();
+
+    // 1. ПРОВЕРКА НАМЕРЕНИЯ: Ученик спрашивает про домашнее задание («а какое дз», «скинь дз», «где дз»)
+    const isAskingForHw = /какое\s*(?:то)?\s*дз|скинь\s*(?:мне)?\s*дз|где\s*дз|что\s*задано|какое\s*задание|дай\s*дз|что\s*делать|мое\s*дз|напомни\s*дз/i.test(lower);
+    if (isAskingForHw && !isVoiceSubmission) {
+      const { data: latestLs } = await db.from('lessons')
+        .select('*')
+        .eq('student_id', st.id)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const { cleanHw: rawCleanHw, cards } = extractAttachedCards(latestLs?.homework || '');
+      const hwText = rawCleanHw.split('\\n[МАТЕРИАЛЫ]:')[0]
+        .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*?(?=\n\n|$)/gi, '')
+        .replace(/\[(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ)\]:[\s\S]*?\[\/(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ)\]/g, '')
+        .replace('[ДЗ_ПРОВЕРЕНО]', '')
+        .replace('[ДЗ_СДАНО]', '')
+        .replace('[ОТПРАВИТЬ_В_ТГ]', '')
+        .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
+        .replace('[ПЕРЕНЕСЕН_В_ТГ]', '')
+        .trim();
+
+      if (cards && cards.length > 0) {
+        await sendCardsToChat(chatId, cards, '🖼 Карточка к домашнему заданию');
+      }
+
+      const replyHw = hwText 
+        ? `📚 *Вот твоё домашнее задание, ${st.name}:*\n\n${hwText}\n\n✍️ *Напоминаю:* выполни Шаг 2 письменно от руки в тетрадке, сфотографируй и отправь фото прямо сюда! 👍`
+        : `📚 *Домашнее задание:*\nПовторить слова и правила прошедшего урока. Если нужно уточнить задание — Игорь подскажет на занятии! 👍`;
+
+      const kb = buildStudentKeyboard(st, latestLs);
+      await bot.sendMessage(chatId, replyHw, { parse_mode: 'Markdown', reply_markup: kb }).catch(() => bot.sendMessage(chatId, replyHw));
+
+      await bot.sendMessage(ADMIN_CHAT_ID, `ℹ️ *Ученик ${st.name}* спросил в чате: «${studentText}». Бот отправил актуальное ДЗ ученику.`, { parse_mode: 'Markdown' }).catch(() => {});
+      return;
+    }
+
+    // 2. ПРОВЕРКА НАМЕРЕНИЯ: Короткая организационная реплика («я знаю», «ок», «хорошо», «спасибо», «привет»)
+    const isShortReaction = /^(я знаю|ок|окей|хорошо|понял|поняла|спасибо|привет|здравствуйте|буду|договорились|ясно|ага|да|ладно|отлично|добрый день|здравствуй)$/i.test(lower) || 
+      (trimmed.length < 15 && !/[a-zA-Z]/.test(trimmed) && !/\d/.test(trimmed));
+
+    if (isShortReaction && !isVoiceSubmission) {
+      await bot.sendMessage(chatId, `👍 Договорились, *${st.name}*! До встречи на уроке! 🇬🇧\n_Если будут вопросы по домашке — пиши сюда!_`, { parse_mode: 'Markdown' }).catch(() => {});
+      await bot.sendMessage(ADMIN_CHAT_ID, `💬 *Ученик ${st.name}:* «${studentText}»`, { parse_mode: 'Markdown' }).catch(() => {});
+      return;
+    }
+
+    // 3. РЕАЛЬНАЯ СДАЧА ДЗ: только если это голосовое Speaking ИЛИ текст содержит реальные ответы (английские слова / нумерацию упражнений)
+    const hasEnglishContent = /[a-zA-Z]{3,}/.test(trimmed);
+    const hasExerciseNumbering = /(?:^|\n)\s*\d+[.)]/m.test(trimmed);
+    const isRealHwSubmission = isVoiceSubmission || (trimmed.length >= 15 && (hasEnglishContent || hasExerciseNumbering));
+
+    if (!isRealHwSubmission) {
+      // Обычный свободный вопрос или сообщение ученика (не ДЗ)
+      await bot.sendMessage(chatId, `👋 Принял твоё сообщение, *${st.name}*! Я передал его преподавателю Игорю.`, { parse_mode: 'Markdown' }).catch(() => {});
+      await bot.sendMessage(ADMIN_CHAT_ID, `💬 *Сообщение от ученика ${st.name}:*\n«${studentText}»`, { parse_mode: 'Markdown' }).catch(() => {});
+      return;
+    }
+
+    // Здесь ученик РЕАЛЬНО сдает домашнее задание текстом или голосом!
     const newStreak = await incrementStudentStreakBot(st);
     if (isVoiceSubmission && studentText) {
       const speakPrompt = `Ученик ${st.name} (${st.grade || ''}) прислал голосовое сообщение на английском (Speaking practice).\nРаспознанная речь ученика:\n"${studentText}"\n\nНапиши короткий (до 700 символов), очень тёплый и вдохновляющий разбор напрямую для ученика ${st.name}: похвали за смелость и разговорную практику, отметь удачные фразы и мягко подскажи 1-2 улучшения (как сказать ещё естественнее/правильнее).`;
@@ -4835,22 +4897,19 @@ bot.on('message', async (msg) => {
       const speakFeedback = speakRes.generated_plan || 'Отличная разговорная практика! Так держать!';
       await bot.sendMessage(chatId, `🎤 *Я распознал твою речь:*\n_${studentText}_\n\n🇬🇧 *Разбор Speaking:*\n${speakFeedback}\n\n🔥 *+15 XP за Speaking! Твоя серия: ${newStreak} подряд!* 🏆`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, speakFeedback));
     } else {
-      await bot.sendMessage(chatId, `✅ Супер, *${st.name}*! Я передал твой ответ Игорю на проверку! 🌟\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+10 XP)*`, {
+      await bot.sendMessage(chatId, `✅ Супер, *${st.name}*! Твой письменный ответ принят и передан Игорю! 🌟\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+15 XP)*`, {
         parse_mode: 'Markdown',
         reply_markup: { inline_keyboard: [[{ text: '🎯 Потренировать мои слова', callback_data: 'student_quiz' }]] }
       }).catch(() => {});
     }
-    if (!studentText) studentText = '[Голосовое/медиа сообщение]';
-    if (false) {
-    await bot.sendMessage( chatId, `✅ Супер, *${st.name}*! Я передал твой ответ Игорю на проверку! 🌟`, { parse_mode: 'Markdown' }).catch(() => {});
-    }
+
     const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
     const cleanHw = (lastLs?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim();
     const scenario = extractLessonScenario(lastLs?.homework || '');
 
     // Autonomous AI Grading & Verification
     let aiGrading = null;
-    if (studentText && studentText.length >= 3 && lastLs) {
+    if (studentText && lastLs) {
       try {
         const gradePrompt = `Ты — профессиональный методист и преподаватель английского языка.
 Ученик ${st.name} (${st.grade || ''}) сдал домашнее задание.
