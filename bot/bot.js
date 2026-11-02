@@ -786,10 +786,104 @@ function getPracticeProgress(studentId, lessonId) {
       quizRound: 0,
       seenWords: [],
       seenVerbs: [],
-      userScores: {}
+      userScores: {},
+      pollsAnswered: 0,
+      pollsCorrect: 0,
+      cardsKnown: 0,
+      completedSteps: {
+        words: false,      // +25% (Слова урока или Флеш-карточки)
+        grammar: false,    // +25% (Правило / Глаголы / Мини-игра)
+        quiz: false,       // +25% (Тестик из 3 вопросов или мини-квиз)
+        written: false     // +75% (Письменное задание в чате / фото тетради / голосовое)
+      }
     };
   }
   return studentPracticeProgress[key];
+}
+
+function getHwCompletionSummary(st, lesson) {
+  const prog = getPracticeProgress(st?.id, lesson?.id);
+  const hwRaw = lesson?.homework || '';
+
+  // Restore from lesson tags if server restarted
+  if (hwRaw.includes('[ДЗ_ПРОВЕРЕНО]')) {
+    prog.completedSteps.written = true;
+    prog.completedSteps.words = true;
+    prog.completedSteps.grammar = true;
+    prog.completedSteps.quiz = true;
+  } else if (hwRaw.includes('[ДЗ_СДАНО]')) {
+    prog.completedSteps.written = true;
+  }
+
+  const stepWords = !!(prog.completedSteps.words || prog.wordsBatch > 0 || prog.cardsKnown >= 2);
+  const stepGrammar = !!(prog.completedSteps.grammar || prog.verbsBatch > 0);
+  const stepQuiz = !!(prog.completedSteps.quiz || prog.pollsAnswered >= 2);
+  const stepWritten = !!(prog.completedSteps.written);
+
+  let pct = 0;
+  if (stepWords) pct += 25;
+  if (stepGrammar) pct += 25;
+  if (stepQuiz) pct += 25;
+  if (stepWritten) pct += 75;
+
+  const savedMatch = hwRaw.match(/\[ПРОГРЕСС_ДЗ:(\d+)%\]/);
+  if (savedMatch) {
+    const savedPct = parseInt(savedMatch[1], 10) || 0;
+    if (savedPct > pct) pct = savedPct;
+  }
+  if (hwRaw.includes('[ДЗ_ПРОВЕРЕНО]')) pct = 100;
+  if (pct > 100) pct = 100;
+
+  const doneList = [];
+  const leftList = [];
+
+  if (stepWritten) {
+    doneList.push('✍️ Письменное задание / ответ в чате (+75%)');
+  } else {
+    leftList.push('✍️ Прислать фото тетрадки или написать ответы на письменное задание в чат (+75%)');
+  }
+
+  if (stepWords) {
+    doneList.push(`🔤 Слова урока / Флеш-карточки (+25%, изучено слов: ${prog.seenWords.length || prog.cardsKnown || 5})`);
+  } else {
+    leftList.push('🔤 Нажать «Слова урока» или пройти «Флеш-карточки» (+25%)');
+  }
+
+  if (stepGrammar) {
+    doneList.push('🧩 Разбор правила / Глаголы / Мини-игра (+25%)');
+  } else {
+    leftList.push('🧩 Открыть «Разбор правила / Глаголы / Мини-игру» (+25%)');
+  }
+
+  if (stepQuiz) {
+    doneList.push(`📝 Мини-тест по уроку (+25%, ответов: ${prog.pollsAnswered || 3}, верно: ${prog.pollsCorrect || 0})`);
+  } else {
+    leftList.push('📝 Пройти «Тестик по уроку» из 3 вопросов (+25%)');
+  }
+
+  const canSubmit = pct >= 75;
+  return {
+    pct,
+    canSubmit,
+    doneList,
+    leftList,
+    doneText: doneList.length > 0 ? doneList.join('\n• ') : 'Пока ничего не выполнено (0%)',
+    leftText: leftList.length > 0 ? leftList.join('\n• ') : 'Все блоки выполнены на 100%!'
+  };
+}
+
+async function persistHwProgressPercent(lesson, pct) {
+  if (!lesson || !lesson.id) return;
+  try {
+    let hw = lesson.homework || '';
+    if (/\[ПРОГРЕСС_ДЗ:\d+%\]/.test(hw)) {
+      hw = hw.replace(/\[ПРОГРЕСС_ДЗ:\d+%\]/g, `[ПРОГРЕСС_ДЗ:${pct}%]`);
+    } else {
+      hw = `${hw.trim()} [ПРОГРЕСС_ДЗ:${pct}%]`.trim();
+    }
+    lesson.homework = hw;
+    await db.from('lessons').update({ homework: hw }).eq('id', lesson.id);
+  } catch (e) {}
 }
 
 function addStudentXp(studentId, lessonId, userId, userName, amount) {
@@ -983,28 +1077,26 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
   if (doss.vocab) msg += `🔤 *Полезные слова (Vocabulary):* ${doss.vocab}\n`;
   if (rawHw) msg += `\n📌 *Домашнее задание:*\n${rawHw}\n`;
   if (cards.length > 0) msg += `\n🖼 *Прикреплено карточек к уроку:* ${cards.length} шт. (отправлены выше)`;
-  // Calculate progress bar
-  const prog = getPracticeProgress(st.id, lesson?.id);
-  const totalWords = 20;
-  const learned = Math.min(prog.seenWords.length, totalWords);
-  const pct = Math.round((learned / totalWords) * 100);
+  // Calculate progress bar & HW completion readiness
+  const hwStatus = getHwCompletionSummary(st, lesson);
+  const pct = hwStatus.pct;
   const filled = Math.round(pct / 10);
   const bar = '▓'.repeat(filled) + '░'.repeat(10 - filled);
 
-  msg += `\n📊 *Прогресс слов урока:* [${bar}] ${pct}% (${learned}/${totalWords} слов)\n`;
+  msg += `\n📊 *Готовность ДЗ:* [${bar}] *${pct}%* (для сдачи нужно минимум 75%)\n`;
   msg += `🔥 *Твоя серия (Streak):* ${doss.streak || 0} ДЗ подряд без пропусков!\n`;
   const lbText = getLeaderboardText(st.id, lesson?.id);
   if (lbText) msg += lbText;
-  msg += `\n_Когда выполнишь — нажми кнопку ниже, пришли голосовое сообщение или фото тетрадки!_ 💪`;
+  msg += `\n_Как сдать ДЗ: пришли сюда фото тетрадки ИЛИ напиши ответы текстом в чат (либо пройди все интерактивные кнопки ниже до 75%+)!_ 💪`;
 
-  const kb = buildStudentKeyboard(st, lesson);
+  const kbMarkup = buildStudentKeyboard(st, lesson);
   try {
     for (const tid of targetIds) {
       if (cards.length > 0) {
         await sendCardsToChat(tid, cards, '🖼 Карточка к ДЗ');
       }
-      await bot.sendMessage(tid, msg, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
-        return bot.sendMessage(tid, msg, { reply_markup: { inline_keyboard: kb } });
+      await bot.sendMessage(tid, msg, { parse_mode: 'Markdown', reply_markup: kbMarkup }).catch(() => {
+        return bot.sendMessage(tid, msg, { reply_markup: kbMarkup });
       });
     }
 
@@ -1015,12 +1107,13 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
         if (cards.length > 0) {
           await sendCardsToChat(adminId, cards, `🖼 [Копия для преподавателя] Карточки ДЗ для ${st.name}`).catch(() => {});
         }
-        const adminHeader = `👀 *[Копия для преподавателя — ученик ${st.name} открыл материалы в боте (${lesson?.status === 'Запланирован' ? 'до урока' : 'после урока'})]:*\n\n`;
+        const adminHeader = `👀 *[Копия для преподавателя — отправлено ученику ${st.name} (${lesson?.status === 'Запланирован' ? 'до урока' : 'после урока'})]:*\n` +
+          `📊 *Готовность ДЗ ученика сейчас:* ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Ещё не достиг 75% 🔒'})\n\n`;
         await bot.sendMessage(adminId, adminHeader + msg, {
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: kb }
+          reply_markup: kbMarkup
         }).catch(() => {
-          return bot.sendMessage(adminId, adminHeader + msg, { reply_markup: { inline_keyboard: kb } });
+          return bot.sendMessage(adminId, adminHeader + msg, { reply_markup: kbMarkup });
         });
       } catch (err) {
         console.warn('Teacher copy error:', err.message);
@@ -1753,6 +1846,11 @@ function buildStudentKeyboard(st, lesson) {
   const topic = ((lesson?.topic || '') + ' ' + (st?.name || '')).toLowerCase();
   const textContent = ((lesson?.homework || '')).toLowerCase();
 
+  const hwStatus = getHwCompletionSummary(st, lesson);
+  const submitBtnText = hwStatus.canSubmit
+    ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}%)`
+    : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`;
+
   let dynamicBtn = { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` };
   if (st.name.includes('Курочкина') || topic.includes('местоимен') || topic.includes('pronoun') || topic.includes('whose') || topic.includes('owner') || topic.includes("'s") || textContent.includes('притяжательн')) {
     dynamicBtn = { text: '🧩 Чей питомец? (Местоимения)', callback_data: `student_grammar_rule:${st.id}` };
@@ -1764,7 +1862,7 @@ function buildStudentKeyboard(st, lesson) {
 
   return {
     inline_keyboard: [
-      [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lesson?.id || ''}` }],
+      [{ text: submitBtnText, callback_data: `student_hw_done:${lesson?.id || ''}` }],
       [{ text: '🔤 Слова урока', callback_data: `student_words:${st.id}` }, dynamicBtn],
       [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }]
     ]
@@ -2935,15 +3033,25 @@ bot.on('document', async (msg) => {
   if (!found) return;
   const st = found.student;
 
-  await bot.sendMessage(chatId, `✅ Молодец, *${st.name}*! Я получил твой документ с ДЗ и уже передал его Игорю на проверку! 🌟`, { parse_mode: 'Markdown' }).catch(() => {});
-
   const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
-  if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
-    await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
+  const prog = getHwCompletionSummary(st, lastLs);
+  prog.completedSteps.written = true;
+  const updatedProg = getHwCompletionSummary(st, lastLs);
+  if (lastLs) {
+    await persistHwProgressPercent(lastLs, updatedProg.pct);
+    if (!(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
+      await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
+    }
   }
 
+  const studentDocReply = `✅ Молодец, *${st.name}*! Я получил твой файл с ДЗ и уже передал его Игорю на проверку! 🌟\n📊 *Готовность ДЗ: ${updatedProg.pct}%* (кнопка сдачи ДЗ разблокирована!)`;
+  await bot.sendMessage(chatId, studentDocReply, {
+    parse_mode: 'Markdown',
+    reply_markup: buildStudentKeyboard(st, lastLs)
+  }).catch(() => {});
+
   await bot.sendDocument(ADMIN_CHAT_ID, msg.document.file_id, {
-    caption: `📄 *Документ/файл ДЗ от ученика: ${st.name}* (${msg.document.file_name || 'файл'})`,
+    caption: `📄 *Документ/файл ДЗ от ученика: ${st.name}* (${msg.document.file_name || 'файл'})\n📊 *Готовность ДЗ:* ${updatedProg.pct}%\n✅ *Сделано:* ${updatedProg.doneList.join(', ')}\n⏳ *Осталось:* ${updatedProg.todoList.join(', ') || 'Ничего'}\n\n📨 *Копия ответа ученику:*\n${studentDocReply}`,
     parse_mode: 'Markdown',
     reply_markup: lastLs ? { inline_keyboard: [[{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]] } : undefined
   }).catch(async () => {
@@ -2974,20 +3082,7 @@ bot.on('photo', async (msg) => {
     if (!found) {
       return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
     }
-    const st = found.student;
-    await bot.sendMessage(chatId, `✅ Молодец, *${st.name}*! Я получил фото твоего домашнего задания и уже переслал его Игорю на проверку! 🌟`, { parse_mode: 'Markdown' }).catch(() => {});
-    const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
-    if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
-      await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
-    }
-    const largestPhoto = msg.photo[msg.photo.length - 1];
-    await bot.sendPhoto(ADMIN_CHAT_ID, largestPhoto.file_id, {
-      caption: `📸 *Фото тетради с ДЗ от ученика ${st.name}*\n${msg.caption ? '💬 Подпись: ' + msg.caption + '\n' : ''}🔥 Ученик выполнил письменное задание от руки!`,
-      parse_mode: 'Markdown',
-      reply_markup: lastLs ? { inline_keyboard: [[{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]] } : undefined
-    }).catch(async () => {
-      await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
-    });
+    // Фото от ученика обрабатывается комплексно (с ИИ-проверкой рукописи, 75% прогрессом и копией учителю) в едином обработчике bot.on('message') ниже
     return;
   }
   var chatId = msg.chat.id;
@@ -3432,26 +3527,34 @@ ${scenario ? `СТРОГО ИСПОЛЬЗУЙ МАТЕРИАЛЫ И СЛОВАР
         }
       }
 
+      prog.completedSteps.words = true;
+      const hwStatus = getHwCompletionSummary(st, lastLs);
+      await persistHwProgressPercent(lastLs, hwStatus.pct);
+      const submitBtnLabel = hwStatus.canSubmit
+        ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}%)`
+        : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`;
+
       const kb = [
         [{ text: '📝 Пройти тестик (3 вопроса)', callback_data: `student_poll_quiz:${st.id}` }],
         [{ text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
-        [{ text: '🔤 Следующие 5 слов урока', callback_data: `student_words:${st.id}` }]
+        [{ text: '🔤 Следующие 5 слов урока', callback_data: `student_words:${st.id}` }],
+        [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
       ];
       await sendCleanMessage(chatId, rawText, { reply_markup: { inline_keyboard: kb } });
-
-      // Notify Igor (teacher) in Telegram
-      const wordsList = extractedWords.length > 0 ? extractedWords.map(w => '• ' + w).join('\n') : rawText;
-      await bot.sendMessage(ADMIN_CHAT_ID,
-        `🔤 <b>${st.name}</b> изучает слова урока в боте! (Порция #${prog.wordsBatch})\n\n` +
-        `📚 <b>Тема:</b> ${lastLs?.topic || 'Английский'}\n` +
-        `📝 <b>Слова:</b>\n${wordsList}`,
-        { parse_mode: 'HTML' }
-      ).catch(() => {});
 
       // Send audio pronunciation via Google TTS
       if (extractedWords.length > 0) {
         await sendTtsAudio(chatId, extractedWords.join('. ') + '.', `Произношение слов (порция ${prog.wordsBatch})`, '🔊 Послушай, как звучат эти слова на английском');
       }
+
+      // Full verbatim copy + readiness report to Igor (teacher)
+      await sendCleanMessage(ADMIN_CHAT_ID,
+        `👀 [Копия для преподавателя — ${st.name} нажал(а) «🔤 Слова урока» (Порция #${prog.wordsBatch})]:\n` +
+        `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% 🔒'})\n` +
+        `✅ Что уже сделано:\n• ${hwStatus.doneText}\n` +
+        `⏳ Что ещё осталось:\n• ${hwStatus.leftText}\n\n` +
+        `📩 Полный текст, отправленный ученику:\n${rawText}`
+      ).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -3514,19 +3617,28 @@ ${scenario ? `ИСПОЛЬЗУЙ ГЛАГОЛЫ И ПРАВИЛА ИЗ СЦЕН�
         }
       }
 
+      prog.completedSteps.grammar = true;
+      const hwStatus = getHwCompletionSummary(st, lastLs);
+      await persistHwProgressPercent(lastLs, hwStatus.pct);
+      const submitBtnLabel = hwStatus.canSubmit
+        ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}%)`
+        : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`;
+
       const kb = [
         [{ text: '📝 Пройти тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
         [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }],
-        [{ text: '⚡ Ещё 5 глаголов', callback_data: `student_verbs:${st.id}` }]
+        [{ text: '⚡ Ещё 5 глаголов', callback_data: `student_verbs:${st.id}` }],
+        [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
       ];
       await sendCleanMessage(chatId, rawText, { reply_markup: { inline_keyboard: kb } });
 
-      // Notify Igor (teacher) in Telegram
-      await bot.sendMessage(ADMIN_CHAT_ID,
-        `⚡ <b>${st.name}</b> тренирует глаголы урока! (Порция #${prog.verbsBatch})\n\n` +
-        `📚 <b>Тема:</b> ${lastLs?.topic || 'Глаголы'}\n` +
-        `📝 <b>Глаголы:</b>\n${lines.filter(l => l.match(/^\d+\./)).join('\n') || rawText}`,
-        { parse_mode: 'HTML' }
+      // Full verbatim copy + readiness report to Igor (teacher)
+      await sendCleanMessage(ADMIN_CHAT_ID,
+        `👀 [Копия для преподавателя — ${st.name} нажал(а) «⚡ 5 глаголов» (Порция #${prog.verbsBatch})]:\n` +
+        `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% 🔒'})\n` +
+        `✅ Что уже сделано:\n• ${hwStatus.doneText}\n` +
+        `⏳ Что ещё осталось:\n• ${hwStatus.leftText}\n\n` +
+        `📩 Полный текст, отправленный ученику:\n${rawText}`
       ).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
@@ -3591,19 +3703,29 @@ ${scenario ? `ИСПОЛЬЗУЙ ГЛАГОЛЫ И ПРАВИЛА ИЗ СЦЕН�
       const genRes = await executeFunctionCall('generate_lesson_plan', { prompt });
       const rawText = genRes.generated_plan || `${ruleTitle}\n\nПовтори материалы урока и составь предложение!`;
 
+      const prog = getPracticeProgress(st.id, lastLs?.id);
+      prog.completedSteps.grammar = true;
+      const hwStatus = getHwCompletionSummary(st, lastLs);
+      await persistHwProgressPercent(lastLs, hwStatus.pct);
+      const submitBtnLabel = hwStatus.canSubmit
+        ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}%)`
+        : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`;
+
       const kb = [
         [{ text: '📝 Пройти тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
         [{ text: '🔤 Слова урока', callback_data: `student_words:${st.id}` }],
-        [{ text: '✅ Я сделал(а) ДЗ!', callback_data: `student_hw_done:${lastLs?.id || ''}` }]
+        [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
       ];
 
-      await sendCleanMessage(chatId, `${ruleTitle}\n\n${rawText}`, { reply_markup: { inline_keyboard: kb } });
+      const fullGrammarMsg = `${ruleTitle}\n\n${rawText}`;
+      await sendCleanMessage(chatId, fullGrammarMsg, { reply_markup: { inline_keyboard: kb } });
 
-      await bot.sendMessage(ADMIN_CHAT_ID,
-        `🧩 <b>${st.name}</b> открыл(а) тренировку грамматики:\n` +
-        `📚 <b>${ruleTitle}</b>\n` +
-        `Ученик получил разбор правила и задание на самопроверку.`,
-        { parse_mode: 'HTML' }
+      await sendCleanMessage(ADMIN_CHAT_ID,
+        `👀 [Копия для преподавателя — ${st.name} открыл(а) разбор грамматики]:\n` +
+        `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% 🔒'})\n` +
+        `✅ Что уже сделано:\n• ${hwStatus.doneText}\n` +
+        `⏳ Что ещё осталось:\n• ${hwStatus.leftText}\n\n` +
+        `📩 Полный текст объяснения и задания, отправленный ученику:\n${fullGrammarMsg}`
       ).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
@@ -3746,33 +3868,46 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, С
 
       await bot.sendMessage(chatId, `🎯 <b>Мини-тест по уроку для ${st.name} (Раунд ${prog.quizRound}):</b>\nОтвечай прямо на вопросы викторины ниже 👇`, { parse_mode: 'HTML' });
 
+      const pollSummaryForTeacher = [];
       for (let i = 0; i < quizList.length; i++) {
         const q = quizList[i];
         if (q.options && q.options.length >= 2) {
-          const sentPoll = await bot.sendPoll(chatId, q.question, q.options.slice(0, 4), {
+          const opts = q.options.slice(0, 4);
+          const cId = Number(q.correct_id) || 0;
+          const sentPoll = await bot.sendPoll(chatId, q.question, opts, {
             type: 'quiz',
-            correct_option_id: Number(q.correct_id) || 0,
+            correct_option_id: cId,
             explanation: (q.explanation || 'Молодец!').slice(0, 200),
             is_anonymous: false
           });
           if (sentPoll?.poll?.id) {
             activePolls.set(sentPoll.poll.id, {
+              studentId: st.id,
               studentName: st.name,
+              lessonId: lastLs?.id || '',
+              chatId: chatId,
               question: q.question,
-              options: q.options.slice(0, 4),
-              correctId: Number(q.correct_id) || 0,
+              options: opts,
+              correctId: cId,
               explanation: q.explanation || ''
             });
           }
+          pollSummaryForTeacher.push(
+            `${q.question}\n   Варианты: ${opts.map((o, idx) => idx === cId ? `[${o} ✅]` : o).join(' / ')}\n   Пояснение бота: ${q.explanation || '—'}`
+          );
           if (i < quizList.length - 1) {
             await new Promise(r => setTimeout(r, 400));
           }
         }
       }
 
-      await bot.sendMessage(ADMIN_CHAT_ID,
-        `📝 <b>${st.name}</b> запустил(а) мини-тест по теме «${lastLs?.topic || 'Английский'}» (Раунд #${prog.quizRound})! Ждём ответы ученика...`,
-        { parse_mode: 'HTML' }
+      const hwStatus = getHwCompletionSummary(st, lastLs);
+      await sendCleanMessage(ADMIN_CHAT_ID,
+        `👀 [Копия для преподавателя — ${st.name} запустил(а) «📝 Тестик по уроку» (Раунд #${prog.quizRound})]:\n` +
+        `📚 Тема: ${lastLs?.topic || 'Английский'}\n` +
+        `📊 Текущая готовность ДЗ: ${hwStatus.pct}% (ответит на вопросы — получит +25%)\n\n` +
+        `📩 Вопросы, отправленные ученику:\n\n` +
+        pollSummaryForTeacher.join('\n\n')
       ).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
@@ -3793,6 +3928,7 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, С
 
       await bot.answerCallbackQuery(query.id, { text: '🎮 Запускаю мини-игру...' });
       const doss = parseStudentDossierBot(st);
+      const lastLs = await getLatestLessonWithMaterials(st.id);
 
       const gamePrompt = `Ты — геймифицированный ИИ-тренер английского для ${st.name} (${st.grade || '6 класс'}).
 Интересы: "${doss.interests || 'игры, кино, приключения'}".
@@ -3809,7 +3945,22 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, С
       const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: gamePrompt });
       const text = genRes.generated_plan || '🎮 English Riddle Time!\nWhat has keys but no locks, space but no room, and you can enter but never go outside?\n(Напиши свою догадку в ответном сообщении!)';
 
-      await sendCleanMessage(chatId, `🎮 <b>Мини-игра для ${st.name}:</b>\n\n${text}`);
+      const prog = getPracticeProgress(st.id, lastLs?.id);
+      prog.completedSteps.grammar = true;
+      const hwStatus = getHwCompletionSummary(st, lastLs);
+      await persistHwProgressPercent(lastLs, hwStatus.pct);
+
+      await sendCleanMessage(chatId, `🎮 <b>Мини-игра для ${st.name}:</b>\n\n${text}`, {
+        reply_markup: buildStudentKeyboard(st, lastLs)
+      });
+
+      await sendCleanMessage(ADMIN_CHAT_ID,
+        `👀 [Копия для преподавателя — ${st.name} запустил(а) «🎮 Мини-игру»]:\n` +
+        `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% 🔒'})\n` +
+        `✅ Что уже сделано:\n• ${hwStatus.doneText}\n` +
+        `⏳ Что ещё осталось:\n• ${hwStatus.leftText}\n\n` +
+        `📩 Полный текст игры, отправленный ученику:\n${text}`
+      ).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -3836,23 +3987,38 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, С
       if (idx >= cards.length) idx = 0;
       if (idx < 0) idx = 0;
       const c = cards[idx];
+      const prog = getPracticeProgress(st.id, lastLs?.id);
 
       if (action === 'card_known') {
+        prog.cardsKnown = (prog.cardsKnown || 0) + 1;
+        if (prog.cardsKnown >= 2) {
+          prog.completedSteps.words = true;
+        }
+        const hwStatus = getHwCompletionSummary(st, lastLs);
+        await persistHwProgressPercent(lastLs, hwStatus.pct);
         await incrementStudentStreakBot(st);
         const userName = query.from?.first_name || 'Ученик';
         const totalXp = addStudentXp(st.id, lastLs?.id, query.from?.id, userName, 5);
-        await bot.answerCallbackQuery(query.id, { text: `🎉 Отлично, ${userName}! +5 XP (Всего: ${totalXp} XP)!` });
+        await bot.answerCallbackQuery(query.id, { text: `🎉 Отлично, ${userName}! +5 XP (Готовность ДЗ: ${hwStatus.pct}%)!` });
         if (c) {
-          await bot.sendMessage(ADMIN_CHAT_ID,
-            `🃏 <b>${st.name}</b> (${userName}) выучил(а) флеш-карточку:\n` +
-            `🇬🇧 <b>${c.en}</b> — ${c.ru}\n` +
-            `⭐ +5 XP (Всего: ${totalXp} XP)`,
-            { parse_mode: 'HTML' }
+          await sendCleanMessage(ADMIN_CHAT_ID,
+            `🃏 [Копия для преподавателя — ${st.name} (${userName}) нажал(а) «✅ Знал(а) карточку»]:\n` +
+            `🇬🇧 Слово: ${c.en} ${c.ipa || ''} — ${c.ru}\n` +
+            `${c.ex ? `💡 Пример: ${c.ex}\n` : ''}` +
+            `⭐ Опыт: +5 XP (Всего: ${totalXp} XP)\n` +
+            `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% 🔒'})\n` +
+            `✅ Сделано:\n• ${hwStatus.doneText}\n` +
+            `⏳ Осталось:\n• ${hwStatus.leftText}`
           ).catch(() => {});
         }
       } else {
         await bot.answerCallbackQuery(query.id);
       }
+
+      const hwStatusNow = getHwCompletionSummary(st, lastLs);
+      const submitBtnLabel = hwStatusNow.canSubmit
+        ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatusNow.pct}%)`
+        : `🔒 Сдать ДЗ (готово ${hwStatusNow.pct}% из 75%)`;
 
       if (action === 'flip_card') {
         const cardHtml = `🃏 <b>Флеш-карточка ${idx + 1} из ${cards.length}:</b>\n\n🇬🇧 <b>${c.en}</b> ${c.ipa || ''}\n\n🇷🇺 <b>Перевод:</b> ${c.ru}\n${c.ex ? `💡 <i>Пример: ${c.ex}</i>` : ''}`;
@@ -3864,7 +4030,8 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, С
           [
             { text: '🔊 Озвучить слово', callback_data: `say_word:${st.id}:${encodeURIComponent(c.en)}` },
             { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }
-          ]
+          ],
+          [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
         ];
         if (query.message) {
           await bot.editMessageText(cardHtml, {
@@ -3886,7 +4053,8 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, С
           [
             { text: '➡️ Следующая', callback_data: `student_flashcards:${st.id}:${(idx + 1) % cards.length}` },
             { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }
-          ]
+          ],
+          [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
         ];
         if (query.message && action !== 'card_known') {
           await bot.editMessageText(cardHtml, {
@@ -3961,8 +4129,9 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, С
       const quizPrompt = `Ты — дружелюбный игровой ИИ-тренер по английскому для ученика ${st.name} (${st.grade || ''}).\nСловарь ученика: ${doss.vocab || 'общая лексика по уровню'}.\nТипичные ошибки: ${doss.errors || 'грамматика времени'}.\nИнтересы: ${doss.interests || 'игры, фильмы, путешествия'}.\nПоследняя тема: ${lastLs?.topic || 'English practice'}.\n\nСоставь КОМПАКТНЫЙ (до 800 символов) увлекательный мини-квиз из 3 коротких вопросов (1: выбрать правильный вариант A/B/C, 2: вставить пропущенное слово в предложение по интересам ученика, 3: перевести короткую фразу на английский). НЕ пиши ответы сразу! Скажи ученику: "Напиши ответы 1, 2, 3 в ответном сообщении (или скажи голосом!), и я сразу проверю!"`;
       const planRes = await executeFunctionCall('generate_lesson_plan', { prompt: quizPrompt });
       const quizText = planRes.generated_plan || '1. Choose: I (was/were) happy yesterday.\n2. Translate: Я люблю путешествовать.\n3. Make a sentence with your favourite hobby!';
-      activeStudentQuizzes.set(String(chatId), { quizText, studentName: st.name });
+      activeStudentQuizzes.set(String(chatId), { quizText, studentName: st.name, studentId: st.id, lessonId: lastLs?.id || '' });
       await bot.sendMessage(chatId, `🎯 *Мини-тренажёр слов (${st.name}):*\n\n${quizText}`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, quizText));
+      await sendCleanMessage(ADMIN_CHAT_ID, `👀 [Копия для преподавателя — ${st.name} открыл(а) «🎯 Мини-тренажёр слов»]:\n\n${quizText}`).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -4070,8 +4239,18 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, С
     } else if (data && data.startsWith('student_hw_done:')) {
     const lessonId = data.split(':')[1];
     try {
-      const { data: ls } = await db.from('lessons').select('*, students(*)').eq('id', lessonId).maybeSingle();
-      const stName = ls?.students?.name || 'Ученик';
+      let ls = null;
+      if (lessonId) {
+        const { data: lsRow } = await db.from('lessons').select('*, students(*)').eq('id', lessonId).maybeSingle();
+        ls = lsRow;
+      }
+      let st = ls?.students;
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+        if (st && !ls) ls = await getLatestLessonWithMaterials(st.id);
+      }
+      const stName = st?.name || 'Ученик';
       const isAlreadySubmitted = (ls?.homework || '').includes('[ДЗ_СДАНО]') || (ls?.homework || '').includes('[ДЗ_ПРОВЕРЕНО]');
 
       if (isAlreadySubmitted) {
@@ -4079,15 +4258,62 @@ ${scenario ? `СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, С
         return bot.sendMessage(chatId, `👍 *Отлично, ${stName}!* Твоё задание уже отправлено на проверку Игорю. Если хочешь прислать ещё фото или дополнение — просто отправь прямо сюда в чат!`, { parse_mode: 'Markdown' });
       }
 
-      await bot.answerCallbackQuery(query.id, { text: '📸 Нужно подтверждение выполнения!' });
+      const hwStatus = getHwCompletionSummary(st, ls);
 
-      // Защита от халявы: не засчитываем ДЗ по одной кнопке, требуем реальное действие!
-      const requireProofMsg = `📸 *Отлично, ${stName}! Чтобы зачесть домашку и начислить баллы (+15 XP), пришли подтверждение:*\n\n📝 *Вариант 1 (Лучше всего):* Сфотографируй тетрадь с выполненным заданием и отправь фото прямо сюда!\n💬 *Вариант 2:* Напиши свои ответы или составленные предложения текстом в чат.\n🎤 *Вариант 3:* Надиктуй чтение или ответы голосовым на английском!\n\n⏳ *Жду твой ответ!* Как только пришлёшь фото тетрадки или текст — я сразу проверю работу и передам Игорю! 🚀`;
+      // 75% GATE: Кнопка сдачи ДЗ срабатывает ТОЛЬКО если выполнено >= 75% (либо письменное задание, либо все интерактивные карточки/тесты)
+      if (!hwStatus.canSubmit) {
+        await bot.answerCallbackQuery(query.id, {
+          text: `🔒 Пока выполнено ${hwStatus.pct}% из 75%! Доделай письменное задание или карточки ниже.`,
+          show_alert: true
+        });
 
-      await bot.sendMessage(chatId, requireProofMsg, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, requireProofMsg));
+        const gateMsg = `🔒 *Кнопка сдачи ДЗ пока закрыта (${stName}) — выполнено ${hwStatus.pct}% из 75%*\n\n` +
+          `Чтобы сдать домашнее задание, нужно набрать минимум *75%*:\n\n` +
+          `✅ *Что ты уже сделал(а):*\n• ${hwStatus.doneText}\n\n` +
+          `⏳ *Что осталось сделать (выбери любой путь):*\n` +
+          `1️⃣ *Быстрый путь (даёт сразу +75%):* Пришли сюда в чат 📸 *фото тетрадки* или 💬 *напиши ответы на письменное задание текстом*!\n` +
+          `2️⃣ *Интерактивный путь (по кнопкам ниже):*\n• ${hwStatus.leftText}\n\n` +
+          `👇 Нажми на кнопки ниже или пришли свой ответ в чат — и кнопка сдачи сразу откроется! 🚀`;
 
-      // Тихий лог преподавателю без ложного статуса "сдано"
-      await bot.sendMessage(ADMIN_CHAT_ID, `👀 *Ученик ${stName}* нажал кнопку «Я сделал(а) ДЗ!».\nБот запросил фото тетрадки или текст ответов. Ожидаем фактическую работу.`, { parse_mode: 'Markdown' }).catch(() => {});
+        const kbMarkup = st ? buildStudentKeyboard(st, ls) : undefined;
+        await bot.sendMessage(chatId, gateMsg, { parse_mode: 'Markdown', reply_markup: kbMarkup }).catch(() => bot.sendMessage(chatId, gateMsg));
+
+        await sendCleanMessage(ADMIN_CHAT_ID,
+          `🔒 [Контроль 75% ДЗ] Ученик ${stName} нажал кнопку «Сдать ДЗ», но у него пока ${hwStatus.pct}% (нужно минимум 75%).\n` +
+          `Бот заблокировал преждевременную сдачу и показал ученику чек-лист:\n` +
+          `✅ Сделано:\n• ${hwStatus.doneText}\n` +
+          `⏳ Осталось:\n• ${hwStatus.leftText}`
+        ).catch(() => {});
+        return;
+      }
+
+      // Если ученик набрал >= 75% (прошёл все карточки/тесты или прислал письменное) -> засчитываем сдачу ДЗ!
+      const newStreak = st ? await incrementStudentStreakBot(st) : 1;
+      if (ls && !(ls.homework || '').includes('[ДЗ_СДАНО]') && !(ls.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
+        const updatedHw = `[ДЗ_СДАНО] ${ls.homework || ''}`.trim();
+        ls.homework = updatedHw;
+        await db.from('lessons').update({ homework: updatedHw }).eq('id', ls.id);
+      }
+
+      await bot.answerCallbackQuery(query.id, { text: `🎉 Ура! ДЗ (${hwStatus.pct}%) официально сдано!` });
+
+      const congratsMsg = `🎉 *Ура, ${stName}! Домашнее задание выполнено на ${hwStatus.pct}% и официально принято!* ✅\n\n` +
+        `✅ *Выполнено:*\n• ${hwStatus.doneText}\n\n` +
+        `🔥 *Твой ударный режим (Streak): ${newStreak} ДЗ подряд! (+15 XP)* 🏆\n` +
+        `Я уже передал твой отчёт Игорю. Если захочешь прислать ещё фото тетрадки или спросить что-то по теме — пиши прямо сюда!`;
+
+      await bot.sendMessage(chatId, congratsMsg, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, congratsMsg));
+
+      const teacherDoneKb = [];
+      if (ls?.id) teacherDoneKb.push([{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${ls.id}` }]);
+      if (st?.id) teacherDoneKb.push([{ text: '🎤 Ответить ученику (голосом/текстом)', callback_data: `teacher_reply_st:${st.id}` }]);
+
+      await sendCleanMessage(ADMIN_CHAT_ID,
+        `🎉 [ДЗ СДАНО ≥75%] Ученик ${stName} набрал ${hwStatus.pct}% и нажал «✅ Я сделал(а) ДЗ!» (Стрик: 🔥 ${newStreak})\n\n` +
+        `✅ Что выполнено учеником:\n• ${hwStatus.doneText}\n\n` +
+        `⏳ Что не сделано / осталось:\n• ${hwStatus.leftText}`,
+        { reply_markup: teacherDoneKb.length ? { inline_keyboard: teacherDoneKb } : undefined }
+      ).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -4350,12 +4576,50 @@ bot.on('poll_answer', async (answer) => {
     const correctText = pollInfo.options[pollInfo.correctId] || '';
     const userDisplay = answer.user ? `${answer.user.first_name || ''} ${answer.user.last_name || ''} (@${answer.user.username || ''})`.trim() : pollInfo.studentName;
 
+    let st = null;
+    let lastLs = null;
+    if (pollInfo.studentId) {
+      const { data: sRow } = await db.from('students').select('*').eq('id', pollInfo.studentId).maybeSingle();
+      st = sRow;
+      lastLs = await getLatestLessonWithMaterials(pollInfo.studentId);
+    }
+
+    const prog = getPracticeProgress(pollInfo.studentId || pollInfo.studentName, pollInfo.lessonId || lastLs?.id);
+    prog.pollsAnswered = (prog.pollsAnswered || 0) + 1;
+    if (isCorrect) prog.pollsCorrect = (prog.pollsCorrect || 0) + 1;
+    if (prog.pollsAnswered >= 2) {
+      prog.completedSteps.quiz = true;
+    }
+
+    const hwStatus = st ? getHwCompletionSummary(st, lastLs) : { pct: 25, canSubmit: false, doneText: 'Тестик', leftText: 'Письменное задание' };
+    if (lastLs) {
+      await persistHwProgressPercent(lastLs, hwStatus.pct);
+    }
+
+    // Если ученик ошибся — отправляем ему в чат понятное объяснение правила!
+    let studentExplanationSent = '';
+    if (!isCorrect && pollInfo.chatId) {
+      studentExplanationSent = `💡 Разбор вопроса:\n«${pollInfo.question}»\n\n❌ Твой ответ: ${chosenText}\n✅ Правильный ответ: ${correctText}\n📖 Почему так: ${pollInfo.explanation || 'Запомни эту конструкцию из нашего урока!'}`;
+      await sendCleanMessage(pollInfo.chatId, studentExplanationSent).catch(() => {});
+    }
+
+    // Когда ученик ответил на все 3 вопроса раунда — присылаем обновлённый статус готовности ДЗ и клавиатуру
+    if (prog.pollsAnswered % 3 === 0 && pollInfo.chatId && st) {
+      const roundMsg = `🏁 Мини-тест пройден! Верных ответов: ${prog.pollsCorrect} из ${prog.pollsAnswered}.\n📊 Твоя готовность ДЗ сейчас: ${hwStatus.pct}% ${hwStatus.canSubmit ? '— кнопка «✅ Я сделал(а) ДЗ!» разблокирована! 🎉' : '(для сдачи нужно минимум 75%)'}`;
+      await sendCleanMessage(pollInfo.chatId, roundMsg, {
+        reply_markup: buildStudentKeyboard(st, lastLs)
+      }).catch(() => {});
+    }
+
     const emoji = isCorrect ? '✅' : '❌';
     const alertMsg = `${emoji} <b>Результат мини-теста ученика:</b>\n\n` +
       `👤 <b>Ученик:</b> ${pollInfo.studentName} (${userDisplay})\n` +
       `❓ <b>Вопрос:</b> ${pollInfo.question}\n` +
       `👉 <b>Ответ ученика:</b> ${chosenText} ${isCorrect ? '✅ (Верно!)' : `❌ (Ошибка! Правильно: ${correctText})`}\n` +
-      (pollInfo.explanation ? `💡 <i>Пояснение:</i> ${pollInfo.explanation}` : '');
+      (pollInfo.explanation ? `💡 <b>Как бот объяснил ученику:</b> ${pollInfo.explanation}\n` : '') +
+      `\n📊 <b>Готовность ДЗ сейчас:</b> ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Ещё не достиг 75% 🔒'})\n` +
+      `✅ <b>Что сделано:</b>\n• ${hwStatus.doneText}\n` +
+      `⏳ <b>Что осталось:</b>\n• ${hwStatus.leftText}`;
 
     await bot.sendMessage(ADMIN_CHAT_ID, alertMsg, { parse_mode: 'HTML' }).catch(() => {});
   } catch (err) {
@@ -4900,51 +5164,72 @@ bot.on('message', async (msg) => {
     if (isPhotoSubmission) {
       try {
         bot.sendChatAction(chatId, 'typing');
-        const photo = msg.photo[msg.photo.length - 1];
-        const photoUrl = await bot.getFileLink(photo.file_id);
+        const photoIndex = msg.photo.length > 1 ? msg.photo.length - 2 : 0;
+        const largestPhoto = msg.photo[msg.photo.length - 1];
+        const photoUrl = await bot.getFileLink(msg.photo[photoIndex].file_id);
+        let base64ImageUrl = photoUrl;
+        try {
+          const pRes = await fetch(photoUrl);
+          if (pRes.ok) {
+            const pBuf = await pRes.arrayBuffer();
+            base64ImageUrl = `data:image/jpeg;base64,${Buffer.from(pBuf).toString('base64')}`;
+          }
+        } catch (_) {}
+
         const lastLs = await getLatestLessonWithMaterials(st.id);
-        const cleanHw = (lastLs?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim();
+        const cleanHw = (lastLs?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace(/\[ДЗ_ПРОГРЕСС:\d+%\]/g, '').replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim();
 
         const newStreak = await incrementStudentStreakBot(st);
-        if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
-          await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
+        const prog = getHwCompletionSummary(st, lastLs);
+        prog.completedSteps.written = true;
+        const updatedProg = getHwCompletionSummary(st, lastLs);
+        if (lastLs) {
+          await persistHwProgressPercent(lastLs, updatedProg.pct);
+          if (!(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
+            await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
+          }
         }
 
-        // Student feedback
-        await bot.sendMessage(chatId, `📸 *Фото тетрадки принято, ${st.name}!* 🌟\nЯ передал его Игорю на проверку!\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+10 XP)* 🏆`, {
+        // Student initial feedback + unlocked keyboard
+        const photoAckMsg = `📸 *Фото тетрадки принято, ${st.name}!* 🌟\nЯ проверяю твоё письменное задание и передал его Игорю!\n📊 *Готовность ДЗ: ${updatedProg.pct}%* (кнопка сдачи ДЗ разблокирована!)\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+10 XP)* 🏆`;
+        await bot.sendMessage(chatId, photoAckMsg, {
           parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }, { text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }]
-            ]
-          }
+          reply_markup: buildStudentKeyboard(st, lastLs)
         }).catch(() => {});
 
-        // Forward photo to Igor
-        await bot.sendPhoto(ADMIN_CHAT_ID, photo.file_id, {
-          caption: `📸 *Домашнее задание от ${st.name} (фото тетрадки)*\n📌 Заданное ДЗ: _${cleanHw || 'Без текста'}_\n🔥 Серия: ${newStreak} ДЗ`,
+        // Forward photo to Igor with readiness status
+        await bot.sendPhoto(ADMIN_CHAT_ID, largestPhoto.file_id, {
+          caption: `📸 *Домашнее задание от ${st.name} (фото тетрадки)*\n${msg.caption ? '💬 Подпись: ' + msg.caption + '\n' : ''}📊 *Готовность ДЗ:* ${updatedProg.pct}% (Доступ к сдаче: ${updatedProg.isReadyToSubmit ? 'ОТКРЫТ ✅' : 'ЗАКРЫТ 🔒'})\n✅ *Сделано:* ${updatedProg.doneList.join(', ')}\n⏳ *Осталось:* ${updatedProg.todoList.join(', ') || 'Ничего'}\n📌 Заданное ДЗ: _${(cleanHw || 'Без текста').slice(0, 250)}_`,
           parse_mode: 'Markdown'
         }).catch(() => {});
 
-        // Call Vision OCR to transcribe English handwriting and find mistakes
+        // Call Vision OCR to transcribe English handwriting, explain mistakes to student, and send full copy to Igor
         try {
           const ocrPrompt = `Ты — чуткий преподаватель английского языка. Ученик ${st.name} (${st.grade || ''}) прислал фото тетрадки с выполненным домашним заданием.
 Заданное ДЗ было: "${cleanHw || 'упражнение из учебника'}".
 
-1. 🔍 РАСШИФРОВКА РУКОПИСИ: аккуратно расшифруй написанный учеником английский текст по строкам.
-2. ⚠️ ОШИБКИ И РАЗБОР: проверь правописание (spelling), грамматику и пунктуацию. Если есть ошибки — укажи правильный вариант и простое правило.
-3. 🌟 ВЕРДИКТ И ПОХВАЛА: 1-2 ободряющие фразы для ученика.`;
+Напиши понятный и тёплый разбор напрямую для ученика ${st.name} (на «ты»):
+1. 🔍 Что написано в тетрадке (кратко расшифруй ответы по пунктам).
+2. ✅ Что сделано правильно (похвали!).
+3. 💡 Разбор ошибок и рекомендации: если есть ошибки в правописании или грамматике — покажи правильный вариант и простыми словами объясни правило, почему так пишется.`;
 
-          const ocrAnalysis = await callAPI(ocrPrompt, { isVision: true, imageUrl: photoUrl });
+          const ocrAnalysis = await askAI(ocrPrompt, '', base64ImageUrl, true, true, null, true);
           if (ocrAnalysis) {
             await saveHwWarmupErrorsToDossier(st, ocrAnalysis.slice(0, 450)).catch(() => {});
+            const studentOcrMsg = `🤖 *Разбор твоего письменного ДЗ по фото, ${st.name}:*\n\n${ocrAnalysis}`;
+            await bot.sendMessage(chatId, studentOcrMsg, {
+              parse_mode: 'Markdown',
+              reply_markup: buildStudentKeyboard(st, lastLs)
+            }).catch(() => bot.sendMessage(chatId, studentOcrMsg));
+
             const ocrKb = [];
             if (lastLs) ocrKb.push([{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]);
             ocrKb.push([{ text: '🎤 Ответить ученику (голосом/текстом)', callback_data: `teacher_reply_st:${st.id}` }]);
-            await bot.sendMessage(ADMIN_CHAT_ID, `🤖 *ИИ-разбор рукописи (${st.name}):*\n\n${ocrAnalysis}\n\n🎯 _Ключевые ошибки автоматически сохранены в 5-минутку следующего урока!_`, {
+            const teacherOcrCopy = `📨 *Копия ИИ-разбора рукописи (отправлено ученику ${st.name}):*\n📊 *Готовность ДЗ:* ${updatedProg.pct}%\n✅ *Сделано:* ${updatedProg.doneList.join(', ')}\n⏳ *Осталось:* ${updatedProg.todoList.join(', ') || 'Ничего'}\n\n${ocrAnalysis}\n\n🎯 _Ключевые ошибки автоматически сохранены в 5-минутку следующего урока!_`;
+            await bot.sendMessage(ADMIN_CHAT_ID, teacherOcrCopy, {
               parse_mode: 'Markdown',
               reply_markup: { inline_keyboard: ocrKb }
-            }).catch(() => bot.sendMessage(ADMIN_CHAT_ID, `🤖 ИИ-разбор рукописи (${st.name}):\n\n${ocrAnalysis}`, { reply_markup: { inline_keyboard: ocrKb } }));
+            }).catch(() => bot.sendMessage(ADMIN_CHAT_ID, teacherOcrCopy, { reply_markup: { inline_keyboard: ocrKb } }));
           }
         } catch (visionErr) {
           console.error('Vision OCR error:', visionErr.message);
@@ -4974,188 +5259,215 @@ bot.on('message', async (msg) => {
       const quizObj = activeStudentQuizzes.get(String(chatId));
       activeStudentQuizzes.delete(String(chatId));
       const newStreak = await incrementStudentStreakBot(st);
-      const evalPrompt = `Ученик ${st.name} (${st.grade || ''}) решал твой мини-квиз по английскому:\nКВИЗ:\n${quizObj.quizText}\n\nОТВЕТЫ УЧЕНИКА:\n"${studentText}"\n\nПроверь ответы дружелюбно и понятно (обращайся напрямую к ученику ${st.name} на "ты", до 800 символов): похвали за правильные ответы, мягко объясни ошибки (если есть) и поздравь с серией 🔥 ${newStreak} выполненных заданий подряд!`;
+      const lastLs = await getLatestLessonWithMaterials(st.id);
+      const prog = getHwCompletionSummary(st, lastLs);
+      prog.completedSteps.quiz = true;
+      const updatedProg = getHwCompletionSummary(st, lastLs);
+      if (lastLs) await persistHwProgressPercent(lastLs, updatedProg.pct);
+
+      const evalPrompt = `Ученик ${st.name} (${st.grade || ''}) решал твой мини-квиз по английскому:\nКВИЗ:\n${quizObj.quizText}\n\nОТВЕТЫ УЧЕНИКА:\n"${studentText}"\n\nПроверь ответы дружелюбно и понятно (обращайся напрямую к ученику ${st.name} на "ты", до 800 символов): похвали за правильные ответы, мягко объясни ошибки и правило (если есть) и поздравь с серией 🔥 ${newStreak} выполненных заданий подряд!`;
       const evalRes = await executeFunctionCall('generate_lesson_plan', { prompt: evalPrompt });
       const feedback = evalRes.generated_plan || `Отличная работа, ${st.name}! 🔥 Твоя серия: ${newStreak}!`;
-      await bot.sendMessage(chatId, `🌟 *Проверка твоего мини-квиза:*\n\n${feedback}\n\n🔥 *Твой стрик: ${newStreak} (+10 XP)*`, {
+      const studentQuizReply = `🌟 *Проверка твоего мини-квиза:*\n\n${feedback}\n\n📊 *Готовность ДЗ: ${updatedProg.pct}%*\n🔥 *Твой стрик: ${newStreak} (+10 XP)*`;
+      await bot.sendMessage(chatId, studentQuizReply, {
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '🎯 Ещё один мини-квиз!', callback_data: 'student_quiz' }]] }
+        reply_markup: buildStudentKeyboard(st, lastLs)
       }).catch(() => bot.sendMessage(chatId, feedback));
-      await bot.sendMessage(ADMIN_CHAT_ID, `🔥 *${st.name}* сам(а) прошёл(ла) мини-квиз по словам в боте! (Стрик: ${newStreak})\nОтветы ученика: «${studentText}»`, { parse_mode: 'Markdown' }).catch(() => {});
+      await bot.sendMessage(ADMIN_CHAT_ID, `📨 *Копия: ${st.name} решил(а) мини-квиз в боте*\n📊 *Готовность ДЗ:* ${updatedProg.pct}%\n✅ *Сделано:* ${updatedProg.doneList.join(', ')}\n⏳ *Осталось:* ${updatedProg.todoList.join(', ') || 'Ничего'}\n\n💬 *Ответы ученика:*\n«${studentText}»\n\n🤖 *Что бот ответил и как объяснил ошибки:*\n${feedback}`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '🎤 Ответить ученику', callback_data: `teacher_reply_st:${st.id}` }]] }
+      }).catch(() => {});
       return;
     }
 
     const trimmed = studentText.trim();
     const lower = trimmed.toLowerCase();
 
-    // 1. ПРОВЕРКА НАМЕРЕНИЯ: Ученик спрашивает про домашнее задание («а какое дз», «скинь дз», «где дз»)
-    const isAskingForHw = /какое\s*(?:то)?\s*дз|скинь\s*(?:мне)?\s*дз|где\s*дз|что\s*задано|какое\s*задание|дай\s*дз|что\s*делать|мое\s*дз|напомни\s*дз/i.test(lower);
+    const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).order('date', { ascending: false }).limit(1).maybeSingle();
+    const { cleanHw: rawCleanHw, cards } = extractAttachedCards(lastLs?.homework || '');
+    const cleanHw = rawCleanHw.split('\\n[МАТЕРИАЛЫ]:')[0]
+      .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*?(?=\n\n|$)/gi, '')
+      .replace(/\[(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ)\]:[\s\S]*?\[\/(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ)\]/g, '')
+      .replace(/\[ДЗ_ПРОГРЕСС:\d+%\]/g, '')
+      .replace('[ДЗ_ПРОВЕРЕНО]', '')
+      .replace('[ДЗ_СДАНО]', '')
+      .replace('[ОТПРАВИТЬ_В_ТГ]', '')
+      .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
+      .replace('[ПЕРЕНЕСЕН_В_ТГ]', '')
+      .trim();
+    const scenario = extractLessonScenario(lastLs?.homework || '');
+
+    // 1. Быстрый перехват: Ученик прямо просит прислать само ДЗ («а какое дз», «скинь дз», «где дз»)
+    const isAskingForHw = /какое\s*(?:то)?\s*дз|скинь\s*(?:мне)?\s*дз|где\s*дз|что\s*задано|какое\s*задание|дай\s*дз|мое\s*дз|напомни\s*дз/i.test(lower);
     if (isAskingForHw && !isVoiceSubmission) {
-      const { data: latestLs } = await db.from('lessons')
-        .select('*')
-        .eq('student_id', st.id)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const { cleanHw: rawCleanHw, cards } = extractAttachedCards(latestLs?.homework || '');
-      const hwText = rawCleanHw.split('\\n[МАТЕРИАЛЫ]:')[0]
-        .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*?(?=\n\n|$)/gi, '')
-        .replace(/\[(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ)\]:[\s\S]*?\[\/(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ)\]/g, '')
-        .replace('[ДЗ_ПРОВЕРЕНО]', '')
-        .replace('[ДЗ_СДАНО]', '')
-        .replace('[ОТПРАВИТЬ_В_ТГ]', '')
-        .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
-        .replace('[ПЕРЕНЕСЕН_В_ТГ]', '')
-        .trim();
-
       if (cards && cards.length > 0) {
         await sendCardsToChat(chatId, cards, '🖼 Карточка к домашнему заданию');
       }
+      const progNow = getHwCompletionSummary(st, lastLs);
+      const replyHw = cleanHw 
+        ? `📚 *Вот твоё домашнее задание, ${st.name}:*\n📊 *Текущая готовность: ${progNow.pct}%*\n\n${cleanHw}\n\n✍️ *Как сдать:* напиши ответы прямо сюда в чат, сфотографируй тетрадку или пройди интерактивные кнопки ниже до 75%+! 👍`
+        : `📚 *Домашнее задание:*\nПовторить слова и правила прошедшего урока. Если нужно уточнить задание — напиши сюда! 👍`;
 
-      const replyHw = hwText 
-        ? `📚 *Вот твоё домашнее задание, ${st.name}:*\n\n${hwText}\n\n✍️ *Напоминаю:* выполни Шаг 2 письменно от руки в тетрадке, сфотографируй и отправь фото прямо сюда! 👍`
-        : `📚 *Домашнее задание:*\nПовторить слова и правила прошедшего урока. Если нужно уточнить задание — Игорь подскажет на занятии! 👍`;
-
-      const kb = buildStudentKeyboard(st, latestLs);
+      const kb = buildStudentKeyboard(st, lastLs);
       await bot.sendMessage(chatId, replyHw, { parse_mode: 'Markdown', reply_markup: kb }).catch(() => bot.sendMessage(chatId, replyHw));
-
-      await bot.sendMessage(ADMIN_CHAT_ID, `ℹ️ *Ученик ${st.name}* спросил в чате: «${studentText}». Бот отправил актуальное ДЗ ученику.`, { parse_mode: 'Markdown' }).catch(() => {});
+      await bot.sendMessage(ADMIN_CHAT_ID, `📨 *Копия: ученик ${st.name} спросил про ДЗ:* «${studentText}»\n📊 *Готовность ДЗ:* ${progNow.pct}%\n\n🤖 *Отправлено ученику:*\n${replyHw}`, { parse_mode: 'Markdown' }).catch(() => {});
       return;
     }
 
-    // 2. ПРОВЕРКА НАМЕРЕНИЯ: Короткая организационная реплика («я знаю», «ок», «хорошо», «спасибо», «привет»)
-    const isShortReaction = /^(я знаю|ок|окей|хорошо|понял|поняла|спасибо|привет|здравствуйте|буду|договорились|ясно|ага|да|ладно|отлично|добрый день|здравствуй)$/i.test(lower) || 
-      (trimmed.length < 15 && !/[a-zA-Z]/.test(trimmed) && !/\d/.test(trimmed));
+    // 2. УМНЫЙ ИИ-МАРШРУТИЗАТОР СООБЩЕНИЙ УЧЕНИКА (понимает: сдача ДЗ / вопрос по теме урока / не по теме или орг. вопрос)
+    const { data: nextPlannedLs } = await db.from('lessons')
+      .select('date, time, topic')
+      .eq('student_id', st.id)
+      .eq('status', 'Запланирован')
+      .order('date', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const nextLessonInfo = nextPlannedLs ? `${nextPlannedLs.date} в ${nextPlannedLs.time || 'по договорённости'}` : 'пока не назначен в календаре (Игорь уточнит время)';
+    const currentProg = getHwCompletionSummary(st, lastLs);
 
-    if (isShortReaction && !isVoiceSubmission) {
-      await bot.sendMessage(chatId, `👍 Договорились, *${st.name}*! До встречи на уроке! 🇬🇧\n_Если будут вопросы по домашке — пиши сюда!_`, { parse_mode: 'Markdown' }).catch(() => {});
-      await bot.sendMessage(ADMIN_CHAT_ID, `💬 *Ученик ${st.name}:* «${studentText}»`, { parse_mode: 'Markdown' }).catch(() => {});
-      return;
-    }
+    let aiAnalysis = null;
+    try {
+      const routerPrompt = `Ты — умный, добрый и внимательный ИИ-помощник преподавателя английского языка Игоря.
+Тебе написал ученик: ${st.name} (${st.grade || 'школьник'}).
+Тема последнего урока: "${lastLs?.topic || 'Английский язык'}".
+Заданное ДЗ:
+"${cleanHw || 'повторить слова и правила урока'}"
+Материалы/сценарий урока:
+"${scenario ? scenario.slice(0, 1200) : 'по программе'}"
+Следующий запланированный урок: ${nextLessonInfo}.
+Текущий прогресс выполнения ДЗ учеником: ${currentProg.pct}% (Сделано: ${currentProg.doneList.join(', ') || 'пока ничего'}; Осталось: ${currentProg.todoList.join(', ') || 'всё готово'}).
 
-    // 3. РЕАЛЬНАЯ СДАЧА ДЗ: только если это голосовое Speaking ИЛИ текст содержит реальные ответы (английские слова / нумерацию упражнений)
-    const hasEnglishContent = /[a-zA-Z]{3,}/.test(trimmed);
-    const hasExerciseNumbering = /(?:^|\n)\s*\d+[.)]/m.test(trimmed);
-    const isRealHwSubmission = isVoiceSubmission || (trimmed.length >= 15 && (hasEnglishContent || hasExerciseNumbering));
-
-    if (!isRealHwSubmission) {
-      // Обычный свободный вопрос или сообщение ученика (не ДЗ)
-      await bot.sendMessage(chatId, `👋 Принял твоё сообщение, *${st.name}*! Я передал его преподавателю Игорю.`, { parse_mode: 'Markdown' }).catch(() => {});
-      await bot.sendMessage(ADMIN_CHAT_ID, `💬 *Сообщение от ученика ${st.name}:*\n«${studentText}»`, { parse_mode: 'Markdown' }).catch(() => {});
-      return;
-    }
-
-    // Здесь ученик РЕАЛЬНО сдает домашнее задание текстом или голосом!
-    const newStreak = await incrementStudentStreakBot(st);
-    if (isVoiceSubmission && studentText) {
-      const speakPrompt = `Ученик ${st.name} (${st.grade || ''}) прислал голосовое сообщение на английском (Speaking practice).\nРаспознанная речь ученика:\n"${studentText}"\n\nНапиши короткий (до 700 символов), очень тёплый и вдохновляющий разбор напрямую для ученика ${st.name}: похвали за смелость и разговорную практику, отметь удачные фразы и мягко подскажи 1-2 улучшения (как сказать ещё естественнее/правильнее).`;
-      const speakRes = await executeFunctionCall('generate_lesson_plan', { prompt: speakPrompt });
-      const speakFeedback = speakRes.generated_plan || 'Отличная разговорная практика! Так держать!';
-      await bot.sendMessage(chatId, `🎤 *Я распознал твою речь:*\n_${studentText}_\n\n🇬🇧 *Разбор Speaking:*\n${speakFeedback}\n\n🔥 *+15 XP за Speaking! Твоя серия: ${newStreak} подряд!* 🏆`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, speakFeedback));
-    } else {
-      await bot.sendMessage(chatId, `✅ Супер, *${st.name}*! Твой письменный ответ принят и передан Игорю! 🌟\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+15 XP)*`, {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '🎯 Потренировать мои слова', callback_data: 'student_quiz' }]] }
-      }).catch(() => {});
-    }
-
-    const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
-    const cleanHw = (lastLs?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').trim();
-    const scenario = extractLessonScenario(lastLs?.homework || '');
-
-    // Autonomous AI Grading & Verification
-    let aiGrading = null;
-    if (studentText && lastLs) {
-      try {
-        const gradePrompt = `Ты — профессиональный методист и преподаватель английского языка.
-Ученик ${st.name} (${st.grade || ''}) сдал домашнее задание.
-ЗАДАННОЕ ДЗ:
-"${cleanHw || 'практика английского'}"
-МАТЕРИАЛЫ И СЦЕНАРИЙ УРОКА:
-"${scenario ? scenario.slice(0, 1500) : 'по программе'}"
-
-ОТВЕТ УЧЕНИКА:
+СООБЩЕНИЕ УЧЕНИКА (${isVoiceSubmission ? 'Голосовое сообщение' : 'Текст'}):
 "${studentText}"
 
-ПРОВЕРЬ РАБОТУ И ВЕРНИ СТРОГО JSON:
+Определи, что именно пишет ученик, и верни СТРОГО валидный JSON без лишнего текста:
+1) "intent": выбери ОДНО из трёх:
+   - "homework_submission" — если ученик прислал выполнение ДЗ (ответы по пунктам 1, 2, 3, 4, английские предложения, перевод, слова или голосовую практику Speaking, даже если ответ короткий вроде "1. his 2. her 3. their 4. our").
+   - "topic_question" — если ученик задаёт вопрос по теме урока, правилу английского, словам или не понимает, как делать задание (например: "а почему тут their?", "я не понял 2 задание", "как переводится слово?").
+   - "off_topic_or_chat" — если ученик пишет не по теме урока или организационное сообщение (например: "привет", "спасибо", "я опоздаю на 5 минут", "когда следующий урок?", "я сегодня не смогу", либо просто болтает/шутит).
+
+2) Поля JSON:
 {
-  "is_fully_done": true,
-  "score_percent": 80,
-  "what_is_done": "Чёткий список: какие упражнения/слова/номера сделаны",
-  "what_is_left": "Что осталось доделать или 'Всё сделано в полном объёме'",
-  "errors_made": "Конкретные ошибки ученика с правильным вариантом",
-  "warmup_next_lesson": "2-3 коротких конкретных предложения на перевод или выбор формы для 5-минутки на старте следующего урока именно по ошибкам из этого ДЗ (или пустая строка, если ошибок не было)",
-  "explanation_given": "Как ты объяснил ученику ошибки и что посоветовал исправить",
-  "student_feedback": "Тёплый разбор напрямую для ученика: похвала, разбор ошибок, понятное объяснение правила и что доделать"
+  "intent": "homework_submission" | "topic_question" | "off_topic_or_chat",
+  "is_fully_done": true/false (для homework_submission: выполнены ли все пункты письменного задания),
+  "score_percent": число от 0 до 100 (оценка правильности ДЗ для homework_submission),
+  "what_is_done": "Что именно ученик уже сделал (конкретно по пунктам)",
+  "what_is_left": "Что осталось доделать ученику по ДЗ",
+  "errors_made": "Конкретные ошибки ученика с правильным вариантом (или 'Ошибок нет')",
+  "warmup_next_lesson": "2-3 коротких предложения для 5-минутки на следующий урок по ошибкам ученика (или пустая строка)",
+  "explanation_given": "Краткое резюме для учителя Игоря: какие рекомендации ты дал и как объяснил ошибки/вопрос ученику",
+  "student_reply": "Твой прямой ответ ученику ${st.name} (на 'ты', дружелюбно, понятно, с эмодзи). Если это homework_submission — похвали, разбери каждый пункт, объясни ошибки простыми словами и дай рекомендации. Если topic_question — понятно объясни правило или подскажи решение (но не решай всё ДЗ за него целиком). Если off_topic_or_chat — ответь тепло и естественно по смыслу сообщения (если спрашивает про урок — назови время следующего урока; если предупреждает об опоздании/переносе — скажи, что уже передал информацию Игорю; мягко напомни про ДЗ, если оно ещё не сдано)."
 }`;
 
-        const gradeRes = await executeFunctionCall('generate_lesson_plan', { prompt: gradePrompt });
-        const jsonMatch = gradeRes.generated_plan?.match(/\{[\s\S]*\}/);
-        if (jsonMatch) aiGrading = JSON.parse(jsonMatch[0]);
-      } catch (errGrade) {
-        console.error('AI grading error:', errGrade.message);
-      }
+      const routeRes = await executeFunctionCall('generate_lesson_plan', { prompt: routerPrompt });
+      const jsonMatch = routeRes.generated_plan?.match(/\{[\s\S]*\}/);
+      if (jsonMatch) aiAnalysis = JSON.parse(jsonMatch[0]);
+    } catch (errRoute) {
+      console.error('Student AI router error:', errRoute.message);
     }
 
-    // Если были ошибки в ДЗ — автоматически сохраняем их в 5-минутку следующего урока
-    const warmupNote = aiGrading?.warmup_next_lesson || ((aiGrading?.errors_made && !/без существенных|ошибок нет|нет ошибок/i.test(aiGrading.errors_made)) ? aiGrading.errors_made : '');
+    const detectedIntent = aiAnalysis?.intent || (
+      (isVoiceSubmission || /[a-zA-Z]{2,}/.test(trimmed) || /(?:^|\n)\s*\d+[.)\s]/.test(trimmed))
+        ? 'homework_submission'
+        : 'off_topic_or_chat'
+    );
+
+    // СЦЕНАРИЙ А: Вопрос ученика по теме урока / правилу / ДЗ ИЛИ сообщение не по теме / организационное
+    if (detectedIntent === 'topic_question' || detectedIntent === 'off_topic_or_chat') {
+      const replyToStudent = aiAnalysis?.student_reply || `👍 Принял твоё сообщение, *${st.name}*! Я уже передал его преподавателю Игорю.`;
+      await bot.sendMessage(chatId, replyToStudent, {
+        parse_mode: 'Markdown',
+        reply_markup: buildStudentKeyboard(st, lastLs)
+      }).catch(() => bot.sendMessage(chatId, replyToStudent));
+
+      const intentBadge = detectedIntent === 'topic_question'
+        ? '❓ *Вопрос ученика ПО ТЕМЕ УРОКА / ДЗ*'
+        : '💬 *Сообщение от ученика (орг. вопрос / вне темы)*';
+
+      const teacherCopy = `${intentBadge}: *${st.name}*\n📊 *Готовность ДЗ:* ${currentProg.pct}% (Доступ к сдаче: ${currentProg.isReadyToSubmit ? 'ОТКРЫТ ✅' : 'ЗАКРЫТ 🔒'})\n✅ *Что сделано по ДЗ:* ${currentProg.doneList.join(', ') || 'Пока не приступал(а)'}\n⏳ *Что осталось:* ${currentProg.todoList.join(', ') || 'Ничего'}\n\n🗣 *Что написал ученик:*\n«${studentText}»\n\n💡 *Как бот объяснил / какие рекомендации дал:*\n${aiAnalysis?.explanation_given || 'Ответил по смыслу сообщения'}\n\n📨 *Полная копия ответа ученику:*\n${replyToStudent}`;
+
+      await bot.sendMessage(ADMIN_CHAT_ID, teacherCopy, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[{ text: '🎤 Ответить ученику (голосом/текстом)', callback_data: `teacher_reply_st:${st.id}` }]]
+        }
+      }).catch(() => bot.sendMessage(ADMIN_CHAT_ID, teacherCopy));
+
+      if (msg.voice || msg.video_note) {
+        await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+      }
+      return;
+    }
+
+    // СЦЕНАРИЙ Б: Ученик сдаёт выполнение ДЗ (текстом или голосом)
+    const newStreak = await incrementStudentStreakBot(st);
+    const prog = getHwCompletionSummary(st, lastLs);
+    prog.completedSteps.written = true;
+    const updatedProg = getHwCompletionSummary(st, lastLs);
+    if (lastLs) {
+      await persistHwProgressPercent(lastLs, updatedProg.pct);
+    }
+
+    const warmupNote = aiAnalysis?.warmup_next_lesson || ((aiAnalysis?.errors_made && !/без существенных|ошибок нет|нет ошибок/i.test(aiAnalysis.errors_made)) ? aiAnalysis.errors_made : '');
     if (warmupNote) {
       await saveHwWarmupErrorsToDossier(st, warmupNote).catch(() => {});
     }
 
-    if (aiGrading && aiGrading.is_fully_done) {
-      // 1. ДЗ выполнено полностью -> ИИ АВТОМАТИЧЕСКИ МЕНЯЕТ СТАТУС НА [ДЗ_ПРОВЕРЕНО]
+    if (aiAnalysis && aiAnalysis.is_fully_done) {
       if (lastLs && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
         const updated = `[ДЗ_ПРОВЕРЕНО] ${(lastLs.homework || '').replace('[ДЗ_СДАНО]', '')}`.trim();
         await db.from('lessons').update({ homework: updated }).eq('id', lastLs.id);
       }
-      
-      // Отправляем разбор ученику
-      await bot.sendMessage(chatId, `🎉 *Отличная работа, ${st.name}! ДЗ проверено и зачтено!* ✅\n\n${aiGrading.student_feedback}\n\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+15 XP)* 🏆`, {
-        parse_mode: 'Markdown'
-      }).catch(() => bot.sendMessage(chatId, aiGrading.student_feedback));
 
-      // Отправляем структурированный отчёт преподавателю Игорю с кнопкой голосового ответа
+      const studentFullMsg = `🎉 *Отличная работа, ${st.name}! ДЗ проверено и зачтено!* ✅\n📊 *Готовность ДЗ: ${updatedProg.pct}%*\n\n${aiAnalysis.student_reply || ''}\n\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+15 XP)* 🏆`;
+      await bot.sendMessage(chatId, studentFullMsg, {
+        parse_mode: 'Markdown',
+        reply_markup: buildStudentKeyboard(st, lastLs)
+      }).catch(() => bot.sendMessage(chatId, studentFullMsg));
+
       const warmupSuffix = warmupNote ? `\n\n🎯 *Добавлено в 5-минутку следующего урока:*\n${warmupNote}` : '';
-      const teacherHwReport = `✅ *ИИ ПРОВЕРИЛ И ЗАЧЁЛ ДЗ: ${st.name}* (100% / Проверено)\n\n💬 *Ответ ученика:*\n«${studentText}»\n\n✅ *Что сделано:*\n${aiGrading.what_is_done || 'Все задания выполнены'}\n\n⏳ *Что осталось / не сделано:*\n${aiGrading.what_is_left || 'Ничего, всё готово!'}\n\n⚠️ *Ошибки ученика:*\n${aiGrading.errors_made || 'Без существенных ошибок'}\n\n💡 *Как объяснил ученику:*\n${aiGrading.explanation_given || 'Похвалил и подтвердил правильность'}${warmupSuffix}`;
+      const teacherHwReport = `✅ *ИИ ПРОВЕРИЛ И ЗАЧЁЛ ДЗ: ${st.name}* (Готовность: ${updatedProg.pct}% / Оценка: ${aiAnalysis.score_percent || 100}%)\n\n💬 *Ответ ученика:*\n«${studentText}»\n\n✅ *Что сделано:*\n${aiAnalysis.what_is_done || updatedProg.doneList.join(', ')}\n\n⏳ *Что осталось / не сделано:*\n${aiAnalysis.what_is_left || updatedProg.todoList.join(', ') || 'Ничего, всё готово!'}\n\n⚠️ *Ошибки ученика:*\n${aiAnalysis.errors_made || 'Без существенных ошибок'}\n\n💡 *Как объяснил ученику и какие рекомендации дал:*\n${aiAnalysis.explanation_given || 'Похвалил и разобрал задание'}\n\n📨 *Полная копия ответа ученику:*\n${studentFullMsg}${warmupSuffix}`;
       await bot.sendMessage(ADMIN_CHAT_ID, teacherHwReport, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: '🎤 Ответить ученику (голосом/текстом)', callback_data: `teacher_reply_st:${st.id}` }]]
         }
-      }).catch(() => {});
+      }).catch(() => bot.sendMessage(ADMIN_CHAT_ID, teacherHwReport));
 
-    } else if (aiGrading && !aiGrading.is_fully_done) {
-      // 2. ДЗ выполнено частично -> статус [ДЗ_СДАНО], ученику пишем что доделать
+    } else if (aiAnalysis && !aiAnalysis.is_fully_done) {
       if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
         await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
       }
 
-      await bot.sendMessage(chatId, `📬 *Ответ принят, ${st.name}!* (Задание выполнено частично)\n\n${aiGrading.student_feedback}\n\n🔥 *Твой стрик: ${newStreak} ДЗ подряд!* Давай доделаем остальное 💪`, {
-        parse_mode: 'Markdown'
-      }).catch(() => bot.sendMessage(chatId, aiGrading.student_feedback));
+      const studentPartialMsg = `📬 *Ответ принят и проверен, ${st.name}!*\n📊 *Готовность ДЗ: ${updatedProg.pct}%*\n\n${aiAnalysis.student_reply || ''}\n\n🔥 *Твой стрик: ${newStreak} ДЗ подряд!* Давай доделаем оставшиеся пункты 💪`;
+      await bot.sendMessage(chatId, studentPartialMsg, {
+        parse_mode: 'Markdown',
+        reply_markup: buildStudentKeyboard(st, lastLs)
+      }).catch(() => bot.sendMessage(chatId, studentPartialMsg));
 
       const warmupSuffix = warmupNote ? `\n\n🎯 *Добавлено в 5-минутку следующего урока:*\n${warmupNote}` : '';
-      const teacherPartialReport = `⚠️ *Ученик ${st.name} сдал ДЗ ЧАСТИЧНО* (${aiGrading.score_percent || 0}%)\n\n💬 *Ответ ученика:*\n«${studentText}»\n\n✅ *Что сделано:*\n${aiGrading.what_is_done || 'Часть заданий'}\n\n⏳ *Что НЕ сделано / осталось:*\n${aiGrading.what_is_left || 'Требуется завершить задание'}\n\n⚠️ *Какие ошибки допустил:*\n${aiGrading.errors_made || 'Есть неточности'}\n\n💡 *Как объяснил ученику и что исправить:*\n${aiGrading.explanation_given || aiGrading.student_feedback || 'Отправлена подсказка'}${warmupSuffix}`;
+      const teacherPartialReport = `⚠️ *Ученик ${st.name} сдал письменное ДЗ ЧАСТИЧНО* (Общая готовность ДЗ: ${updatedProg.pct}% / Качество ответа: ${aiAnalysis.score_percent || 50}%)\n\n💬 *Ответ ученика:*\n«${studentText}»\n\n✅ *Что сделано:*\n${aiAnalysis.what_is_done || updatedProg.doneList.join(', ')}\n\n⏳ *Что НЕ сделано / осталось:*\n${aiAnalysis.what_is_left || updatedProg.todoList.join(', ')}\n\n⚠️ *Какие ошибки допустил:*\n${aiAnalysis.errors_made || 'Есть неточности'}\n\n💡 *Как объяснил ошибки и какие рекомендации дал:*\n${aiAnalysis.explanation_given || 'Отправлена подсказка'}\n\n📨 *Полная копия ответа ученику:*\n${studentPartialMsg}${warmupSuffix}`;
       const partialKb = [];
       if (lastLs) partialKb.push([{ text: '✅ Всё равно отметить проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]);
       partialKb.push([{ text: '🎤 Ответить ученику (голосом/текстом)', callback_data: `teacher_reply_st:${st.id}` }]);
       await bot.sendMessage(ADMIN_CHAT_ID, teacherPartialReport, {
         parse_mode: 'Markdown',
         reply_markup: { inline_keyboard: partialKb }
-      }).catch(() => {});
+      }).catch(() => bot.sendMessage(ADMIN_CHAT_ID, teacherPartialReport));
 
     } else {
-      // Фоллбек если ИИ не вернул JSON
       if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
         await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
       }
-      await bot.sendMessage(chatId, `✅ Супер, *${st.name}*! Твой ответ принят и отправлен на проверку! 🌟\n🔥 *Твой стрик: ${newStreak} ДЗ подряд! (+10 XP)*`, { parse_mode: 'Markdown' }).catch(() => {});
+      const fallbackStudentMsg = `✅ Супер, *${st.name}*! Твой ответ принят и отправлен Игорю на проверку! 🌟\n📊 *Готовность ДЗ: ${updatedProg.pct}%*\n🔥 *Твой стрик: ${newStreak} ДЗ подряд! (+10 XP)*`;
+      await bot.sendMessage(chatId, fallbackStudentMsg, {
+        parse_mode: 'Markdown',
+        reply_markup: buildStudentKeyboard(st, lastLs)
+      }).catch(() => {});
       const fbKb = [];
       if (lastLs) fbKb.push([{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]);
       fbKb.push([{ text: '🎤 Ответить ученику (голосом/текстом)', callback_data: `teacher_reply_st:${st.id}` }]);
-      await bot.sendMessage(ADMIN_CHAT_ID, `📬 *Ответ от ученика ${st.name}:*\n\n«${studentText}»`, {
+      await bot.sendMessage(ADMIN_CHAT_ID, `📬 *Ответ по ДЗ от ученика ${st.name}:*\n📊 *Готовность ДЗ:* ${updatedProg.pct}%\n✅ *Сделано:* ${updatedProg.doneList.join(', ')}\n⏳ *Осталось:* ${updatedProg.todoList.join(', ') || 'Ничего'}\n\n💬 *Текст ученика:*\n«${studentText}»\n\n📨 *Копия ответа ученику:*\n${fallbackStudentMsg}`, {
         parse_mode: 'Markdown',
         reply_markup: { inline_keyboard: fbKb }
       }).catch(() => {});

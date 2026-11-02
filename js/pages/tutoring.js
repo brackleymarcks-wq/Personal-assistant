@@ -1426,18 +1426,45 @@ const TutoringPage = {
       try {
         const scenario = document.getElementById('ls-scenario')?.value?.trim() || '';
         const debrief = document.getElementById('ls-debrief-notes')?.value?.trim() || '';
+        const materials = document.getElementById('ls-materials')?.value?.trim() || '';
         const homework = await Gemini.generateTutoringAI('homework', 
           { name: st.name, grade: st.grade, ...this.parseStudentDossier(st) }, 
-          { topic, scenario, debrief, cards: this.attachedCards, presentation: this.attachedPresentation }, 
+          {
+            topic,
+            scenario,
+            debrief,
+            materials,
+            cards: this.attachedCards,
+            presentation: this.attachedPresentation,
+            presentationText: this.attachedPresentationText || ''
+          }, 
           this.getPrevConductedLesson(st.id, ls?.date)
         );
         document.getElementById('ls-homework').value = homework;
+
+        // Авто-генерация красивой PNG-карточки с заданием (Worksheet Card), чтобы ученик получил визуальную карточку в ТГ!
+        try {
+          const worksheetPng = await this.renderHomeworkWorksheetCardCanvas(topic, homework, st.name);
+          if (worksheetPng) {
+            if (!this.attachedCards) this.attachedCards = [];
+            if (this._lastAutoWorksheetCard) {
+              const oldIdx = this.attachedCards.indexOf(this._lastAutoWorksheetCard);
+              if (oldIdx !== -1) this.attachedCards.splice(oldIdx, 1);
+            }
+            this._lastAutoWorksheetCard = worksheetPng;
+            this.attachedCards.unshift(worksheetPng);
+            this.renderCardsPreview();
+          }
+        } catch (cardErr) {
+          console.warn('Auto worksheet card render error:', cardErr);
+        }
+
         const pBox = document.getElementById('ls-tg-preview-box');
         if (pBox) {
           pBox.classList.remove('hidden');
           this.updateLessonModalTgPreview();
         }
-        UI.toast('Домашка сгенерирована!', 'success');
+        UI.toast('Домашка + PNG-карточка задания сгенерированы!', 'success');
       } catch (e) {
         UI.toast('Ошибка ИИ: ' + e.message, 'error');
       } finally {
@@ -2831,6 +2858,58 @@ const TutoringPage = {
   _voiceRec: null,
 
   attachedPresentation: null,
+  attachedPresentationText: '',
+  _lastAutoWorksheetCard: null,
+
+  async extractTextFromPresentationFile(file) {
+    if (!file) return '';
+    try {
+      const name = (file.name || '').toLowerCase();
+      if (name.endsWith('.txt') || name.endsWith('.md') || name.endsWith('.csv')) {
+        return await file.text();
+      }
+      if (name.endsWith('.pdf') || file.type === 'application/pdf') {
+        // Load pdf.js dynamically if not loaded yet
+        if (!window.pdfjsLib) {
+          await new Promise((resolve) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+            s.onload = resolve;
+            s.onerror = resolve;
+            document.head.appendChild(s);
+          });
+        }
+        if (window.pdfjsLib) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          const buf = await file.arrayBuffer();
+          const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+          let fullText = '';
+          const maxPages = Math.min(pdf.numPages, 20);
+          for (let p = 1; p <= maxPages; p++) {
+            const page = await pdf.getPage(p);
+            const content = await page.getTextContent();
+            const pageText = content.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
+            if (pageText) fullText += `Слайд ${p}: ${pageText}\n`;
+          }
+          if (fullText.trim().length > 15) return fullText.trim().slice(0, 6000);
+        }
+      }
+      // Fallback: raw binary text extraction (works for simple PDFs/XML/PPTX uncompressed strings)
+      const ab = await file.arrayBuffer();
+      const dec = new TextDecoder('utf-8', { fatal: false }).decode(ab);
+      const xmlMatches = dec.match(/<a:t>([^<]+)<\/a:t>/g);
+      if (xmlMatches && xmlMatches.length > 0) {
+        return xmlMatches.map(m => m.replace(/<\/?a:t>/g, '')).join(' ').slice(0, 5000);
+      }
+      const asciiMatches = dec.match(/\(([A-Za-zА-Яа-яЁё0-9\s.,?!'"\-:;]{4,})\)/g);
+      if (asciiMatches && asciiMatches.length > 0) {
+        return asciiMatches.map(m => m.slice(1, -1)).join(' ').slice(0, 4000);
+      }
+    } catch (e) {
+      console.warn('extractTextFromPresentationFile error:', e);
+    }
+    return '';
+  },
 
   renderPresentationBadge() {
     const badge = document.getElementById('ls-pres-badge');
@@ -2860,11 +2939,19 @@ const TutoringPage = {
           if (fileInput) fileInput.value = '';
           return UI.toast('Файл больше 15MB. Вставьте ссылку на Google Диск / Gamma в поле «Ссылка на презентацию» выше!', 'warning');
         }
+        const extracted = await this.extractTextFromPresentationFile(file);
+        if (extracted) {
+          this.attachedPresentationText = extracted;
+          const scenEl = document.getElementById('ls-scenario');
+          if (scenEl && !scenEl.value.trim()) {
+            scenEl.value = `[Извлечено из презентации ${file.name}]:\n` + extracted;
+          }
+        }
         const reader = new FileReader();
         reader.onload = (ev) => {
           this.attachedPresentation = ev.target.result;
           this.renderPresentationBadge();
-          UI.toast('Материалы прикреплены к уроку!', 'success');
+          UI.toast(extracted ? 'Презентация прикреплена и прочитана ИИ для ДЗ!' : 'Материалы прикреплены к уроку!', 'success');
         };
         reader.readAsDataURL(file);
       };
@@ -2873,6 +2960,7 @@ const TutoringPage = {
     if (removeBtn) {
       removeBtn.onclick = () => {
         this.attachedPresentation = null;
+        this.attachedPresentationText = '';
         if (fileInput) fileInput.value = '';
         this.renderPresentationBadge();
       };
@@ -3020,6 +3108,13 @@ const TutoringPage = {
 
   async promptGenerateCards(studentId) {
     const st = this.students.find(s => s.id === studentId);
+    const topic = document.getElementById('ls-topic')?.value?.trim() || 'English Lesson';
+    const hwVal = document.getElementById('ls-homework')?.value?.trim() || '';
+    if (hwVal && confirm('🖼 Сгенерировать готовую PNG-карточку домашнего задания (слова + письменное упражнение из ДЗ) для отправки ученику?')) {
+      const wsPng = await this.renderHomeworkWorksheetCardCanvas(topic, hwVal, st?.name || 'Ученик');
+      if (wsPng) this.addCardDataUrl(wsPng);
+      return;
+    }
     const dossier = st ? this.parseStudentDossier(st) : {};
     const defaultWords = dossier.vocab || 'adventure, challenge, discover, explore, achieve';
     const wordsInput = prompt('Введите слова через запятую для генерации красивых PNG-карточек (или нажмите ОК, чтобы взять активный словарь ученика):', defaultWords);
@@ -3031,6 +3126,112 @@ const TutoringPage = {
       const cardPng = await this.renderWordCardCanvas(w);
       this.addCardDataUrl(cardPng);
     }
+  },
+
+  async renderHomeworkWorksheetCardCanvas(topic, hwText, studentName = 'Ученик') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 920;
+    canvas.height = 680;
+    const ctx = canvas.getContext('2d');
+
+    // Deep slate gradient background
+    const grad = ctx.createLinearGradient(0, 0, 920, 680);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(1, '#1e293b');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 920, 680);
+
+    // Subtle accent glow
+    const glow = ctx.createRadialGradient(460, 120, 20, 460, 260, 420);
+    glow.addColorStop(0, 'rgba(13, 148, 136, 0.22)');
+    glow.addColorStop(1, 'rgba(15, 23, 42, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, 920, 680);
+
+    // Outer frame
+    ctx.strokeStyle = 'rgba(45, 212, 191, 0.35)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(20, 20, 880, 640);
+
+    // Header bar
+    ctx.fillStyle = 'rgba(13, 148, 136, 0.2)';
+    ctx.fillRect(22, 22, 876, 86);
+
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 16px Inter, system-ui, sans-serif';
+    ctx.fillStyle = '#2dd4bf';
+    ctx.fillText(`🇬🇧 HOMEWORK WORKSHEET CARD • ${(studentName || 'STUDENT').toUpperCase()}`, 44, 54);
+
+    ctx.font = 'bold 26px Inter, system-ui, sans-serif';
+    ctx.fillStyle = '#f8fafc';
+    const cleanTopic = (topic || 'English Practice').slice(0, 52);
+    ctx.fillText(`📚 Тема: ${cleanTopic}`, 44, 88);
+
+    // Extract clean lines from hwText
+    const cleanHw = (hwText || '')
+      .replace(/\[[\s\S]*?\]/g, '')
+      .replace(/[*_`#]/g, '')
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 2 && !/^4\.\s*📬/.test(l) && !/^3\.\s*🎯/.test(l));
+
+    // Helper for word wrapping on canvas
+    const drawWrappedLine = (text, x, y, maxWidth, lineHeight, maxLines = 2) => {
+      const words = text.split(' ');
+      let line = '';
+      let linesDrawn = 0;
+      for (let n = 0; n < words.length; n++) {
+        const testLine = line + words[n] + ' ';
+        const metrics = ctx.measureText(testLine);
+        if (metrics.width > maxWidth && n > 0) {
+          ctx.fillText(line.trim(), x, y);
+          line = words[n] + ' ';
+          y += lineHeight;
+          linesDrawn++;
+          if (linesDrawn >= maxLines - 1) {
+            // Remaining words in last line
+            const rest = words.slice(n).join(' ');
+            ctx.fillText(rest.length > 75 ? rest.slice(0, 72) + '...' : rest, x, y);
+            return y + lineHeight;
+          }
+        } else {
+          line = testLine;
+        }
+      }
+      if (line.trim()) {
+        ctx.fillText(line.trim(), x, y);
+        y += lineHeight;
+      }
+      return y;
+    };
+
+    let curY = 142;
+    ctx.font = '19px Inter, system-ui, sans-serif';
+    ctx.fillStyle = '#e2e8f0';
+
+    for (const line of cleanHw.slice(0, 14)) {
+      if (curY > 565) break;
+      if (/^(1\.|2\.|🔤|✍️|💡)/.test(line)) {
+        curY += 6;
+        ctx.font = 'bold 20px Inter, system-ui, sans-serif';
+        ctx.fillStyle = '#5eead4';
+        curY = drawWrappedLine(line, 44, curY, 830, 26, 2);
+        ctx.font = '18px Inter, system-ui, sans-serif';
+        ctx.fillStyle = '#f1f5f9';
+      } else {
+        curY = drawWrappedLine(line, 52, curY, 820, 25, 2);
+      }
+    }
+
+    // Footer instruction box
+    ctx.fillStyle = 'rgba(15, 118, 110, 0.35)';
+    ctx.fillRect(36, 588, 848, 54);
+    ctx.font = 'bold 17px Inter, system-ui, sans-serif';
+    ctx.fillStyle = '#99f6e4';
+    ctx.textAlign = 'center';
+    ctx.fillText('📸 Выполни в тетради и пришли ФОТО в бот ИЛИ 💬 напиши ответы прямо в чат!', 460, 621);
+
+    return canvas.toDataURL('image/png');
   },
 
   async renderWordCardCanvas(word) {

@@ -917,13 +917,30 @@ const Gemini = {
       const hasScenario = currentLesson.scenario && currentLesson.scenario.trim().length > 20;
       const hasDebrief = currentLesson.debrief && currentLesson.debrief.trim().length > 5;
       const hasCards = currentLesson.cards && currentLesson.cards.length > 0;
-      const hasPres = currentLesson.presentation && currentLesson.presentation.trim().length > 5;
+      const hasMaterials = currentLesson.materials && currentLesson.materials.trim().length > 3;
+
+      let presSummary = (currentLesson.presentationText || '').trim();
+      if (!presSummary && currentLesson.presentation) {
+        const rawP = String(currentLesson.presentation).trim();
+        if (rawP.startsWith('http') || (!rawP.startsWith('data:') && rawP.length < 3000)) {
+          presSummary = rawP;
+        } else if (rawP.startsWith('data:application/pdf;base64,')) {
+          try {
+            const b64 = rawP.split(',')[1] || '';
+            const bin = atob(b64.slice(0, 120000));
+            const matches = bin.match(/\(([A-Za-z0-9\s.,?!'"\-:;]{4,})\)/g) || [];
+            const extracted = matches.map(m => m.slice(1, -1)).join(' ').replace(/\s+/g, ' ').slice(0, 2000);
+            if (extracted.length > 20) presSummary = extracted;
+          } catch (e) {}
+        }
+      }
 
       let materialsBlock = '';
       if (hasScenario) materialsBlock += `\nСЦЕНАРИЙ И ПЛАН УРОКА:\n"""\n${currentLesson.scenario}\n"""\n`;
+      if (presSummary) materialsBlock += `\nСОДЕРЖАНИЕ ПРЕЗЕНТАЦИИ УРОКА (СЛАЙДЫ И УПРАЖНЕНИЯ):\n"""\n${presSummary}\n"""\n`;
+      if (hasMaterials) materialsBlock += `\nДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ / ССЫЛКИ УРОКА:\n"""\n${currentLesson.materials}\n"""\n`;
       if (hasDebrief) materialsBlock += `\nИТОГИ УРОКА И ЗАМЕЧАНИЯ ПРЕПОДАВАТЕЛЯ (ДЕБРИФИНГ):\n"""\n${currentLesson.debrief}\n"""\n`;
-      if (hasCards) materialsBlock += `\nПРИКРЕПЛЁННЫЕ PNG-КАРТОЧКИ / СЛОВА: Преподаватель прикрепил ${currentLesson.cards.length} карточек. Обязательно включи эти слова в практику!\n`;
-      if (hasPres) materialsBlock += `\nМАТЕРИАЛЫ ПРЕЗЕНТАЦИИ: "${currentLesson.presentation}"\n`;
+      if (hasCards) materialsBlock += `\nПРИКРЕПЛЁННЫЕ PNG-КАРТОЧКИ / СКРИНШОТЫ УПРАЖНЕНИЙ: Преподаватель прикрепил ${currentLesson.cards.length} карточек (переданы во вложении). Обязательно считай слова и упражнения с этих карточек и построй ДЗ вокруг них!\n`;
 
       prompt = `Ты — первоклассный, заботливый методист и преподаватель английского языка.
 Ученик: ${studentCtx.name || 'Ученик'} (${studentCtx.grade || 'уровень по программе'}).
@@ -933,27 +950,29 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
 ТВОЯ ЗАДАЧА:
 Сформировать идеальное, увлекательное домашнее задание НАПРЯМУЮ ДЛЯ УЧЕНИКА.
 ОБЯЗАТЕЛЬНОЕ ТРЕБОВАНИЕ: ДЗ должно быть строго рассчитано на 15–25 МИНУТ МАКСИМУМ (не перегружай ребёнка!).
-Смиксуй материалы: используй слова из сценария/карточек и отработай именно те слабые места, которые преподаватель указал в дебрифинге!
+Смиксуй материалы: обязательно используй лексику и примеры из ПРЕЗЕНТАЦИИ, сценария и прикреплённых PNG-карточек, и отработай именно те слабые места, которые преподаватель указал в дебрифинге!
 
 СТРУКТУРА ДОМАШНЕГО ЗАДАНИЯ (СТРОГО 3 ШАГА НА 15-20 МИНУТ):
 
 1. 🔤 Шаг 1: Лексика урока (~5 минут)
-   - 4-5 ключевых слов/выражений по теме урока (с транскрипцией [IPA], точным переводом и простым примером).
-   ${hasCards ? '- ВАЖНО: Преподаватель прикрепил карточки/картинки к уроку! Обязательно напиши ученику: «🖼 Посмотри прикреплённую карточку/картинку выше в чате и повтори эти слова!»' : ''}
+   - 4-5 ключевых слов/выражений по теме урока и из презентации/карточек (с транскрипцией [IPA], точным переводом и простым примером).
+   - Обязательно напиши ученику: «🖼 Посмотри прикреплённую PNG-карточку задания выше в чате и повтори эти слова!»
    - Задание: прочитать слова вслух.
 
-2. ✍️ Шаг 2: ОБЯЗАТЕЛЬНОЕ ПИСЬМЕННОЕ ЗАДАНИЕ В ТЕТРАДИ (~10 минут)
+2. ✍️ Шаг 2: ОБЯЗАТЕЛЬНОЕ ПИСЬМЕННОЕ ЗАДАНИЕ ПО КАРТОЧКЕ (~10 минут)
    - Краткая шпаргалка по главному правилу (формула и 1 понятный пример «💡 Example: ...»).
-   - СТРОГО 1 КОНКРЕТНОЕ ПИСЬМЕННОЕ УПРАЖНЕНИЕ НА 3-4 ПРЕДЛОЖЕНИЯ:
-   ${hasCards ? '  • Задание даётся НА ОСНОВЕ ПРИКРЕПЛЁННОЙ КАРТОЧКИ: «Открой прикреплённую карточку выше и запиши в тетрадь 4 предложения с этими словами...»' : '  • Задание по теме и конспекту урока: составить и записать в тетрадь от руки 4 предложения (или раскрыть скобки).'}
-   - СТРОГАЯ ИНСТРУКЦИЯ ПО СДАЧЕ:
-     «✍️ Выполни это задание от руки в рабочей тетрадке, сфотографируй страницу и отправь фото прямо сюда в чат! Без фото тетради бот не сможет зачесть ДЗ!»
+   - СТРОГО 1 КОНКРЕТНОЕ ПИСЬМЕННОЕ УПРАЖНЕНИЕ НА 4 ПУНКТА (с нумерацией 1, 2, 3, 4):
+     • Раскрыть скобки, вставить правильное слово/местоимение/форму глагола или перевести 4 коротких предложения по теме урока и материалам презентации/карточки.
+   - ИНСТРУКЦИЯ ПО СДАЧЕ (2 УДОБНЫХ СПОСОБА НА ВЫБОР УЧЕНИКА):
+     «✍️ Выполни эти 4 пункта на выбор:
+      📸 Способ 1: Запиши в тетрадке от руки, сфотографируй и пришли фото сюда в чат!
+      💬 Способ 2: Или просто напиши свои ответы (1, 2, 3, 4) текстом прямо сюда в чат бота!»
 
-3. 🎯 Шаг 3: Практика в боте (~3-5 минут)
-   - Нажми кнопки ниже под этим сообщением («📝 Тестик по уроку» или «🔤 Слова урока»), чтобы закрепить материал!
+3. 🎯 Шаг 3: Интерактивная практика в боте (~3-5 минут)
+   - Нажми кнопки ниже под этим сообщением («📝 Тестик по уроку», «🔤 Слова урока» и тренировку правила), чтобы набрать минимум 75% готовности ДЗ и разблокировать кнопку сдачи!
 
 4. 📬 Как сдать ДЗ:
-   «Сфотографируй тетрадь с выполненным Шагом 2 и отправь фото сюда в чат! Бот проверит твои ответы и сразу передаст проверенную работу Игорю! 🚀»
+   «Пришли фото тетрадки ИЛИ напиши ответы на Шаг 2 прямо сюда в чат (либо пройди все интерактивные карточки и тестик по кнопкам ниже до 75%+)! Бот проверит твои ответы, объяснит ошибки и сразу передаст отчёт Игорю! 🚀»
 
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО:
 - НЕ добавляй никаких ключей для преподавателя или готовых ответов! Задание читает сам ученик!
@@ -991,14 +1010,36 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
       prompt = `До конца урока осталось 5-7 минут! Создай живую, увлекательную устную мини-игру на 5 минут по теме "${currentLesson.topic || 'Повторение и лексика'}", используя активный словарь, типичные ошибки и интересы ученика.\nВыбери один из форматов: "Детективное расследование / Алиби", "Угадай слово по 3 подсказкам (Taboo)", "2 правды и 1 ложь с ловушками на грамматику" или "Блиц-аукцион ошибок".\nПиши сразу готовый сценарий и реплики для преподавателя (с правильными ответами в скобках)!`;
     }
 
-    const data = await this._callAPI(
-      apiUrl,
-      apiKey,
-      model,
-      `Ты — топовый методист и ИИ-ассистент преподавателя английского языка (Twee + Lesson Mate AI).\nДОСЬЕ УЧЕНИКА:\n${dossierText}`,
-      [{ role: 'user', content: prompt }],
-      true
-    );
+    const visionImages = [];
+    if (mode === 'homework') {
+      if (Array.isArray(currentLesson.cards)) {
+        for (const c of currentLesson.cards.slice(0, 3)) {
+          if (typeof c === 'string' && (c.startsWith('data:image/') || c.startsWith('http'))) {
+            visionImages.push(c);
+          }
+        }
+      }
+      if (typeof currentLesson.presentation === 'string' && currentLesson.presentation.startsWith('data:image/')) {
+        visionImages.push(currentLesson.presentation);
+      }
+    }
+
+    const sysInstruction = `Ты — топовый методист и ИИ-ассистент преподавателя английского языка (Twee + Lesson Mate AI).\nДОСЬЕ УЧЕНИКА:\n${dossierText}`;
+    let data;
+    if (visionImages.length > 0) {
+      try {
+        const multimodalContent = [
+          { type: 'text', text: prompt },
+          ...visionImages.map(url => ({ type: 'image_url', image_url: { url } }))
+        ];
+        data = await this._callAPI(apiUrl, apiKey, model, sysInstruction, [{ role: 'user', content: multimodalContent }], true);
+      } catch (visionErr) {
+        console.warn('Multimodal homework generation fallback to text-only:', visionErr.message);
+        data = await this._callAPI(apiUrl, apiKey, model, sysInstruction, [{ role: 'user', content: prompt }], true);
+      }
+    } else {
+      data = await this._callAPI(apiUrl, apiKey, model, sysInstruction, [{ role: 'user', content: prompt }], true);
+    }
     let out = data.choices?.[0]?.message?.content?.trim() || '';
     if (mode === 'homework') {
       out = out.replace(/\*\*/g, '').replace(/\*/g, '');
