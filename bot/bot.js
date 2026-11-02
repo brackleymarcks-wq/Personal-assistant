@@ -3118,12 +3118,6 @@ bot.on('callback_query', async (query) => {
 
       // Перерисовываем список привычек
       const habits = await getHabits();
-  const minskDayName = new Date().toLocaleDateString('en-US', { timeZone: 'Europe/Minsk', weekday: 'short' });
-  const isWeekend = (minskDayName === 'Sat' || minskDayName === 'Sun');
-  if (typeof completedToday !== 'undefined' && isWeekend) {
-    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: похвали за проведённые уроки и полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
-    return await askAI('Сгенерируй тёплый вечерний обзор выходного дня', weekendCtx, null, true, true);
-  }
       const todayLogs = await getHabitLogsToday();
       const doneHabitIds = new Set(todayLogs.filter(l => l.status === 'done').map(l => l.habit_id));
 
@@ -3199,12 +3193,30 @@ bot.on('callback_query', async (query) => {
     } catch (e) {
       console.error('Callback query lessons_refresh error:', e);
     }
+  } else if (data === 'tasks_pulse_refresh') {
+    try {
+      await bot.answerCallbackQuery(query.id, { text: 'Сводка задач обновлена! 🔄' });
+      await sendTaskPulseReminder('⏰ *Пульс задач: День и Неделя*', chatId, messageId);
+    } catch (e) {
+      console.error('Callback query tasks_pulse_refresh error:', e);
+    }
+  } else if (data === 'tasks_close_overdue') {
+    try {
+      const overdueList = await getOverdueTasks();
+      for (const ot of overdueList) {
+        await completeTask(ot.id);
+      }
+      await bot.answerCallbackQuery(query.id, { text: `✅ Закрыто хвостов: ${overdueList.length}!` });
+      await sendTaskPulseReminder('⏰ *Пульс задач: День и Неделя*', chatId, messageId);
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
   } else if (data && data.startsWith('task_done:')) {
     const taskId = data.split(':')[1];
     try {
       const t = await completeTask(taskId);
       await bot.answerCallbackQuery(query.id, { text: `✅ Выполнено: ${t?.title || 'Задача'}!` });
-      await bot.sendMessage(chatId, `✅ Задача выполнена: *${t?.title || 'Задача'}*`, { parse_mode: 'Markdown' }).catch(() => {});
+      await sendTaskPulseReminder('⏰ *Пульс задач: День и Неделя*', chatId, messageId).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -3214,7 +3226,7 @@ bot.on('callback_query', async (query) => {
       const tomorrow = getMinskDateString(1);
       const { data: t } = await db.from('tasks').update({ deadline: tomorrow }).eq('id', taskId).select().single();
       await bot.answerCallbackQuery(query.id, { text: `⏭ Перенесено на завтра (${tomorrow})` });
-      await bot.sendMessage(chatId, `⏭ Задача перенесена на завтра (${tomorrow}): *${t?.title || 'Задача'}*`, { parse_mode: 'Markdown' }).catch(() => {});
+      await sendTaskPulseReminder('⏰ *Пульс задач: День и Неделя*', chatId, messageId).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -4631,59 +4643,11 @@ bot.onText(/\/level/, async (msg) => {
   }
 });
 
-// /today — план на сегодня
+// /today — план на сегодня и неделю
 bot.onText(/\/today/, async (msg) => {
   var chatId = msg.chat.id;
   try {
-    const todayTasks = await getTasksDueToday();
-    const events = await getTodayEvents();
-    const overdue = await getOverdueTasks();
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
-
-    let text = `📅 *${dateStr}*\n\n`;
-
-    if (events.length > 0) {
-      text += '🕐 *События:*\n';
-      events.forEach(e => {
-        const start = new Date(e.start_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-        text += `  ${start} — ${e.title}\n`;
-      });
-      text += '\n';
-    }
-
-    if (todayTasks.length > 0) {
-      text += '🎯 *Задачи на сегодня:*\n';
-      todayTasks.forEach(t => { text += `  • ${t.title}\n`; });
-      text += '\n';
-    }
-
-    if (overdue.length > 0) {
-      text += `⚠️ *Просрочено (${overdue.length}):*\n`;
-      overdue.slice(0, 5).forEach(t => { text += `  • ${t.title} (${t.deadline})\n`; });
-      text += '\n';
-    }
-
-    if (events.length === 0 && todayTasks.length === 0 && overdue.length === 0) {
-      text += 'Сегодня чисто — ни задач, ни событий. Отдыхаем или берёмся за что-то новое? 🚀';
-    }
-    const actionTasks = [...todayTasks, ...overdue].slice(0, 5);
-    const todayButtons = actionTasks.map(t => ([
-      { text: `✅ ${t.title.substring(0, 18)}`, callback_data: `task_done:${t.id}` },
-      { text: `⏭ Завтра`, callback_data: `task_tomorrow:${t.id}` }
-    ]));
-    todayButtons.push([{ text: '🍅 Фокус 25 мин', callback_data: 'focus_start:25' }]);
-    return bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: todayButtons } }).catch(() => {
-      bot.sendMessage(chatId, text, { reply_markup: { inline_keyboard: todayButtons } });
-    });
-    if (false) { Promise.resolve().then(() => {
-    });
-      text += 'Сегодня чисто — ни задач, ни событий. Отдыхаем или берёмся за что-то новое? 🚀';
-    }
-
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(() => {
-      bot.sendMessage(chatId, text);
-    });
+    return await sendTaskPulseReminder('📅 *План задач: День и Неделя*', chatId);
   } catch(e) {
     bot.sendMessage(chatId, '❌ Ошибка: ' + e.message);
   }
@@ -5234,28 +5198,22 @@ async function generateMorningBriefing() {
   const upcoming = await getUpcomingDeadlines(7);
   const events = await getTodayEvents();
   const habits = await getHabits();
-  const minskDayName = new Date().toLocaleDateString('en-US', { timeZone: 'Europe/Minsk', weekday: 'short' });
-  const isWeekend = (minskDayName === 'Sat' || minskDayName === 'Sun');
-  if (typeof completedToday !== 'undefined' && isWeekend) {
-    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: похвали за проведённые уроки и полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
-    return await askAI('Сгенерируй тёплый вечерний обзор выходного дня', weekendCtx, null, true, true);
-  }
 
   const contextData = `
 ДАННЫЕ ДЛЯ УТРЕННЕГО БРИФИНГА:
 - Задачи на сегодня: ${JSON.stringify(todayTasks.map(t => t.title))}
 - Просроченные задачи: ${JSON.stringify(overdue.map(t => ({ title: t.title, deadline: t.deadline })))}
-- Дедлайны на 7 дней: ${JSON.stringify(upcoming.map(t => ({ title: t.title, deadline: t.deadline })))}
+- Задачи на неделю (ближайшие 7 дней): ${JSON.stringify(upcoming.map(t => ({ title: t.title, deadline: t.deadline })))}
 - События сегодня: ${JSON.stringify(events.map(e => ({ title: e.title, start: e.start_at })))}
 - Привычки: ${JSON.stringify(habits.map(h => h.name))}
 
 Сгенерируй утренний брифинг. Формат:
 1. Приветствие с датой
-2. Главная задача дня (самая важная)
-3. Остальные задачи
-4. Расписание (если есть события)
-5. Напоминания и дедлайны
-6. Мотивация (коротко)
+2. 🎯 Задачи на сегодня (главный фокус дня + остальные задачи на сегодня)
+3. 📅 План задач на эту неделю (перечисли запланированные задачи на ближайшие дни с датами!)
+4. 🕐 События из календаря на сегодня (НЕ выдумывай расписание английского, если его нет в событиях!)
+5. 🔥 Хвосты с прошлых дней (если есть)
+6. Короткая бодрая мотивация
 `;
 
   return await askAI('Сгенерируй утренний брифинг', contextData, null, true, true);
@@ -5360,6 +5318,99 @@ function sendProactiveMessage(text) {
   });
 }
 
+async function sendTaskPulseReminder(headerTitle = '⏰ *Пульс задач: День и Неделя*', targetChatId = null, editMessageId = null) {
+  const destChat = targetChatId || CHAT_ID;
+  if (!destChat) return;
+
+  try {
+    const todayTasks = await getTasksDueToday();
+    const completedToday = await getTasksCompletedToday();
+    const upcomingWeek = await getUpcomingDeadlines(7);
+    const overdue = await getOverdueTasks();
+
+    const priorityEmoji = { 'Высокий': '🔴', 'Средний': '🟡', 'Низкий': '🟢' };
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short' });
+
+    let text = `${headerTitle}\n🗓 _Сегодня: ${todayStr}_\n\n`;
+
+    // 1. Задачи на сегодня
+    text += `🎯 *ЗАДАЧИ НА СЕГОДНЯ (${todayTasks.length}):*\n`;
+    if (todayTasks.length === 0) {
+      if (completedToday.length > 0) {
+        text += `✅ Все задачи на сегодня выполнены! (закрыто: ${completedToday.length})\n`;
+      } else {
+        text += `_На сегодня активных задач нет_\n`;
+      }
+    } else {
+      todayTasks.forEach((t, idx) => {
+        const pEmoji = priorityEmoji[t.priority] || '🔸';
+        const areaTag = t.area === 'Работа' ? '💼' : '🏠';
+        text += `${idx + 1}. ${pEmoji}${areaTag} *${t.title}*\n`;
+      });
+      if (completedToday.length > 0) {
+        text += `_✅ Уже закрыто сегодня: ${completedToday.length}_\n`;
+      }
+    }
+
+    // 2. План задач на неделю (ближайшие 7 дней)
+    text += `\n📅 *ПЛАН ЗАДАЧ НА НЕДЕЛЮ (${upcomingWeek.length}):*\n`;
+    if (upcomingWeek.length === 0) {
+      text += `_На ближайшие 7 дней задач пока нет_\n`;
+    } else {
+      const sortedWeek = [...upcomingWeek].sort((a, b) => (a.deadline || '').localeCompare(b.deadline || ''));
+      sortedWeek.forEach(t => {
+        const dObj = new Date(t.deadline + 'T12:00:00Z');
+        const dLabel = dObj.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
+        const pEmoji = priorityEmoji[t.priority] || '▫️';
+        text += `• *${dLabel}:* ${pEmoji} ${t.title}\n`;
+      });
+    }
+
+    // 3. Просроченные хвосты
+    if (overdue.length > 0) {
+      text += `\n🔥 *ХВОСТЫ С ПРОШЛЫХ ДНЕЙ (${overdue.length}):*\n`;
+      overdue.slice(0, 5).forEach(t => {
+        text += `• ⚠️ ${t.title} _(до ${t.deadline})_\n`;
+      });
+      if (overdue.length > 5) {
+        text += `_...и ещё ${overdue.length - 5}_\n`;
+      }
+    }
+
+    // Интерактивные кнопки для быстрого закрытия/переноса
+    const actionable = [...todayTasks, ...overdue.slice(0, 2)].slice(0, 6);
+    const inlineKeyboard = actionable.map(t => ([
+      { text: `✅ ${t.title.substring(0, 22)}`, callback_data: `task_done:${t.id}` },
+      { text: `⏭ На завтра`, callback_data: `task_tomorrow:${t.id}` }
+    ]));
+    if (overdue.length > 1) {
+      inlineKeyboard.push([{ text: `🧹 Закрыть все вчерашние хвосты (${overdue.length})`, callback_data: 'tasks_close_overdue' }]);
+    }
+    inlineKeyboard.push([
+      { text: '🔄 Обновить сводку', callback_data: 'tasks_pulse_refresh' },
+      { text: '🍅 Фокус 25 мин', callback_data: 'focus_start:25' }
+    ]);
+
+    const opts = {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: inlineKeyboard }
+    };
+
+    if (editMessageId) {
+      await bot.editMessageText(text, { chat_id: destChat, message_id: editMessageId, ...opts }).catch(async () => {
+        await bot.editMessageText(text, { chat_id: destChat, message_id: editMessageId, reply_markup: { inline_keyboard: inlineKeyboard } }).catch(() => {});
+      });
+    } else {
+      await bot.sendMessage(destChat, text, opts).catch(async () => {
+        await bot.sendMessage(destChat, text, { reply_markup: { inline_keyboard: inlineKeyboard } }).catch(() => {});
+      });
+    }
+  } catch (err) {
+    console.error('sendTaskPulseReminder error:', err.message);
+  }
+}
+
 // ---- CRON JOBS ----
 
 // [NEW] Подъем и пробежка: 7:00 по Минску = 4:00 UTC
@@ -5380,14 +5431,29 @@ cron.schedule('45 5 * * *', async () => {
   }
 }, { timezone: 'UTC' });
 
-// Напоминание перед Deep Work: 9:55 по Минску = 6:55 UTC
-cron.schedule('55 6 * * 1-5', () => {
-  sendProactiveMessage('🧠 Через 5 минут — Deep Work. Закрой мессенджеры, убери уведомления, выбери главную задачу. Погнали! 🚀');
+// Напоминание перед Deep Work + Задачи на день и неделю: 9:55 по Минску = 6:55 UTC
+cron.schedule('55 6 * * 1-5', async () => {
+  await sendTaskPulseReminder('🧠 *Через 5 минут — Deep Work (10:00–13:00)!*\nЗакрой мессенджеры и выбери главную задачу из списка:');
+}, { timezone: 'UTC' });
+
+// Дневной чек-ин по задачам (12:00 по Минску = 9:00 UTC)
+cron.schedule('0 9 * * *', async () => {
+  await sendTaskPulseReminder('🕛 *Дневной пульс задач (12:00)*\nСверяем курс по задачам на сегодня и на неделю:');
 }, { timezone: 'UTC' });
 
 // [NEW] Обед: 13:00 по Минску = 10:00 UTC
 cron.schedule('0 10 * * 1-5', () => {
   sendProactiveMessage('🍔 *Время обеда!* Твое время с 13:00 до 14:00 защищено. Отрывайся от монитора и отдыхай.');
+}, { timezone: 'UTC' });
+
+// Послеобеденный фокус по задачам (14:15 по Минску = 11:15 UTC)
+cron.schedule('15 11 * * 1-5', async () => {
+  await sendTaskPulseReminder('⚡ *Фокус на вторую половину дня (14:15)*\nЧто закрываем после обеда и что в плане на неделю:');
+}, { timezone: 'UTC' });
+
+// Финишная прямая рабочего дня (16:45 по Минску = 13:45 UTC)
+cron.schedule('45 13 * * 1-5', async () => {
+  await sendTaskPulseReminder('🏁 *Финишная прямая рабочего дня (16:45)*\nДо конца работы 1 час — отметь выполненное или перенеси на завтра:');
 }, { timezone: 'UTC' });
 
 // Вечерний обзор: 19:30 по Минску = 16:30 UTC
