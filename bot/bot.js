@@ -2697,7 +2697,8 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
       doss.parentTgUser = '';
     }
     const currentTgIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (!currentTgIds.includes(incomingChatId)) {
+    const isBrandNewConnection = !currentTgIds.includes(incomingChatId);
+    if (isBrandNewConnection) {
       currentTgIds.push(incomingChatId);
     }
     doss.tgId = currentTgIds.join(', ');
@@ -2724,7 +2725,10 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
       }
     }).catch(() => bot.sendMessage(incomingChatId, welcomeSt));
 
-    await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *${msg.from?.first_name || "Ученик"}* из группы *${st.name}* (${thisUser}) подключился(лась) к боту!\n👥 Всего подключено к группе: ${currentTgIds.length} уч. 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+    // Уведомление преподавателю отправляем ТОЛЬКО ПРИ ПЕРВОМ ПОДКЛЮЧЕНИИ!
+    if (isBrandNewConnection) {
+      await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *${msg.from?.first_name || "Ученик"}* из группы *${st.name}* (${thisUser}) впервые подключился(лась) к боту!\n👥 Всего подключено к группе: ${currentTgIds.length} уч. 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+    }
     return;
   }
 
@@ -5484,15 +5488,17 @@ cron.schedule('* * * * *', async () => {
           const prevHwRaw = prev ? ((prev.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].trim()) : '';
           const isHwChecked = prevHwRaw.includes('[ДЗ_ПРОВЕРЕНО]');
           const prevHwClean = prevHwRaw.replace('[ДЗ_ПРОВЕРЕНО]', '').trim();
-          let briefMsg = `🔔 *Урок через 15 минут!* — *${stName}* (${st.grade || 'уровень не указан'})\n`;
+          let briefMsg = `👨‍🏫 *ТВОЯ ШПАРГАЛКА ПЕРЕД УРОКОМ (Видно ТОЛЬКО тебе!)*\n` +
+            `🔔 *Урок через 15 минут:* *${stName}* (${st.grade || 'уровень не указан'})\n` +
+            `🔒 _(Ученик это сообщение НЕ видит — это твоё закрытое методическое досье)_\n\n`;
           if (ls.topic) briefMsg += `📚 *Тема сегодня:* ${ls.topic}\n`;
           if (prev) briefMsg += `⏪ *Прошлый урок (${new Date(prev.date).toLocaleDateString('ru-RU')}):* ${prev.topic || 'Без темы'}\n`;
           if (prevHwClean) briefMsg += `📌 *ПРОВЕРИТЬ ДЗ:* ${prevHwClean} ${isHwChecked ? '✅' : '⚠️'}\n`;
-          if (doss.errors) briefMsg += `⚠️ *Слабые места:* ${doss.errors}\n`;
-          if (doss.interests) briefMsg += `🎯 *Интересы:* ${doss.interests}\n`;
+          if (doss.errors) briefMsg += `⚠️ *Слабые места (на что обратить внимание):* ${doss.errors}\n`;
+          if (doss.interests) briefMsg += `🎯 *Интересы (для живых примеров):* ${doss.interests}\n`;
           const { data: cond15 } = await db.from('lessons').select('*').eq('student_id', ls.student_id).eq('status', 'Проведен').order('date', { ascending: false }).limit(15);
           const ebbLesson = (cond15 || []).find(c => c.topic && (Date.now() - new Date(c.date).getTime() >= 10 * 86400000) && (Date.now() - new Date(c.date).getTime() <= 25 * 86400000));
-          if (ebbLesson) briefMsg += `🔄 *Кривая Эббингауза (~2 нед. назад):* повторить «${ebbLesson.topic}»\n`;
+          if (ebbLesson) briefMsg += `🔄 *Интервальное повторение (Эббингауз):* повторить «${ebbLesson.topic}»\n`;
           if (doss.unit) briefMsg += `📖 *Учебник/Unit:* ${doss.unit}\n`;
           const kb = [
             [
@@ -5506,8 +5512,8 @@ cron.schedule('* * * * *', async () => {
           if (prev && prevHwClean && !isHwChecked) {
             kb.push([{ text: '✅ Отметить прошлое ДЗ проверенным', callback_data: `lesson_hw_checked:${prev.id}` }]);
           }
-          if (CHAT_ID) {
-            bot.sendMessage(CHAT_ID, briefMsg, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
+          if (ADMIN_CHAT_ID) {
+            bot.sendMessage(ADMIN_CHAT_ID, briefMsg, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
               bot.sendMessage(CHAT_ID, briefMsg, { reply_markup: { inline_keyboard: kb } }).catch(() => {});
             });
           }
