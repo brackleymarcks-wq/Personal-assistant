@@ -505,8 +505,280 @@ const TutoringPage = {
           </div>
         </div>
 
+        <!-- Payment History Modal -->
+        <div id="payment-history-modal" class="modal-overlay hidden">
+          <div class="modal" style="max-width:760px; max-height:88vh; display:flex; flex-direction:column; padding:0; border-radius:20px; overflow:hidden;">
+            <div class="modal-header" style="padding:16px 20px; border-bottom:1px solid var(--border-light); display:flex; align-items:center; justify-content:space-between; background:var(--bg-surface);">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:36px; height:36px; border-radius:10px; background:rgba(16,185,129,0.12); color:var(--success); display:flex; align-items:center; justify-content:center;">
+                  <i data-lucide="receipt" style="width:20px; height:20px;"></i>
+                </div>
+                <div>
+                  <h2 class="modal-title" id="payment-modal-title" style="margin:0; font-size:17px; font-weight:700;">История оплат репетиторства</h2>
+                  <div id="payment-modal-subtitle" style="font-size:12px; color:var(--text-secondary); margin-top:1px;">Учёт оплат, проведённых уроков и долгов</div>
+                </div>
+              </div>
+              <button class="modal-close" id="payment-modal-close" onclick="document.getElementById('payment-history-modal').classList.add('hidden')"><i data-lucide="x"></i></button>
+            </div>
+
+            <!-- Filters Bar -->
+            <div style="padding:12px 20px; background:var(--bg-primary); border-bottom:1px solid var(--border-light); display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between;">
+              <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <label style="font-size:12px; font-weight:600; color:var(--text-muted);">Ученик:</label>
+                  <select id="pay-filter-student" class="form-input" style="padding:4px 8px; font-size:12px; height:32px; border-radius:8px;" onchange="TutoringPage.updatePaymentHistoryView()"></select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <label style="font-size:12px; font-weight:600; color:var(--text-muted);">Статус:</label>
+                  <select id="pay-filter-status" class="form-input" style="padding:4px 8px; font-size:12px; height:32px; border-radius:8px;" onchange="TutoringPage.updatePaymentHistoryView()">
+                    <option value="all">Все статусы</option>
+                    <option value="paid">🟢 Только оплаченные</option>
+                    <option value="unpaid">🔴 Только неоплаченные (долги)</option>
+                  </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <label style="font-size:12px; font-weight:600; color:var(--text-muted);">Месяц:</label>
+                  <select id="pay-filter-month" class="form-input" style="padding:4px 8px; font-size:12px; height:32px; border-radius:8px;" onchange="TutoringPage.updatePaymentHistoryView()"></select>
+                </div>
+              </div>
+              <div id="pay-bulk-actions"></div>
+            </div>
+
+            <!-- Summary KPI Badges -->
+            <div id="pay-summary-kpis" style="padding:14px 20px; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; background:var(--bg-surface); border-bottom:1px solid var(--border-light);"></div>
+
+            <!-- Lessons / Payments List -->
+            <div id="pay-lessons-list" style="padding:16px 20px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:8px;"></div>
+          </div>
+        </div>
+
       </div>
     `;
+  },
+
+
+  openPaymentHistoryModal(studentId = null, filterStatus = 'all') {
+    const modal = document.getElementById('payment-history-modal');
+    if (!modal) return;
+
+    // Populate student filter dropdown
+    const stSelect = document.getElementById('pay-filter-student');
+    if (stSelect) {
+      stSelect.innerHTML = '<option value="all">Все ученики</option>' + 
+        this.students.map(s => `<option value="${s.id}">${this.escapeHtml(s.name)} (${s.price} BYN)</option>`).join('');
+      if (studentId) stSelect.value = studentId;
+      else stSelect.value = 'all';
+    }
+
+    // Status filter
+    const statusSelect = document.getElementById('pay-filter-status');
+    if (statusSelect) {
+      statusSelect.value = filterStatus || 'all';
+    }
+
+    // Populate month filter dropdown based on actual conducted lessons
+    const monthSelect = document.getElementById('pay-filter-month');
+    if (monthSelect) {
+      const monthsSet = new Set();
+      this.lessons.forEach(l => {
+        if (l.date && l.status === 'Проведен') {
+          const d = new Date(l.date);
+          const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+          monthsSet.add(key);
+        }
+      });
+      const sortedMonths = Array.from(monthsSet).sort().reverse();
+      monthSelect.innerHTML = '<option value="all">За всё время</option>' + sortedMonths.map(m => {
+        const [y, mo] = m.split('-');
+        const d = new Date(Number(y), Number(mo) - 1, 1);
+        const label = d.toLocaleString('ru', { month: 'long', year: 'numeric' });
+        return `<option value="${m}">${label.charAt(0).toUpperCase() + label.slice(1)}</option>`;
+      }).join('');
+    }
+
+    modal.classList.remove('hidden');
+    this.updatePaymentHistoryView();
+  },
+
+  updatePaymentHistoryView() {
+    const studentFilter = document.getElementById('pay-filter-student')?.value || 'all';
+    const statusFilter = document.getElementById('pay-filter-status')?.value || 'all';
+    const monthFilter = document.getElementById('pay-filter-month')?.value || 'all';
+
+    const titleEl = document.getElementById('payment-modal-title');
+    const subtitleEl = document.getElementById('payment-modal-subtitle');
+    if (studentFilter !== 'all') {
+      const st = this.students.find(s => s.id === studentFilter);
+      if (titleEl && st) titleEl.textContent = `История оплат: ${st.name}`;
+      if (subtitleEl && st) subtitleEl.textContent = `Ставка: ${st.price} BYN за урок • ${st.grade || 'ученик'}`;
+    } else {
+      if (titleEl) titleEl.textContent = 'История оплат репетиторства';
+      if (subtitleEl) subtitleEl.textContent = 'Учёт оплат, проведённых уроков и задолженностей';
+    }
+
+    // Filter conducted lessons
+    let filtered = this.lessons.filter(l => l.status === 'Проведен');
+    if (studentFilter !== 'all') {
+      filtered = filtered.filter(l => l.student_id === studentFilter);
+    }
+    if (statusFilter === 'paid') {
+      filtered = filtered.filter(l => l.paid);
+    } else if (statusFilter === 'unpaid') {
+      filtered = filtered.filter(l => !l.paid);
+    }
+    if (monthFilter !== 'all') {
+      filtered = filtered.filter(l => {
+        const d = new Date(l.date);
+        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        return key === monthFilter;
+      });
+    }
+
+    // Sort by date descending
+    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Calculate metrics
+    let totalPaidAmount = 0;
+    let totalPaidCount = 0;
+    let totalUnpaidAmount = 0;
+    let totalUnpaidCount = 0;
+
+    filtered.forEach(l => {
+      const st = this.students.find(s => s.id === l.student_id);
+      const price = st ? (Number(st.price) || 0) : 0;
+      if (l.paid) {
+        totalPaidAmount += price;
+        totalPaidCount++;
+      } else {
+        totalUnpaidAmount += price;
+        totalUnpaidCount++;
+      }
+    });
+
+    // Render KPIs
+    const kpiContainer = document.getElementById('pay-summary-kpis');
+    if (kpiContainer) {
+      kpiContainer.innerHTML = `
+        <div style="padding:10px 14px; border-radius:12px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2);">
+          <div style="font-size:11px; color:var(--text-muted); font-weight:600;">🟢 ОПЛАЧЕНО</div>
+          <div style="font-size:18px; font-weight:800; color:var(--success); margin-top:2px;">${totalPaidAmount} BYN <span style="font-size:11px; color:var(--text-muted); font-weight:500;">(${totalPaidCount} ур.)</span></div>
+        </div>
+        <div style="padding:10px 14px; border-radius:12px; background:${totalUnpaidCount > 0 ? 'rgba(239,68,68,0.08)' : 'var(--bg-primary)'}; border:1px solid ${totalUnpaidCount > 0 ? 'rgba(239,68,68,0.25)' : 'var(--border-light)'};">
+          <div style="font-size:11px; color:${totalUnpaidCount > 0 ? 'var(--danger)' : 'var(--text-muted)'}; font-weight:600;">🔴 ЖДЁТ ОПЛАТЫ (ДОЛГ)</div>
+          <div style="font-size:18px; font-weight:800; color:${totalUnpaidCount > 0 ? 'var(--danger)' : 'var(--text-primary)'}; margin-top:2px;">${totalUnpaidAmount} BYN <span style="font-size:11px; color:var(--text-muted); font-weight:500;">(${totalUnpaidCount} ур.)</span></div>
+        </div>
+        <div style="padding:10px 14px; border-radius:12px; background:var(--bg-primary); border:1px solid var(--border-light);">
+          <div style="font-size:11px; color:var(--text-muted); font-weight:600;">📚 ВСЕГО ПРОВЕДЕНО</div>
+          <div style="font-size:18px; font-weight:800; color:var(--text-primary); margin-top:2px;">${filtered.length} уроков</div>
+        </div>
+      `;
+    }
+
+    // Bulk actions
+    const bulkContainer = document.getElementById('pay-bulk-actions');
+    if (bulkContainer) {
+      if (totalUnpaidCount > 0 && studentFilter !== 'all') {
+        const targetSt = this.students.find(s => s.id === studentFilter);
+        bulkContainer.innerHTML = `
+          <button class="btn btn-secondary btn-xs" style="color:var(--danger); border-color:rgba(239,68,68,0.3); background:rgba(239,68,68,0.06); font-weight:700; padding:6px 12px;" onclick="TutoringPage.payAllDebts('${studentFilter}', ${totalUnpaidCount}, ${targetSt?.price || 0}, '${this.escapeHtml(targetSt?.name || '')}')">
+            ⚡ Оплатить весь долг (${totalUnpaidAmount} BYN)
+          </button>
+        `;
+      } else {
+        bulkContainer.innerHTML = '';
+      }
+    }
+
+    // Render List
+    const listContainer = document.getElementById('pay-lessons-list');
+    if (!listContainer) return;
+
+    if (filtered.length === 0) {
+      listContainer.innerHTML = `
+        <div style="text-align:center; padding:36px 16px; color:var(--text-muted); font-size:13px;">
+          <i data-lucide="inbox" style="width:32px; height:32px; opacity:0.3; margin-bottom:8px;"></i>
+          <div>Нет проведённых уроков с выбранными фильтрами</div>
+        </div>
+      `;
+      if (window.lucide) window.lucide.createIcons();
+      return;
+    }
+
+    listContainer.innerHTML = filtered.map(ls => {
+      const st = this.students.find(s => s.id === ls.student_id);
+      const price = st ? (Number(st.price) || 0) : 0;
+      const stName = st ? st.name : 'Ученик';
+      const lessonDate = new Date(ls.date);
+      const dateFormatted = lessonDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) + 
+        ' в ' + lessonDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+      return `
+        <div style="padding:12px 14px; border-radius:12px; background:var(--bg-surface); border:1px solid ${ls.paid ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.25)'}; display:flex; align-items:center; justify-content:space-between; gap:12px; transition:all 0.15s;" onmouseover="this.style.background='var(--bg-primary)'" onmouseout="this.style.background='var(--bg-surface)'">
+          <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
+            <div style="width:36px; height:36px; border-radius:50%; background:${ls.paid ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)'}; color:${ls.paid ? 'var(--success)' : 'var(--danger)'}; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;">
+              ${ls.paid ? '✓' : '!'}
+            </div>
+            <div style="min-width:0; flex:1;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-weight:700; font-size:14px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.escapeHtml(stName)}</span>
+                <span style="font-size:11px; color:var(--text-muted);">${dateFormatted}</span>
+              </div>
+              <div style="font-size:12px; color:var(--text-secondary); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                📚 ${this.escapeHtml(ls.topic || 'Без указанной темы')}
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">
+            <div style="text-align:right;">
+              <div style="font-weight:800; font-size:15px; color:${ls.paid ? 'var(--success)' : 'var(--danger)'};">${price} BYN</div>
+              <div style="font-size:10px; font-weight:700; color:${ls.paid ? 'var(--success)' : 'var(--danger)'};">${ls.paid ? 'ОПЛАЧЕНО' : 'НЕ ОПЛАЧЕНО'}</div>
+            </div>
+            <div>
+              ${ls.paid 
+                ? `<button class="btn btn-secondary btn-xs" style="font-size:11px; padding:4px 8px; color:var(--text-muted);" title="Отменить отметку об оплате урока" onclick="TutoringPage.toggleLessonPayment('${ls.id}', false)">↩️ Отменить</button>`
+                : `<button class="btn btn-primary btn-xs" style="font-size:11px; padding:4px 10px; background:var(--success); border-color:var(--success); color:#fff; font-weight:600;" onclick="TutoringPage.toggleLessonPayment('${ls.id}', true)">💰 Оплатить</button>`
+              }
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    if (window.lucide) window.lucide.createIcons();
+  },
+
+  async toggleLessonPayment(lessonId, markAsPaid) {
+    const ls = this.lessons.find(l => l.id === lessonId);
+    if (!ls) return;
+    const st = this.students.find(s => s.id === ls.student_id);
+    const price = st ? (Number(st.price) || 0) : 0;
+    const stName = st ? st.name : 'Ученик';
+
+    if (!markAsPaid) {
+      if (!confirm(`Отменить оплату (${price} BYN) за урок "${ls.topic || 'Английский'}" ученика ${stName}?`)) {
+        return;
+      }
+    }
+
+    try {
+      await DB.updateLesson(lessonId, { paid: markAsPaid });
+      if (markAsPaid && price > 0) {
+        await DB.createTransaction({
+          type: 'income',
+          amount: price,
+          category: 'Репетиторство',
+          description: JSON.stringify({ text: `Оплата за урок: ${stName} (${ls.topic || 'Без темы'})` })
+        });
+        UI.toast(`Оплата ${price} BYN зачислена в Доходы! 💰`, 'success');
+      } else if (!markAsPaid) {
+        UI.toast('Оплата отменена (урок переведён в статус долга)', 'info');
+      }
+      await this.load();
+      this.updatePaymentHistoryView();
+    } catch (e) {
+      UI.toast('Ошибка: ' + e.message, 'error');
+    }
   },
 
   async init() {

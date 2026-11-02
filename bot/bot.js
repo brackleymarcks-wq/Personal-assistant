@@ -1635,6 +1635,55 @@ const TOOLS = [
         required: ['status']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_task',
+      description: 'Обновить любые параметры задачи: перенести дедлайн/дату в календаре, изменить статус, название или приоритет',
+      parameters: {
+        type: 'object',
+        properties: {
+          task_id: { type: 'string', description: 'ID задачи (если известен)' },
+          title_search: { type: 'string', description: 'Часть названия задачи для поиска' },
+          deadline: { type: 'string', description: 'Новый дедлайн / дата в календаре в формате YYYY-MM-DD' },
+          status: { type: 'string', description: 'Новый статус: "Готово", "В работе", "Ждёт меня", "Отменена"' },
+          title: { type: 'string', description: 'Новое название задачи' },
+          priority: { type: 'string', description: 'Приоритет: "Низкий", "Средний", "Высокий"' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reschedule_tasks',
+      description: 'Массово перенести/перераспределить задачи с одного периода на другой в календаре (например, перекинуть все незавершенные рабочие задачи с октября на первую неделю ноября)',
+      parameters: {
+        type: 'object',
+        properties: {
+          filter_status: { type: 'string', description: 'Фильтр по статусу, например "unfinished" (незавершенные) или "all"' },
+          filter_area: { type: 'string', description: 'Сфера: "Работа", "Личное" или "all"' },
+          filter_month_or_dates: { type: 'string', description: 'Исходный период (например "октябрь" или "2026-10")' },
+          target_start_date: { type: 'string', description: 'Дата начала нового периода (например "2026-11-02")' },
+          tasks_distribution: {
+            type: 'array',
+            description: 'Опциональный детальный массив задач и их новых дат дедлайна',
+            items: {
+              type: 'object',
+              properties: {
+                task_id: { type: 'string' },
+                title_search: { type: 'string' },
+                new_deadline: { type: 'string', description: 'YYYY-MM-DD' },
+                new_status: { type: 'string', description: 'Опционально новый статус' }
+              },
+              required: ['new_deadline']
+            }
+          }
+        },
+        required: ['target_start_date']
+      }
+    }
   }
 ];
 
@@ -2368,6 +2417,94 @@ async function executeFunctionCall(name, args) {
           return { success: true, task: data, message: `Статус задачи "${data.title}" изменен на "${status}"!` };
         }
       }
+      case 'update_task': {
+        const { task_id, title_search, deadline, status, title, priority } = args;
+        if (!task_id && !title_search) return { success: false, error: 'Нужно передать task_id или title_search' };
+        
+        let targetId = task_id;
+        if (!targetId) {
+          const user = await getUser();
+          if (!user) return { success: false, error: 'User not found' };
+          const { data: allTasks } = await db.from('tasks').select('*').eq('user_id', user.id);
+          const searchLower = title_search.toLowerCase();
+          const found = (allTasks || []).find(t => t.title.toLowerCase().includes(searchLower));
+          if (!found) return { success: false, error: `Задача со словами "${title_search}" не найдена.` };
+          targetId = found.id;
+        }
+
+        const updates = { updated_at: new Date().toISOString() };
+        if (deadline) updates.deadline = deadline;
+        if (status) updates.status = status;
+        if (title) updates.title = title;
+        if (priority) updates.priority = priority;
+
+        const { data, error } = await db.from('tasks').update(updates).eq('id', targetId).select().single();
+        if (error) return { success: false, error: error.message };
+        return { 
+          success: true, 
+          task: data, 
+          message: `Задача "${data.title}" обновлена! Новый дедлайн: ${data.deadline || 'не задан'}, статус: ${data.status}` 
+        };
+      }
+      case 'reschedule_tasks': {
+        const { filter_status, filter_area, filter_month_or_dates, target_start_date, tasks_distribution } = args;
+        const user = await getUser();
+        if (!user) return { success: false, error: 'User not found' };
+
+        const updatedTasks = [];
+        if (Array.isArray(tasks_distribution) && tasks_distribution.length > 0) {
+          for (const item of tasks_distribution) {
+            let tId = item.task_id;
+            if (!tId && item.title_search) {
+              const { data: matched } = await db.from('tasks').select('id, title').eq('user_id', user.id).ilike('title', `%${item.title_search}%`).limit(1);
+              if (matched && matched.length > 0) tId = matched[0].id;
+            }
+            if (tId) {
+              const patch = { updated_at: new Date().toISOString() };
+              if (item.new_deadline) patch.deadline = item.new_deadline;
+              if (item.new_status) patch.status = item.new_status;
+              const { data: res } = await db.from('tasks').update(patch).eq('id', tId).select().single();
+              if (res) updatedTasks.push(res);
+            }
+          }
+        } else {
+          let query = db.from('tasks').select('*').eq('user_id', user.id);
+          if (filter_area && filter_area !== 'all') {
+            query = query.eq('area', filter_area);
+          }
+          const { data: allUserTasks } = await query;
+          const candidates = (allUserTasks || []).filter(t => {
+            const isNotDone = t.status !== 'Готово' && t.status !== 'Отменена';
+            const matchesPeriod = (!filter_month_or_dates || filter_month_or_dates === 'октябрь' || filter_month_or_dates === '2026-10') 
+              ? (t.deadline && t.deadline.startsWith('2026-10')) 
+              : true;
+            return isNotDone && matchesPeriod;
+          });
+
+          const startDate = new Date(target_start_date || '2026-11-02');
+          let dayOffset = 0;
+          for (const cand of candidates) {
+            const curDate = new Date(startDate.getTime() + dayOffset * 86400000);
+            const yyyy = curDate.getFullYear();
+            const mm = String(curDate.getMonth() + 1).padStart(2, '0');
+            const dd = String(curDate.getDate()).padStart(2, '0');
+            const newDl = `${yyyy}-${mm}-${dd}`;
+            
+            const patch = { deadline: newDl, updated_at: new Date().toISOString() };
+            if (cand.status === 'Отменена') patch.status = 'Ждёт меня';
+            const { data: res } = await db.from('tasks').update(patch).eq('id', cand.id).select().single();
+            if (res) updatedTasks.push(res);
+            dayOffset++;
+          }
+        }
+
+        return {
+          success: true,
+          count: updatedTasks.length,
+          tasks: updatedTasks.map(t => ({ title: t.title, deadline: t.deadline, status: t.status })),
+          message: `Успешно перенесено задач: ${updatedTasks.length}! Задачи распределены по первой неделе ноября начиная с ${target_start_date || '2026-11-02'}.`
+        };
+      }
       default:
         return { success: false, error: `Неизвестная функция: ${name}` };
     }
@@ -2510,7 +2647,7 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
       });
     }
 
-    const isActionOnly = message.tool_calls.every(tc => ['process_brain_dump', 'schedule_lesson', 'send_homework_to_student', 'import_perplexity_lesson', 'add_lesson', 'create_task', 'create_tasks', 'create_event', 'update_task_status', 'add_transaction', 'create_transaction', 'log_habit', 'update_context'].includes(tc.function.name));
+    const isActionOnly = message.tool_calls.every(tc => ['process_brain_dump', 'schedule_lesson', 'send_homework_to_student', 'import_perplexity_lesson', 'add_lesson', 'create_task', 'create_tasks', 'create_event', 'update_task_status', 'update_task', 'reschedule_tasks', 'add_transaction', 'create_transaction', 'log_habit', 'update_context'].includes(tc.function.name));
     try {
       response = await callAPI(systemInstruction, messages, 0, !!imageUrl, overrideModel, isActionOnly ? true : disableTools, activeTools);
     } catch (e) {
@@ -5175,13 +5312,37 @@ async function generateWeeklyReview() {
   const stats = await getWeekStats();
   const overdue = await getOverdueTasks();
 
+  const now = new Date();
+  const nextWeekEnd = new Date(now.getTime() + 7 * 86400000);
+  const { data: upcomingLessons } = await db.from('lessons')
+    .select('*, students(name)')
+    .eq('status', 'Запланирован')
+    .gte('date', now.toISOString())
+    .lte('date', nextWeekEnd.toISOString())
+    .order('date');
+
+  let tutoringScheduleText = 'Нет запланированных уроков в расписании (уроки создаются преподавателем вручную по договоренности).';
+  if (upcomingLessons && upcomingLessons.length > 0) {
+    tutoringScheduleText = upcomingLessons.map(l => {
+      const dt = new Date(l.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return `- ${dt}: ${l.students?.name || 'Ученик'} («${l.topic || 'Английский'}»)`;
+    }).join('\n');
+  }
+
   const contextData = `
 ЕЖЕНЕДЕЛЬНЫЙ ОБЗОР:
 - Задач закрыто за неделю: ${stats.completed}
 - Задач создано за неделю: ${stats.created}
 - Просрочено: ${overdue.length}
 
-Сгенерируй еженедельный обзор. Похвали за достижения, обрати внимание на проблемы, спроси про цели на следующую неделю.
+АКТУАЛЬНЫЕ УРОКИ РЕПЕТИТОРСТВА НА СЛЕДУЮЩУЮ НЕДЕЛЮ:
+${tutoringScheduleText}
+
+КАТЕГОРИЧЕСКИ ВАЖНО:
+- У репетиторства НЕТ автоматического или постоянного расписания! Преподаватель (Игорь) назначает уроки вручную по факту, когда может.
+- СТРОГО ЗАПРЕЩЕНО выдумывать или предполагать дни и время уроков (например "Вт 18:00+ — Воронины, Ср 18:00+ — Курочкина")!
+- Если в блоке "АКТУАЛЬНЫЕ УРОКИ РЕПЕТИТОРСТВА" уроков нет — вообще не приводи список расписания уроков репетиторства!
+- Похвали за достижения недели, подсвети фокус на новую неделю.
 `;
 
   return await askAI('Еженедельный обзор', contextData, null, true, true);
