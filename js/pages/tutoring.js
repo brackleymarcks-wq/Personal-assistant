@@ -14,7 +14,11 @@ const TutoringPage = {
             <div class="page-title" style="font-size:24px;font-weight:800;background:linear-gradient(90deg, var(--accent), var(--accent-vibrant));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Репетиторство 🇬🇧</div>
             <div class="page-subtitle" id="tutoring-subtitle" style="font-size:13px;color:var(--text-secondary);margin-top:4px;">Управление учениками и финансами</div>
           </div>
-          <div class="page-actions" style="display:flex;gap:12px;">
+          <div class="page-actions" style="display:flex;gap:12px;align-items:center;">
+            <button class="btn btn-secondary" id="payment-history-btn" onclick="TutoringPage.openPaymentHistoryModal()" style="display:flex;align-items:center;gap:6px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.05);color:var(--success);border-color:rgba(16,185,129,0.3);background:rgba(16,185,129,0.06);font-weight:600;" title="Посмотреть полную историю оплат по всем ученикам и урокам">
+              <i data-lucide="receipt" style="width:16px;height:16px;"></i>
+              История оплат
+            </button>
             <button class="btn btn-secondary" id="add-student-btn" style="display:flex;align-items:center;gap:6px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
               <i data-lucide="user-plus" style="width:16px;height:16px;"></i>
               Добавить ученика
@@ -581,14 +585,17 @@ const TutoringPage = {
           <div style="font-size:24px;font-weight:800;color:var(--text-primary);">${activeSt}</div>
         </div>
       </div>
-      <div class="glass-panel" style="padding:20px;border-radius:16px;display:flex;align-items:center;gap:16px;background:linear-gradient(145deg, var(--bg-surface), var(--bg-primary));border:1px solid var(--border-light);">
-        <div style="width:48px;height:48px;border-radius:12px;background:rgba(16, 185, 129, 0.1);color:var(--success);display:flex;align-items:center;justify-content:center;">
+      <div class="glass-panel" onclick="TutoringPage.openPaymentHistoryModal()" title="Нажмите, чтобы открыть полную историю оплат и долгов" style="padding:20px;border-radius:16px;display:flex;align-items:center;gap:16px;background:linear-gradient(145deg, var(--bg-surface), var(--bg-primary));border:1px solid var(--border-light);cursor:pointer;transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='var(--success)';this.style.boxShadow='0 4px 16px rgba(16,185,129,0.15)';" onmouseout="this.style.transform='none';this.style.borderColor='var(--border-light)';this.style.boxShadow='none';">
+        <div style="width:48px;height:48px;border-radius:12px;background:rgba(16, 185, 129, 0.1);color:var(--success);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           <i data-lucide="wallet" style="width:24px;height:24px;"></i>
         </div>
-        <div>
-          <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Оплачено в ${now.toLocaleString('ru', {month:'long'})}</div>
-          <div style="font-size:24px;font-weight:800;color:var(--text-primary);">${monthlyIncome} <span style="font-size:14px;color:var(--text-muted);font-weight:600;">BYN</span></div>
-          ${unpaidLessonsAmount > 0 ? `<div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px;">⏳ Ждёт оплаты: ${unpaidLessonsAmount} BYN</div>` : `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Все проведённые оплачены</div>`}
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Оплачено в ${now.toLocaleString('ru', {month:'long'})}</div>
+            <span style="font-size:10px;padding:2px 6px;border-radius:8px;background:rgba(16,185,129,0.12);color:var(--success);font-weight:700;">🧾 История →</span>
+          </div>
+          <div style="font-size:24px;font-weight:800;color:var(--text-primary);margin-top:2px;">${monthlyIncome} <span style="font-size:14px;color:var(--text-muted);font-weight:600;">BYN</span></div>
+          ${unpaidLessonsAmount > 0 ? `<div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px;">⏳ Ждёт оплаты: ${unpaidLessonsAmount} BYN (нажмите для деталей)</div>` : `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Все проведённые уроки оплачены</div>`}
         </div>
       </div>
       <div class="glass-panel" style="padding:20px;border-radius:16px;display:flex;align-items:center;gap:16px;background:linear-gradient(145deg, var(--bg-surface), var(--bg-primary));border:1px solid var(--border-light);">
@@ -611,7 +618,7 @@ const TutoringPage = {
         
         // Find unpaid lessons for this student
         const unpaidCount = this.lessons.filter(l => l.student_id === st.id && l.status === 'Проведен' && !l.paid).length;
-        const debtBadge = unpaidCount > 0 ? `<div style="background:rgba(239, 68, 68, 0.1);color:var(--danger);font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;border:1px solid rgba(239,68,68,0.2);">Не оплачено: ${unpaidCount}</div>` : '';
+        const debtBadge = unpaidCount > 0 ? `<div onclick="event.stopPropagation(); TutoringPage.openPaymentHistoryModal('${st.id}', 'unpaid')" title="Нажмите, чтобы посмотреть неоплаченные уроки ${this.escapeHtml(st.name)}" style="background:rgba(239, 68, 68, 0.1);color:var(--danger);font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;border:1px solid rgba(239,68,68,0.2);cursor:pointer;display:inline-flex;align-items:center;gap:4px;">⏳ Не оплачено: ${unpaidCount} уроков</div>` : '';
 
         // Extract notes from schedule
         const dossier = this.parseStudentDossier(st);
@@ -661,7 +668,10 @@ const TutoringPage = {
                 </div>
               </div>
               <div style="text-align:right;">
-                <div style="font-weight:800;color:var(--accent);font-size:16px;">${st.price} <span style="font-size:12px;">BYN</span></div>
+                <div onclick="event.stopPropagation(); TutoringPage.openPaymentHistoryModal('${st.id}')" title="Нажмите, чтобы посмотреть историю оплат ученика ${this.escapeHtml(st.name)}" style="font-weight:800;color:var(--accent);font-size:16px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)';" onmouseout="this.style.borderColor='var(--border-light)';">
+                  <span>${st.price} <span style="font-size:12px;">BYN</span></span>
+                  <i data-lucide="receipt" style="width:13px;height:13px;color:var(--text-muted);"></i>
+                </div>
               </div>
             </div>
             
@@ -676,6 +686,9 @@ const TutoringPage = {
             ${hwStatusBadge}
 
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-light); width: 100%; flex-wrap:wrap; min-width:0;">
+              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.openPaymentHistoryModal('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px; color:var(--success); border-color:rgba(16,185,129,0.3); background:rgba(16,185,129,0.04);" title="История оплат и проведённых уроков ${this.escapeHtml(st.name)}">
+                <i data-lucide="receipt" style="width:12px;height:12px;"></i> Оплаты
+              </button>
               ${unpaidCount > 0 ? `
                 <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.payAllDebts('${st.id}', ${unpaidCount}, ${st.price}, '${this.escapeHtml(st.name)}')" style="color:var(--danger); border-color:rgba(239,68,68,0.2); background:rgba(239,68,68,0.05); display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;">
                   <i data-lucide="coins" style="width:12px;height:12px;"></i> Оплатить долг
