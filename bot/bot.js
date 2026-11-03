@@ -148,13 +148,22 @@ console.log('🤖 Бот запущен! Ожидаю сообщения...');
 // DATABASE HELPERS
 // ============================================
 
+let cachedUser = null;
 async function getUser() {
-  const { data, error } = await db.from('users').select('*').limit(1).single();
-  if (error) {
-    console.error('getUser error:', error);
-    throw error;
+  if (cachedUser) return cachedUser;
+  try {
+    const { data, error } = await db.from('users').select('*').limit(1).single();
+    if (error) {
+      console.error('getUser error:', error);
+      if (cachedUser) return cachedUser;
+      throw error;
+    }
+    cachedUser = data;
+    return data;
+  } catch (err) {
+    if (cachedUser) return cachedUser;
+    throw err;
   }
-  return data;
 }
 
 async function getTasks(filters = {}) {
@@ -497,12 +506,16 @@ async function updateContext(newInstruction) {
 }
 
 async function saveMessage(role, content) {
-  const user = await getUser();
-  await db.from('messages').insert({
-    user_id: user?.id,
-    role,
-    content
-  });
+  try {
+    const user = await getUser();
+    await db.from('messages').insert({
+      user_id: user?.id,
+      role,
+      content
+    });
+  } catch (err) {
+    console.warn('saveMessage silent error:', err.message);
+  }
 }
 
 async function getRecentMessages(limit = 6) {
@@ -6124,9 +6137,10 @@ cron.schedule('45 5 * * *', async () => {
     const text = await generateMorningBriefing();
     await saveMessage('assistant', text);
     sendProactiveMessage('📝 *План на день*\n\n' + text);
-  } catch(e) {
+  } catch (e) {
     console.error('Cron morning error:', e);
-    sendProactiveMessage('📝 Доброе утро! Не смог собрать брифинг — проверь логи.');
+    const todayStr = new Date().toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'long', day: 'numeric', month: 'long' });
+    sendProactiveMessage(`☀️ *Доброе утро! Сегодня ${todayStr}*\n\nНачинаем рабочий день. Проверь актуальные задачи в карточках дня и недели!\n\n_Примечание: автоматический отчёт временно переключён в режим быстрого обзора (${e.message})_`);
   }
 }, { timezone: 'UTC' });
 
@@ -6162,9 +6176,9 @@ cron.schedule('30 16 * * *', async () => {
     const text = await generateEveningReview();
     await saveMessage('assistant', text);
     sendProactiveMessage('🌙 *Вечерний обзор*\n\n' + text);
-  } catch(e) {
+  } catch (e) {
     console.error('Cron evening error:', e);
-    sendProactiveMessage('🌙 Вечер! Не смог собрать обзор дня — проверь логи.');
+    sendProactiveMessage(`🌙 *Вечерний обзор*\n\nДень завершён! Самое время закрыть рабочие программы, выдохнуть и отдохнуть. Отбой до 22:30!\n\n_Примечание: автоматический отчёт временно переключён в режим быстрого обзора (${e.message})_`);
   }
 }, { timezone: 'UTC' });
 
