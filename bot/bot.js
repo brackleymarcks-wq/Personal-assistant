@@ -745,6 +745,7 @@ function resolveStudentActor(st, chatIdOrUserId = null, fromUser = null) {
         actorId: '7739392171',
         tagKey: 'АРИНА',
         shortName: 'Арина',
+        name: 'Арина',
         fullName: 'Арина Воронина',
         icon: '👧',
         displayLabel: '👧 Арина Воронина (группа: Арина и Матвей Воронины)',
@@ -756,6 +757,7 @@ function resolveStudentActor(st, chatIdOrUserId = null, fromUser = null) {
         actorId: '8016114061',
         tagKey: 'МАТВЕЙ',
         shortName: 'Матвей',
+        name: 'Матвей',
         fullName: 'Матвей Воронин',
         icon: '👦',
         displayLabel: '👦 Матвей Воронин (группа: Арина и Матвей Воронины)',
@@ -772,6 +774,7 @@ function resolveStudentActor(st, chatIdOrUserId = null, fromUser = null) {
       actorId: uid || String(st?.id || 'curr'),
       tagKey: cleanTag,
       shortName: fName,
+      name: fName,
       fullName: `${fName} (${stName})`,
       icon: '👤',
       displayLabel: `👤 ${fName} (группа: ${stName})`,
@@ -783,6 +786,7 @@ function resolveStudentActor(st, chatIdOrUserId = null, fromUser = null) {
     actorId: uid || String(st?.id || 'curr'),
     tagKey: '',
     shortName: stName,
+    name: stName,
     fullName: stName,
     icon: '👤',
     displayLabel: stName,
@@ -1023,6 +1027,30 @@ function getHwCompletionSummary(st, lesson, chatIdOrUserId = null, fromUser = nu
   }
 
   return summary;
+}
+
+async function markHwTagForActor(lesson, kind, actor = null) {
+  // kind: 'СДАНО' | 'ПРОВЕРЕНО'. Для группы ставим персональный тег, чтобы сдача одного ребёнка не засчитывалась другому.
+  if (!lesson || !lesson.id) return;
+  try {
+    let hw = lesson.homework || '';
+    const tagKey = actor?.tagKey || '';
+    if (tagKey) {
+      const personal = `[ДЗ_${kind}_${tagKey}]`;
+      if (kind === 'ПРОВЕРЕНО') hw = hw.replace(`[ДЗ_СДАНО_${tagKey}]`, '');
+      if (!hw.includes(personal)) hw = `${personal} ${hw}`;
+      if (!hw.includes('[ДЗ_СДАНО]') && !hw.includes('[ДЗ_ПРОВЕРЕНО]')) hw = `[ДЗ_СДАНО] ${hw}`;
+    } else if (kind === 'ПРОВЕРЕНО') {
+      if (!hw.includes('[ДЗ_ПРОВЕРЕНО]')) hw = `[ДЗ_ПРОВЕРЕНО] ${hw.replace('[ДЗ_СДАНО]', '')}`;
+    } else {
+      if (!hw.includes('[ДЗ_СДАНО]') && !hw.includes('[ДЗ_ПРОВЕРЕНО]')) hw = `[ДЗ_СДАНО] ${hw}`;
+    }
+    hw = hw.replace(/\s{2,}/g, ' ').trim();
+    if (hw !== (lesson.homework || '')) {
+      lesson.homework = hw;
+      await db.from('lessons').update({ homework: hw }).eq('id', lesson.id);
+    }
+  } catch (e) {}
 }
 
 async function persistHwProgressPercent(lesson, pct, actor = null, st = null) {
@@ -3234,25 +3262,24 @@ bot.on('document', async (msg) => {
   if (!found) return;
   const st = found.student;
 
-  const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
-  const prog = getHwCompletionSummary(st, lastLs);
+  const lastLs = await getLatestLessonWithMaterials(st.id);
+  const docActor = resolveStudentActor(st, chatId, msg.from);
+  const prog = getHwCompletionSummary(st, lastLs, chatId, msg.from);
   prog.completedSteps.written = true;
-  const updatedProg = getHwCompletionSummary(st, lastLs);
+  const updatedProg = getHwCompletionSummary(st, lastLs, chatId, msg.from);
   if (lastLs) {
-    await persistHwProgressPercent(lastLs, updatedProg.pct);
-    if (!(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
-      await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
-    }
+    await persistHwProgressPercent(lastLs, updatedProg.pct, docActor, st);
+    await markHwTagForActor(lastLs, 'СДАНО', docActor);
   }
 
-  const studentDocReply = `✅ Молодец, *${st.name}*! Я получил твой файл с ДЗ и уже передал его Игорю на проверку! 🌟\n📊 *Готовность ДЗ: ${updatedProg.pct}%* (кнопка сдачи ДЗ разблокирована!)`;
+  const studentDocReply = `✅ Молодец, *${docActor.shortName}*! Я получил твой файл с ДЗ и уже передал его Игорю на проверку! 🌟\n📊 *Готовность ДЗ: ${updatedProg.pct}%* (кнопка сдачи ДЗ разблокирована!)`;
   await bot.sendMessage(chatId, studentDocReply, {
     parse_mode: 'Markdown',
-    reply_markup: buildStudentKeyboard(st, lastLs)
+    reply_markup: buildStudentKeyboard(st, lastLs, chatId)
   }).catch(() => {});
 
   await bot.sendDocument(ADMIN_CHAT_ID, msg.document.file_id, {
-    caption: `📄 *Документ/файл ДЗ от ученика: ${st.name}* (${msg.document.file_name || 'файл'})\n📊 *Готовность ДЗ:* ${updatedProg.pct}%\n✅ *Сделано:* ${updatedProg.doneList.join(', ')}\n⏳ *Осталось:* ${updatedProg.todoList.join(', ') || 'Ничего'}\n\n📨 *Копия ответа ученику:*\n${studentDocReply}`,
+    caption: `📄 *Документ/файл ДЗ от ученика: ${docActor.displayLabel}* (${msg.document.file_name || 'файл'})\n📊 *Готовность ДЗ:* ${updatedProg.pct}%\n${updatedProg.groupBreakdownText ? updatedProg.groupBreakdownText + '\n' : ''}✅ *Сделано:* ${updatedProg.doneList.join(', ')}\n⏳ *Осталось:* ${updatedProg.todoList.join(', ') || 'Ничего'}\n\n📨 *Копия ответа ученику:*\n${studentDocReply}`,
     parse_mode: 'Markdown',
     reply_markup: lastLs ? { inline_keyboard: [[{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]] } : undefined
   }).catch(async () => {
@@ -3365,12 +3392,6 @@ bot.onText(/\/habits/, async (msg) => {
   var chatId = msg.chat.id;
   try {
     const habits = await getHabits();
-  const minskDayName = new Date().toLocaleDateString('en-US', { timeZone: 'Europe/Minsk', weekday: 'short' });
-  const isWeekend = (minskDayName === 'Sat' || minskDayName === 'Sun');
-  if (typeof completedToday !== 'undefined' && isWeekend) {
-    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: похвали за проведённые уроки и полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
-    return await askAI('Сгенерируй тёплый вечерний обзор выходного дня', weekendCtx, null, true, true);
-  }
     if (habits.length === 0) {
       return bot.sendMessage(chatId, '🌱 У тебя пока нет активных привычек. Добавь их в веб-интерфейсе!');
     }
@@ -3692,7 +3713,7 @@ bot.on('callback_query', async (query) => {
       const lastLs = await getLatestLessonWithMaterials(st.id);
       const materialsText = extractAllLessonMaterials(lastLs, st);
 
-      const prog = getPracticeProgress(st.id, lastLs?.id);
+      const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
       prog.wordsBatch++;
 
       const wordsPrompt = `Ты — первоклассный методист английского языка для ${actor.name} (${st.grade || '6 класс'}).
@@ -3786,7 +3807,7 @@ ${materialsText || `Активный словарь: "${doss.vocab || ''}"\nТе
       const lastLs = await getLatestLessonWithMaterials(st.id);
       const materialsText = extractAllLessonMaterials(lastLs, st);
 
-      const prog = getPracticeProgress(st.id, lastLs?.id);
+      const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
       prog.verbsBatch++;
 
       const verbsPrompt = `Ты — преподаватель английского для ${actor.name} (${st.grade || '6 класс'}).
@@ -3913,7 +3934,7 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
       const genRes = await executeFunctionCall('generate_lesson_plan', { prompt });
       const rawText = genRes.generated_plan || `${ruleTitle}\n\nПовтори материалы урока и составь предложение!`;
 
-      const prog = getPracticeProgress(st.id, lastLs?.id);
+      const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
       prog.completedSteps.grammar = true;
       const hwStatus = getHwCompletionSummary(st, lastLs, chatId, query.from);
       await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
@@ -3965,7 +3986,7 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
       const lastLs = await getLatestLessonWithMaterials(st.id);
       const materialsText = extractAllLessonMaterials(lastLs, st);
 
-      const prog = getPracticeProgress(st.id, lastLs?.id);
+      const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
       prog.quizRound++;
 
       const pollPrompt = `Ты — методист по английскому для ${actor.name} (${st.grade || 'школьник'}).
@@ -4164,13 +4185,13 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
       const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: gamePrompt });
       const text = genRes.generated_plan || '🎮 English Riddle Time!\nWhat has keys but no locks, space but no room, and you can enter but never go outside?\n(Напиши свою догадку в ответном сообщении!)';
 
-      const prog = getPracticeProgress(st.id, lastLs?.id);
+      const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
       prog.completedSteps.grammar = true;
       const hwStatus = getHwCompletionSummary(st, lastLs, chatId, query.from);
       await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
 
       await sendCleanMessage(chatId, `🎮 <b>Мини-игра для ${actor.name}:</b>\n\n${text}`, {
-        reply_markup: buildStudentKeyboard(st, lastLs)
+        reply_markup: buildStudentKeyboard(st, lastLs, chatId)
       });
 
       await sendCleanMessage(ADMIN_CHAT_ID,
@@ -4209,7 +4230,7 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
       if (idx >= cards.length) idx = 0;
       if (idx < 0) idx = 0;
       const c = cards[idx];
-      const prog = getPracticeProgress(st.id, lastLs?.id);
+      const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
 
       if (action === 'card_known') {
         prog.cardsKnown = (prog.cardsKnown || 0) + 1;
@@ -4817,7 +4838,7 @@ bot.on('poll_answer', async (answer) => {
 
     const actor = resolveStudentActor(st, pollInfo.chatId, answer.user);
 
-    const prog = getPracticeProgress(pollInfo.studentId || pollInfo.studentName, pollInfo.lessonId || lastLs?.id);
+    const prog = getPracticeProgress(pollInfo.studentId || pollInfo.studentName, pollInfo.lessonId || lastLs?.id, actor.tagKey);
     prog.pollsAnswered = (prog.pollsAnswered || 0) + 1;
     if (isCorrect) prog.pollsCorrect = (prog.pollsCorrect || 0) + 1;
     if (prog.pollsAnswered >= 2) {
@@ -4840,7 +4861,7 @@ bot.on('poll_answer', async (answer) => {
     if (prog.pollsAnswered % 3 === 0 && pollInfo.chatId && st) {
       const roundMsg = `🏁 Мини-тест пройден! Верных ответов: ${prog.pollsCorrect} из ${prog.pollsAnswered}.\n📊 Твоя готовность ДЗ сейчас: ${hwStatus.pct}% ${hwStatus.canSubmit ? '— кнопка «✅ Я сделал(а) ДЗ!» разблокирована! 🎉' : '(для сдачи нужно минимум 75%)'}`;
       await sendCleanMessage(pollInfo.chatId, roundMsg, {
-        reply_markup: buildStudentKeyboard(st, lastLs)
+        reply_markup: buildStudentKeyboard(st, lastLs, pollInfo.chatId)
       }).catch(() => {});
     }
 
@@ -5238,12 +5259,6 @@ bot.onText(/\/health/, async (msg) => {
     const endIso = today.toISOString().split('T')[0];
 
     const habits = await getHabits();
-  const minskDayName = new Date().toLocaleDateString('en-US', { timeZone: 'Europe/Minsk', weekday: 'short' });
-  const isWeekend = (minskDayName === 'Sat' || minskDayName === 'Sun');
-  if (typeof completedToday !== 'undefined' && isWeekend) {
-    const weekendCtx = `СЕГОДНЯ ВЫХОДНОЙ ДЕНЬ (${minskDayName === 'Sat' ? 'Суббота' : 'Воскресенье'}).\nВыполнено задач/уроков сегодня: ${completedToday.length} (${JSON.stringify(completedToday.map(t => t.title))}).\nПривычки сегодня: ${habitLogs.length} из ${habits.length}.\nИНСТРУКЦИЯ (РЕЖИМ АНТИ-СТЫД ВЫХОДНОГО ДНЯ):\nСегодня выходной! Никакого шейминга за рабочие задачи РЦПИ. Напиши тёплый, поддерживающий вечерний обзор выходного дня: похвали за проведённые уроки и полезные привычки, напомни качественно восстановиться, провести вечер с Кристиной и лечь спать до 23:00.`;
-    return await askAI('Сгенерируй тёплый вечерний обзор выходного дня', weekendCtx, null, true, true);
-  }
     const logs = await getHabitLogs(startIso, endIso);
 
     const healthKeywords = ['сон', 'спать', 'бег', 'пробежк', 'спорт', 'тренир', 'пресс', 'зарядк', 'вод', 'health', 'отжиман'];
@@ -5420,16 +5435,14 @@ bot.on('message', async (msg) => {
         const updatedProg = getHwCompletionSummary(st, lastLs, chatId, msg.from);
         if (lastLs) {
           await persistHwProgressPercent(lastLs, updatedProg.pct, actor, st);
-          if (!(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
-            await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
-          }
+          await markHwTagForActor(lastLs, 'СДАНО', actor);
         }
 
         // Student initial feedback + unlocked keyboard
         const photoAckMsg = `📸 *Фото тетрадки принято, ${actor.name}!* 🌟\nЯ проверяю твоё письменное задание и передал его Игорю!\n📊 *Готовность ДЗ: ${updatedProg.pct}%* (кнопка сдачи ДЗ разблокирована!)\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+10 XP)* 🏆`;
         await bot.sendMessage(chatId, photoAckMsg, {
           parse_mode: 'Markdown',
-          reply_markup: buildStudentKeyboard(st, lastLs)
+          reply_markup: buildStudentKeyboard(st, lastLs, chatId)
         }).catch(() => {});
 
         // Forward photo to Igor with readiness status
@@ -5454,7 +5467,7 @@ bot.on('message', async (msg) => {
             const studentOcrMsg = `🤖 *Разбор твоего письменного ДЗ по фото, ${actor.name}:*\n\n${ocrAnalysis}`;
             await bot.sendMessage(chatId, studentOcrMsg, {
               parse_mode: 'Markdown',
-              reply_markup: buildStudentKeyboard(st, lastLs)
+              reply_markup: buildStudentKeyboard(st, lastLs, chatId)
             }).catch(() => bot.sendMessage(chatId, studentOcrMsg));
 
             const ocrKb = [];
@@ -5506,7 +5519,7 @@ bot.on('message', async (msg) => {
       const studentQuizReply = `🌟 *Проверка твоего мини-квиза:*\n\n${feedback}\n\n📊 *Готовность ДЗ: ${updatedProg.pct}%*\n🔥 *Твой стрик: ${newStreak} (+10 XP)*`;
       await bot.sendMessage(chatId, studentQuizReply, {
         parse_mode: 'Markdown',
-        reply_markup: buildStudentKeyboard(st, lastLs)
+        reply_markup: buildStudentKeyboard(st, lastLs, chatId)
       }).catch(() => bot.sendMessage(chatId, feedback));
       await bot.sendMessage(ADMIN_CHAT_ID, `📨 *Копия: ${actor.displayLabel} решил(а) мини-квиз в боте*\n📊 *Готовность ДЗ:* ${updatedProg.pct}%\n${updatedProg.groupBreakdownText ? `👥 *В группе:*\n${updatedProg.groupBreakdownText}\n` : ''}✅ *Сделано:* ${updatedProg.doneList.join(', ')}\n⏳ *Осталось:* ${updatedProg.todoList.join(', ') || 'Ничего'}\n\n💬 *Ответы ученика:*\n«${studentText}»\n\n🤖 *Что бот ответил и как объяснил ошибки:*\n${feedback}`, {
         parse_mode: 'Markdown',
@@ -5518,7 +5531,7 @@ bot.on('message', async (msg) => {
     const trimmed = studentText.trim();
     const lower = trimmed.toLowerCase();
 
-    const { data: lastLs } = await db.from('lessons').select('*').eq('student_id', st.id).order('date', { ascending: false }).limit(1).maybeSingle();
+    const lastLs = await getLatestLessonWithMaterials(st.id);
     const { cleanHw: rawCleanHw, cards } = extractAttachedCards(lastLs?.homework || '');
     const cleanHw = rawCleanHw.split('\\n[МАТЕРИАЛЫ]:')[0]
       .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*?(?=\n\n|$)/gi, '')
@@ -5530,7 +5543,7 @@ bot.on('message', async (msg) => {
       .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
       .replace('[ПЕРЕНЕСЕН_В_ТГ]', '')
       .trim();
-    const scenario = extractLessonScenario(lastLs?.homework || '');
+    const scenario = lastLs?._mergedScenario || extractLessonScenario(lastLs?.homework || '');
 
     // 1. Быстрый перехват: Ученик прямо просит прислать само ДЗ («а какое дз», «скинь дз», «где дз»)
     const isAskingForHw = /какое\s*(?:то)?\s*дз|скинь\s*(?:мне)?\s*дз|где\s*дз|что\s*задано|какое\s*задание|дай\s*дз|мое\s*дз|напомни\s*дз/i.test(lower);
@@ -5543,7 +5556,7 @@ bot.on('message', async (msg) => {
         ? `📚 *Вот твоё домашнее задание, ${actor.name}:*\n📊 *Текущая готовность: ${progNow.pct}%*\n\n${cleanHw}\n\n✍️ *Как сдать:* напиши ответы прямо сюда в чат, сфотографируй тетрадку или пройди интерактивные кнопки ниже до 75%+! 👍`
         : `📚 *Домашнее задание:*\nПовторить слова и правила прошедшего урока. Если нужно уточнить задание — напиши сюда! 👍`;
 
-      const kb = buildStudentKeyboard(st, lastLs);
+      const kb = buildStudentKeyboard(st, lastLs, chatId);
       await bot.sendMessage(chatId, replyHw, { parse_mode: 'Markdown', reply_markup: kb }).catch(() => bot.sendMessage(chatId, replyHw));
       await bot.sendMessage(ADMIN_CHAT_ID, `📨 *Копия: ${actor.displayLabel} спросил(а) про ДЗ:* «${studentText}»\n📊 *Готовность ДЗ:* ${progNow.pct}%\n${progNow.groupBreakdownText ? `👥 *В группе:*\n${progNow.groupBreakdownText}\n` : ''}\n🤖 *Отправлено ученику:*\n${replyHw}`, { parse_mode: 'Markdown' }).catch(() => {});
       return;
@@ -5612,7 +5625,7 @@ bot.on('message', async (msg) => {
       const replyToStudent = aiAnalysis?.student_reply || `👍 Принял твоё сообщение, *${actor.name}*! Я уже передал его преподавателю Игорю.`;
       await bot.sendMessage(chatId, replyToStudent, {
         parse_mode: 'Markdown',
-        reply_markup: buildStudentKeyboard(st, lastLs)
+        reply_markup: buildStudentKeyboard(st, lastLs, chatId)
       }).catch(() => bot.sendMessage(chatId, replyToStudent));
 
       const intentBadge = detectedIntent === 'topic_question'
@@ -5649,15 +5662,14 @@ bot.on('message', async (msg) => {
     }
 
     if (aiAnalysis && aiAnalysis.is_fully_done) {
-      if (lastLs && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
-        const updated = `[ДЗ_ПРОВЕРЕНО] ${(lastLs.homework || '').replace('[ДЗ_СДАНО]', '')}`.trim();
-        await db.from('lessons').update({ homework: updated }).eq('id', lastLs.id);
+      if (lastLs) {
+        await markHwTagForActor(lastLs, 'ПРОВЕРЕНО', actor);
       }
 
       const studentFullMsg = `🎉 *Отличная работа, ${actor.name}! ДЗ проверено и зачтено!* ✅\n📊 *Готовность ДЗ: ${updatedProg.pct}%*\n\n${aiAnalysis.student_reply || ''}\n\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+15 XP)* 🏆`;
       await bot.sendMessage(chatId, studentFullMsg, {
         parse_mode: 'Markdown',
-        reply_markup: buildStudentKeyboard(st, lastLs)
+        reply_markup: buildStudentKeyboard(st, lastLs, chatId)
       }).catch(() => bot.sendMessage(chatId, studentFullMsg));
 
       const warmupSuffix = warmupNote ? `\n\n🎯 *Добавлено в 5-минутку следующего урока:*\n${warmupNote}` : '';
@@ -5670,14 +5682,14 @@ bot.on('message', async (msg) => {
       }).catch(() => bot.sendMessage(ADMIN_CHAT_ID, teacherHwReport));
 
     } else if (aiAnalysis && !aiAnalysis.is_fully_done) {
-      if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
-        await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
+      if (lastLs) {
+        await markHwTagForActor(lastLs, 'СДАНО', actor);
       }
 
       const studentPartialMsg = `📬 *Ответ принят и проверен, ${actor.name}!*\n📊 *Готовность ДЗ: ${updatedProg.pct}%*\n\n${aiAnalysis.student_reply || ''}\n\n🔥 *Твой стрик: ${newStreak} ДЗ подряд!* Давай доделаем оставшиеся пункты 💪`;
       await bot.sendMessage(chatId, studentPartialMsg, {
         parse_mode: 'Markdown',
-        reply_markup: buildStudentKeyboard(st, lastLs)
+        reply_markup: buildStudentKeyboard(st, lastLs, chatId)
       }).catch(() => bot.sendMessage(chatId, studentPartialMsg));
 
       const warmupSuffix = warmupNote ? `\n\n🎯 *Добавлено в 5-минутку следующего урока:*\n${warmupNote}` : '';
@@ -5691,13 +5703,13 @@ bot.on('message', async (msg) => {
       }).catch(() => bot.sendMessage(ADMIN_CHAT_ID, teacherPartialReport));
 
     } else {
-      if (lastLs && !(lastLs.homework || '').includes('[ДЗ_СДАНО]') && !(lastLs.homework || '').includes('[ДЗ_ПРОВЕРЕНО]')) {
-        await db.from('lessons').update({ homework: `[ДЗ_СДАНО] ${lastLs.homework || ''}`.trim() }).eq('id', lastLs.id);
+      if (lastLs) {
+        await markHwTagForActor(lastLs, 'СДАНО', actor);
       }
-      const fallbackStudentMsg = `✅ Супер, *${st.name}*! Твой ответ принят и отправлен Игорю на проверку! 🌟\n📊 *Готовность ДЗ: ${updatedProg.pct}%*\n🔥 *Твой стрик: ${newStreak} ДЗ подряд! (+10 XP)*`;
+      const fallbackStudentMsg = `✅ Супер, *${actor.name}*! Твой ответ принят и отправлен Игорю на проверку! 🌟\n📊 *Готовность ДЗ: ${updatedProg.pct}%*\n🔥 *Твой стрик: ${newStreak} ДЗ подряд! (+10 XP)*`;
       await bot.sendMessage(chatId, fallbackStudentMsg, {
         parse_mode: 'Markdown',
-        reply_markup: buildStudentKeyboard(st, lastLs)
+        reply_markup: buildStudentKeyboard(st, lastLs, chatId)
       }).catch(() => {});
       const fbKb = [];
       if (lastLs) fbKb.push([{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]);
