@@ -1270,6 +1270,14 @@ const TutoringPage = {
       this.attachedPresentation = presMatch[1].trim();
       displayHomework = displayHomework.replace(presMatch[0], '').trim();
     }
+
+    // 1.1 Extract [ПРЕЗЕНТАЦИЯ_ТЕКСТ]
+    this.attachedPresentationText = '';
+    const presTextMatch = displayHomework.match(/\[ПРЕЗЕНТАЦИЯ_ТЕКСТ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ_ТЕКСТ\]/);
+    if (presTextMatch) {
+      this.attachedPresentationText = presTextMatch[1].trim();
+      displayHomework = displayHomework.replace(presTextMatch[0], '').trim();
+    }
     this.renderPresentationBadge();
 
     // 2. Extract [СЦЕНАРИЙ_УРОКА]
@@ -1377,7 +1385,14 @@ const TutoringPage = {
     const visionBtn = document.getElementById('ls-btn-vision-ai');
     const visionInput = document.getElementById('ls-vision-file-input');
     if (visionBtn && visionInput) {
-      visionBtn.onclick = () => visionInput.click();
+      visionBtn.onclick = () => {
+        // Если уже прикреплена карточка/скриншот, распознаём её! Иначе открываем выбор файла
+        if (this.attachedCards && this.attachedCards.length > 0) {
+          this.handleVisionRecognition(this.attachedCards[0]);
+          return;
+        }
+        visionInput.click();
+      };
       visionInput.onchange = (e) => {
         const file = e.target.files?.[0];
         if (file) this.handleVisionRecognition(file);
@@ -1522,6 +1537,7 @@ const TutoringPage = {
       .replace(/(?:\r?\n|\\n)?\[ДЕБРИФИНГ\]:[\s\S]*?\[\/ДЕБРИФИНГ\]/g, '')
       .replace(/(?:\r?\n|\\n)?\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/g, '')
       .replace(/(?:\r?\n|\\n)?\[ПРЕЗЕНТАЦИЯ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ\]/g, '')
+      .replace(/(?:\r?\n|\\n)?\[ПРЕЗЕНТАЦИЯ_ТЕКСТ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ_ТЕКСТ\]/g, '')
       .replace(/(?:\r?\n|\\n)?\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/g, '')
       .replace(/(?:\r?\n|\\n)?\[МАТЕРИАЛЫ\]:[\s\S]*$/g, '')
       .trim();
@@ -1532,14 +1548,27 @@ const TutoringPage = {
       homework += '\n\n[ДЕБРИФИНГ]:\n' + debriefVal + '\n[/ДЕБРИФИНГ]';
     }
 
-    // 1. Serialize presentation file only if small (<250KB) or a URL
-    if (this.attachedPresentation && (this.attachedPresentation.startsWith('http') || this.attachedPresentation.length < 250000)) {
-      homework += '\n\n[ПРЕЗЕНТАЦИЯ]:\n' + this.attachedPresentation + '\n[/ПРЕЗЕНТАЦИЯ]';
+    // 1. Serialize presentation file
+    if (this.attachedPresentation) {
+      if (this.attachedPresentation.startsWith('http') || this.attachedPresentation.length < 6000000) {
+        homework += '\n\n[ПРЕЗЕНТАЦИЯ]:\n' + this.attachedPresentation + '\n[/ПРЕЗЕНТАЦИЯ]';
+      }
     } else if (id) {
       const oldLs = this.lessons.find(l => l.id === id);
       const oldPres = oldLs?.homework?.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
-      if (oldPres && oldPres[1].trim().length < 250000) {
+      if (oldPres) {
         homework += '\n\n' + oldPres[0];
+      }
+    }
+
+    // 1.1 Serialize extracted presentation text
+    if (this.attachedPresentationText) {
+      homework += '\n\n[ПРЕЗЕНТАЦИЯ_ТЕКСТ]:\n' + this.attachedPresentationText + '\n[/ПРЕЗЕНТАЦИЯ_ТЕКСТ]';
+    } else if (id) {
+      const oldLs = this.lessons.find(l => l.id === id);
+      const oldPresText = oldLs?.homework?.match(/\[ПРЕЗЕНТАЦИЯ_ТЕКСТ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ_ТЕКСТ\]/);
+      if (oldPresText) {
+        homework += '\n\n' + oldPresText[0];
       }
     }
 
@@ -3449,16 +3478,52 @@ const TutoringPage = {
       visionBtn.disabled = true;
       visionBtn.innerHTML = '<i class="lucide-loader" style="width:12px;height:12px;animation:spin 1s linear infinite;"></i> Распознаю...';
     }
-    UI.toast('🤖 Распознаю материалы урока через Vision ИИ...', 'info');
+    UI.toast('🤖 Распознаю материалы урока...', 'info');
 
     try {
+      // 1. Если передан PDF — извлекаем текст напрямую из слайдов без тяжелого vision
+      const isPdf = (fileOrDataUrl instanceof File && (fileOrDataUrl.type === 'application/pdf' || fileOrDataUrl.name.toLowerCase().endsWith('.pdf')))
+        || (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:application/pdf'));
+
+      if (isPdf) {
+        let pdfText = '';
+        if (fileOrDataUrl instanceof File) {
+          pdfText = await this.extractTextFromPresentationFile(fileOrDataUrl);
+          this.attachedPresentationText = pdfText;
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            this.attachedPresentation = ev.target.result;
+            this.renderPresentationBadge();
+          };
+          reader.readAsDataURL(fileOrDataUrl);
+        } else {
+          pdfText = this.attachedPresentationText || '';
+        }
+
+        if (pdfText) {
+          const scenEl = document.getElementById('ls-scenario');
+          if (scenEl) {
+            scenEl.value = scenEl.value ? `${scenEl.value}\n\n[Текст из презентации]:\n${pdfText}` : `[Текст из презентации]:\n${pdfText}`;
+          }
+          UI.toast('✅ Презентация PDF успешно прочитана! Материалы добавлены в сценарий.', 'success');
+        } else {
+          UI.toast('PDF прикреплен к уроку!', 'success');
+        }
+        return;
+      }
+
+      // 2. Распознавание изображения через Vision AI
       let base64 = typeof fileOrDataUrl === 'string' ? fileOrDataUrl : await this.compressImage(fileOrDataUrl);
+      if (typeof base64 !== 'string' || !base64.startsWith('data:')) {
+        throw new Error('Некорректное изображение');
+      }
+
       const studentCtx = st ? { name: st.name, grade: st.grade, ...this.parseStudentDossier(st) } : {};
       const res = await Gemini.recognizeLessonImage(base64, studentCtx);
 
       if (res.topic) {
         const topicEl = document.getElementById('ls-topic');
-        if (topicEl) topicEl.value = res.topic;
+        if (topicEl && !topicEl.value.trim()) topicEl.value = res.topic;
       }
       if (res.scenario) {
         const scenEl = document.getElementById('ls-scenario');
@@ -3485,7 +3550,7 @@ const TutoringPage = {
       UI.toast('✅ Тема урока и лексика успешно распознаны!', 'success');
 
       await this.openAnnouncementModal(
-        { id: this.currentLessonId, date: dateVal, topic: res.topic, scenario: res.scenario },
+        { id: this.currentLessonId, date: dateVal, topic: res.topic || document.getElementById('ls-topic')?.value, scenario: res.scenario },
         st,
         res.announcement_student,
         res.announcement_parent
@@ -3496,7 +3561,7 @@ const TutoringPage = {
     } finally {
       if (visionBtn) {
         visionBtn.disabled = false;
-        visionBtn.innerHTML = '📸 Распознать тему из PNG';
+        visionBtn.innerHTML = '📸 Распознать тему из файла';
       }
     }
   },

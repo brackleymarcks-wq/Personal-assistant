@@ -1173,7 +1173,12 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
     const settings = await DB.getSettings();
     const apiKey = Config.geminiKey || settings?.api_key || ['sk', 'or', 'v1', '27cfffe64ad5940f6cf1af24d3f49f7534521e407f1e39de3f269946fbea63ff'].join('-');
     const apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
-    const visionModel = 'nvidia/nemotron-3.5-super-vl:free';
+    const VISION_MODELS = [
+      'google/gemini-2.0-flash-001',
+      'qwen/qwen-2.5-vl-72b-instruct:free',
+      'meta-llama/llama-3.2-11b-vision-instruct:free',
+      'nvidia/nemotron-3.5-super-vl:free'
+    ];
 
     let imageUrl = base64Image;
     if (!imageUrl.startsWith('data:')) {
@@ -1204,43 +1209,57 @@ ${studentInfo}
   "announcement_parent": "Здравствуйте! Сегодня в 17:00..."
 }`;
 
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: visionModel,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: systemPrompt },
-              { type: 'image_url', image_url: { url: imageUrl } }
-            ]
-          }
-        ],
-        response_format: { type: 'json_object' }
-      })
-    });
+    let lastErr = null;
+    for (const visionModel of VISION_MODELS) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      try {
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: visionModel,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: systemPrompt },
+                  { type: 'image_url', image_url: { url: imageUrl } }
+                ]
+              }
+            ],
+            response_format: { type: 'json_object' }
+          })
+        });
+        clearTimeout(timeoutId);
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Ошибка распознавания Vision API (${res.status})`);
-    }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error?.message || `Ошибка ${res.status}`);
+        }
 
-    const data = await res.json();
-    let content = data.choices?.[0]?.message?.content?.trim() || '{}';
-    if (content.startsWith('```')) {
-      content = content.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+        const data = await res.json();
+        let content = data.choices?.[0]?.message?.content?.trim() || '{}';
+        if (content.startsWith('```')) {
+          content = content.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+        }
+        const firstBrace = content.indexOf('{');
+        const lastBrace = content.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1) {
+          return JSON.parse(content.slice(firstBrace, lastBrace + 1));
+        }
+        return JSON.parse(content);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        console.warn(`Vision model ${visionModel} failed:`, err.message);
+        lastErr = err;
+      }
     }
-    const firstBrace = content.indexOf('{');
-    const lastBrace = content.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-      content = content.slice(firstBrace, lastBrace + 1);
-    }
-    return JSON.parse(content);
+    throw new Error(lastErr?.message || 'Не удалось распознать изображение через Vision API');
   },
 
   async transcribeAudio(audioBlob) {
