@@ -590,13 +590,14 @@ function parseStudentDossierBot(st) {
     const idx = raw.indexOf(tag);
     if (idx === -1) return '';
     const rest = raw.slice(idx + tag.length);
-    const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:/);
+    const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:/);
     return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
   };
-  const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:/);
+  const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:/);
   return {
     schedule: (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim(),
     streak: parseInt(getSec('[СТРИК]:'), 10) || 0,
+    lastActiveDate: getSec('[LAST_ACTIVE]:'),
     tgId: getSec('[TG_ID]:'),
     tgUser: getSec('[TG_USER]:'),
     parentTgId: getSec('[PARENT_TG_ID]:'),
@@ -617,6 +618,7 @@ function serializeStudentDossierBot(doss) {
   if (doss.parentTgId) out += `\\n[PARENT_TG_ID]:\\n${doss.parentTgId}`;
   if (doss.parentTgUser) out += `\\n[PARENT_TG_USER]:\\n${doss.parentTgUser}`;
   if (doss.streak) out += `\\n[СТРИК]:\\n${doss.streak}`;
+  if (doss.lastActiveDate) out += `\\n[LAST_ACTIVE]:\\n${doss.lastActiveDate}`;
   if (doss.perplexity) out += `\\n[PERPLEXITY]:\\n${doss.perplexity}`;
   if (doss.unit) out += `\\n[УЧЕБНИК]:\\n${doss.unit}`;
   if (doss.interests) out += `\\n[ИНТЕРЕСЫ]:\\n${doss.interests}`;
@@ -624,6 +626,90 @@ function serializeStudentDossierBot(doss) {
   if (doss.vocab) out += `\\n[СЛОВАРЬ]:\\n${doss.vocab}`;
   if (doss.notes) out += `\\n[ЗАМЕТКИ]:\\n${doss.notes}`;
   return out;
+}
+
+async function recordStudentDailyActivity(st, actor = null) {
+  if (!st || !st.id) return { streak: 1, isNewDay: false, alreadyActiveToday: true };
+  const doss = parseStudentDossierBot(st);
+  const todayMinsk = getMinskDateString(0);
+  const yesterdayMinsk = getMinskDateString(-1);
+
+  const lastDate = doss.lastActiveDate || '';
+  let curStreak = parseInt(doss.streak, 10) || 0;
+  let isNewDay = false;
+  let alreadyActiveToday = false;
+
+  if (lastDate === todayMinsk) {
+    alreadyActiveToday = true;
+    return { streak: Math.max(curStreak, 1), isNewDay: false, alreadyActiveToday: true };
+  }
+
+  isNewDay = true;
+  if (lastDate === yesterdayMinsk) {
+    curStreak = (curStreak || 0) + 1;
+  } else {
+    curStreak = 1;
+  }
+
+  doss.streak = curStreak;
+  doss.lastActiveDate = todayMinsk;
+  const newSched = serializeStudentDossierBot(doss);
+  await db.from('students').update({ schedule: newSched }).eq('id', st.id);
+  st.schedule = newSched;
+
+  if (ADMIN_CHAT_ID && isNewDay) {
+    const actorLabel = actor?.displayLabel || actor?.name || st.name;
+    bot.sendMessage(ADMIN_CHAT_ID, `🔥 *[Ударный режим Duolingo Streak]*: *${actorLabel}* позанимался(лась) сегодня в боте!\n🎯 Серия дней: *${curStreak} дн. подряд*! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+  }
+
+  return { streak: curStreak, isNewDay: true, alreadyActiveToday: false };
+}
+
+async function getStudentVocabularyBank(st) {
+  const doss = parseStudentDossierBot(st);
+  const wordsSet = new Map();
+
+  if (doss.vocab) {
+    const rawLines = doss.vocab.split(/[\n,;]+/);
+    for (const raw of rawLines) {
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const m = trimmed.match(/^([A-Za-z\s-]+)(?:\[(.*?)\])?(?:—|-|:)?\s*(.*)$/);
+      if (m && m[1]) {
+        const w = m[1].trim();
+        const ipa = m[2] ? m[2].trim() : '';
+        const tr = m[3] ? m[3].trim() : '';
+        if (w.length > 1 && !wordsSet.has(w.toLowerCase())) {
+          wordsSet.set(w.toLowerCase(), { word: w, ipa, translation: tr, source: 'Словарь ученика' });
+        }
+      }
+    }
+  }
+
+  try {
+    const { data: recentLs } = await db.from('lessons')
+      .select('topic, homework')
+      .eq('student_id', st.id)
+      .order('date', { ascending: false })
+      .limit(6);
+
+    for (const ls of (recentLs || [])) {
+      const hw = ls.homework || '';
+      const matches = hw.matchAll(/^\s*\d+\.\s+([A-Za-z\s-]+)(?:\[(.*?)\])?\s*(?:—|-|:)\s*([^\n\r(]+)/gm);
+      for (const m of matches) {
+        const w = m[1].trim();
+        const ipa = m[2] ? m[2].trim() : '';
+        const tr = m[3] ? m[3].trim() : '';
+        if (w.length > 1 && !wordsSet.has(w.toLowerCase())) {
+          wordsSet.set(w.toLowerCase(), { word: w, ipa, translation: tr, source: ls.topic || 'Урок' });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('getStudentVocabularyBank lessons query error:', e.message);
+  }
+
+  return Array.from(wordsSet.values());
 }
 
 const activeStudentQuizzes = new Map();
@@ -3214,6 +3300,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
         inline_keyboard: [
           [{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }],
           [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
+          [{ text: '📚 Мой словарик', callback_data: `student_vocab_bank:${st.id}` }, { text: '🔥 Мой стрик', callback_data: `student_streak_info:${st.id}` }],
           [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎒 Школьное ДЗ', callback_data: `student_school_hw:${st.id}` }]
         ]
       }
@@ -3247,6 +3334,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
           inline_keyboard: [
             [{ text: '📚 Посмотреть моё ДЗ', callback_data: 'student_my_hw' }],
             [{ text: '🔤 5 слов урока', callback_data: `student_words:${found.student.id}` }, { text: '⚡ 5 глаголов', callback_data: `student_verbs:${found.student.id}` }],
+            [{ text: '📚 Мой словарик', callback_data: `student_vocab_bank:${found.student.id}` }, { text: '🔥 Мой стрик', callback_data: `student_streak_info:${found.student.id}` }],
             [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${found.student.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${found.student.id}:0` }],
             [{ text: '🎮 Мини-игра', callback_data: `student_game:${found.student.id}` }]
           ]
@@ -4334,6 +4422,99 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
     const word = decodeURIComponent(parts[2] || '');
     await bot.answerCallbackQuery(query.id, { text: `🔊 Озвучиваю: ${word}` });
     await sendTtsAudio(chatId, word, word, `🔊 Произношение: ${word}`);
+  } else if (data && (data.startsWith('student_vocab_bank:') || data === 'student_vocab_bank')) {
+    const studentId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) {
+        const pFound = await findParentByTgChatId(chatId);
+        st = pFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      const actor = resolveStudentActor(st, chatId, query.from);
+      const streakInfo = await recordStudentDailyActivity(st, actor);
+
+      await bot.answerCallbackQuery(query.id, { text: `📚 Открываю словарик ${actor.name}...` });
+      const bank = await getStudentVocabularyBank(st);
+
+      let text = `📚 *ПЕРСОНАЛЬНЫЙ СЛОВАРЬ: ${actor.name.toUpperCase()}*\n`;
+      text += `🔥 Ударный режим: *${streakInfo.streak} дн. подряд* ${streakInfo.alreadyActiveToday ? '✅' : '⚡'}\n`;
+      text += `🎯 Всего слов в копилке: *${bank.length}*\n\n`;
+
+      if (bank.length === 0) {
+        text += `_Словарик пока формируется. Слова с твоих уроков и карточек будут автоматически сохраняться сюда!_\n\n`;
+      } else {
+        text += `*Слова из твоих последних занятий:*\n`;
+        const slice = bank.slice(0, 12);
+        slice.forEach((item, i) => {
+          const ipaPart = item.ipa ? ` [${item.ipa}]` : '';
+          const trPart = item.translation ? ` — ${item.translation}` : '';
+          text += `${i + 1}. *${item.word}*${ipaPart}${trPart}\n`;
+        });
+        if (bank.length > 12) {
+          text += `_...и ещё ${bank.length - 12} слов в твоей базе!_\n`;
+        }
+        text += `\n💡 _Совет: тренируй слова во флеш-карточках каждый день, чтобы поддерживать огонёк 🔥!_`;
+      }
+
+      const kb = [
+        [{ text: '🃏 Тренировать флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
+        [{ text: '📝 Тестик по словам', callback_data: `student_poll_quiz:${st.id}` }],
+        [{ text: '🔤 5 новых слов урока', callback_data: `student_words:${st.id}` }],
+        [{ text: '🔥 Мой ударный режим (Streak)', callback_data: `student_streak_info:${st.id}` }]
+      ];
+
+      await sendCleanMessage(chatId, text, { reply_markup: { inline_keyboard: kb } });
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('student_streak_info:') || data === 'student_streak_info')) {
+    const studentId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      const actor = resolveStudentActor(st, chatId, query.from);
+      const streakInfo = await recordStudentDailyActivity(st, actor);
+
+      await bot.answerCallbackQuery(query.id, { text: `🔥 Стрик: ${streakInfo.streak} дн.` });
+
+      let text = `🔥 *УДАРНЫЙ РЕЖИМ (STREAK): ${actor.name.toUpperCase()}* 🔥\n\n`;
+      text += `🏆 Твоя серия активности: *${streakInfo.streak} дней подряд*!\n`;
+      text += `⚡ Статус на сегодня: *${streakInfo.alreadyActiveToday ? '✅ Огонёк уже горит и защищён!' : '🔥 Огонёк активен!'}*\n\n`;
+      text += `💡 *Как работает ударный режим Duolingo:*\n`;
+      text += `• Заходи в бот каждый день хотя бы на 1 минуту.\n`;
+      text += `• Повторяй слова, листай флеш-карточки или проходи тестик.\n`;
+      text += `• Если пропустить день — серия может сгореть в полночь 😱\n\n`;
+      text += `👇 Закрепи свой результат на сегодня:`;
+
+      const kb = [
+        [{ text: '📚 Открыть мой словарик', callback_data: `student_vocab_bank:${st.id}` }],
+        [{ text: '🃏 Флеш-карточки со словами', callback_data: `student_flashcards:${st.id}:0` }],
+        [{ text: '📝 Пройти мини-тестик', callback_data: `student_poll_quiz:${st.id}` }]
+      ];
+
+      await sendCleanMessage(chatId, text, { reply_markup: { inline_keyboard: kb } });
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
   } else if (data && data.startsWith('send_parsed_rep:')) {
     const parts = data.split(':');
     const stId = parts[1];
@@ -5334,6 +5515,72 @@ async function transcribeAudio(buffer, filename) {
   return data.text;
 }
 
+// /words, /vocab, /слова — Личный интерактивный словарь ученика
+bot.onText(/\/(words|dictionary|vocab|слова|словарик)/i, async (msg) => {
+  const chatId = msg.chat.id;
+  const sFound = await findStudentByTgChatId(chatId);
+  if (!sFound) {
+    return bot.sendMessage(chatId, '📚 Персональный словарик доступен подключенным ученикам английского языка!');
+  }
+  const st = sFound.student;
+  const actor = resolveStudentActor(st, chatId, msg.from);
+  const streakInfo = await recordStudentDailyActivity(st, actor);
+  const bank = await getStudentVocabularyBank(st);
+
+  let text = `📚 *ПЕРСОНАЛЬНЫЙ СЛОВАРЬ: ${actor.name.toUpperCase()}*\n`;
+  text += `🔥 Ударный режим: *${streakInfo.streak} дн. подряд* ${streakInfo.alreadyActiveToday ? '✅' : '⚡'}\n`;
+  text += `🎯 Всего слов в копилке: *${bank.length}*\n\n`;
+
+  if (bank.length === 0) {
+    text += `_Словарик пока формируется. Слова с уроков будут появляться здесь автоматически!_\n\n`;
+  } else {
+    text += `*Слова из твоих уроков:*\n`;
+    const slice = bank.slice(0, 12);
+    slice.forEach((item, i) => {
+      const ipaPart = item.ipa ? ` [${item.ipa}]` : '';
+      const trPart = item.translation ? ` — ${item.translation}` : '';
+      text += `${i + 1}. *${item.word}*${ipaPart}${trPart}\n`;
+    });
+    if (bank.length > 12) {
+      text += `_...и ещё ${bank.length - 12} слов в твоей базе!_\n`;
+    }
+  }
+
+  const kb = [
+    [{ text: '🃏 Тренировать флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
+    [{ text: '📝 Тестик по словам', callback_data: `student_poll_quiz:${st.id}` }],
+    [{ text: '🔤 5 новых слов урока', callback_data: `student_words:${st.id}` }],
+    [{ text: '🔥 Мой стрик', callback_data: `student_streak_info:${st.id}` }]
+  ];
+  await sendCleanMessage(chatId, text, { reply_markup: { inline_keyboard: kb } });
+});
+
+// /streak, /fire, /стрик — Ударный режим Duolingo
+bot.onText(/\/(streak|fire|стрик|огон)/i, async (msg) => {
+  const chatId = msg.chat.id;
+  const sFound = await findStudentByTgChatId(chatId);
+  if (!sFound) {
+    return bot.sendMessage(chatId, '🔥 Ударный режим доступен подключенным ученикам английского языка!');
+  }
+  const st = sFound.student;
+  const actor = resolveStudentActor(st, chatId, msg.from);
+  const streakInfo = await recordStudentDailyActivity(st, actor);
+
+  let text = `🔥 *УДАРНЫЙ РЕЖИМ (STREAK): ${actor.name.toUpperCase()}* 🔥\n\n`;
+  text += `🏆 Твоя серия активности: *${streakInfo.streak} дней подряд*!\n`;
+  text += `⚡ Статус на сегодня: *${streakInfo.alreadyActiveToday ? '✅ Огонёк уже горит и защищён!' : '🔥 Огонёк активен!'}*\n\n`;
+  text += `💡 *Как сохранить огонёк:*\n`;
+  text += `Заходи каждый день хотя бы на 1 минуту — повторяй слова, проходи мини-квизы или выполняй ДЗ. Огонёк растёт каждый день! 🚀\n\n`;
+  text += `👇 Потренируйся прямо сейчас:`;
+
+  const kb = [
+    [{ text: '📚 Мой словарик', callback_data: `student_vocab_bank:${st.id}` }],
+    [{ text: '🃏 Флеш-карточки со словами', callback_data: `student_flashcards:${st.id}:0` }],
+    [{ text: '📝 Пройти мини-тестик', callback_data: `student_poll_quiz:${st.id}` }]
+  ];
+  await sendCleanMessage(chatId, text, { reply_markup: { inline_keyboard: kb } });
+});
+
 // Любое текстовое или голосовое сообщение — отправляем в ИИ
 bot.on('message', async (msg) => {
   if (msg.text?.startsWith('/')) return; // Команды обрабатываются выше
@@ -6202,6 +6449,43 @@ cron.schedule('0 17 * * *', () => {
 // [NEW] Подготовка ко сну: 22:00 по Минску = 19:00 UTC
 cron.schedule('0 19 * * *', () => {
   sendProactiveMessage('🛌 Уже 22:00. Пора замедляться. Отбой в 22:30–23:00, чтобы завтра легко встать в 7:00 и быть бодрым!');
+}, { timezone: 'UTC' });
+
+// Duolingo-style Streak Saver: 19:15 по Минску = 16:15 UTC
+cron.schedule('15 16 * * *', async () => {
+  console.log('⏰ Cron: проверка ударного режима учеников (Streak Saver)');
+  try {
+    const todayMinsk = getMinskDateString(0);
+    const { data: students } = await db.from('students').select('*');
+    for (const st of (students || [])) {
+      const doss = parseStudentDossierBot(st);
+      if (!doss.tgId) continue;
+      // Если ученик уже занимался сегодня — стрик в безопасности!
+      if (doss.lastActiveDate === todayMinsk) continue;
+
+      const targetIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+      const curStreak = parseInt(doss.streak, 10) || 0;
+
+      const fireMsg = curStreak > 1
+        ? `🔥⚠️ *ТВОЙ ОГОНЁК РИСКУЕТ ПОГАСНУТЬ!* ⚠️🔥\n\nПривет, *${st.name}*! У тебя горит серия: *${curStreak} дней подряд*! 🚀\nЕсли не позаниматься сегодня, стрик сгорит в полночь!\n\n👇 Повтори 3 слова или открой словарик за 1 минуту, чтобы спасти свой огонёк:`
+        : `🔥 *Привет, ${st.name}!* Зажги свой огонёк ударного режима!\nУдели всего 1 минуту в день на английский, чтобы слова запоминались легко и навсегда. 🇬🇧\n\n👇 Потренируйся прямо сейчас:`;
+
+      const kb = [
+        [{ text: '📚 Открыть мой словарик', callback_data: `student_vocab_bank:${st.id}` }],
+        [{ text: '🃏 Флеш-карточки со словами', callback_data: `student_flashcards:${st.id}:0` }],
+        [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }]
+      ];
+
+      for (const tid of targetIds) {
+        await bot.sendMessage(tid, fireMsg, {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: kb }
+        }).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.error('Streak reminder cron error:', e);
+  }
 }, { timezone: 'UTC' });
 
 // Авто-напоминание ученикам в ТГ о ДЗ за день до урока: 16:30 по Минску = 13:30 UTC
