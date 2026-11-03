@@ -673,16 +673,12 @@ async function sendParentLessonReportBot(st, lesson) {
   const doss = parseStudentDossierBot(st);
   const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
   if (parentIds.length === 0) return { sent: false, reason: 'no_parent_tg_id' };
-  const rawHw = (lesson?.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0]
-    .replace(/\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/g, '')
-    .replace(/\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/g, '')
-    .replace(/\[ПРЕЗЕНТАЦИЯ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ\]/g, '')
-    .replace(/\[КАСТОМНЫЙ_ОТЧЕТ\]:[\s\S]*?\[\/КАСТОМНЫЙ_ОТЧЕТ\]/g, '')
-    .replace(/\[ОТЧЕТ_РОДИТЕЛЮ\]:[\s\S]*?\[\/ОТЧЕТ_РОДИТЕЛЮ\]/g, '')
-    .replace('[ДЗ_ПРОВЕРЕНО]', '')
-    .replace('[ДЗ_СДАНО]', '')
-    .replace('[ОТПРАВИТЬ_В_ТГ]', '')
-    .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
+  const rawHw = (lesson?.homework || '').split(/\\?n?\[МАТЕРИАЛЫ\]:/)[0]
+    .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*?(?=\n\n|$)/gi, '')
+    .replace(/\[(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ|КАРТОЧКИ_ДЗ)\]:[\s\S]*?\[\/(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ|КАРТОЧКИ_ДЗ)\]/g, '')
+    .replace(/\[ПРОГРЕСС[^\]]*\]/g, '')
+    .replace(/\[ДЗ_[^\]]*\]/g, '')
+    .replace(/\[ОТПРАВИТЬ[^\]]*\]/g, '')
     .replace('[ПЕРЕНЕСЕН_В_ТГ]', '')
     .trim();
   const dateStr = lesson?.date ? new Date(lesson.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' }) : 'сегодня';
@@ -856,7 +852,7 @@ async function getLatestLessonWithMaterials(studentId) {
     }
   }
 
-  primary._mergedTopic = topicsList.slice(0, 2).join(' / ') || primary.topic || 'English';
+  primary._mergedTopic = (primary.topic && primary.topic.trim()) || topicsList[0] || 'English';
   primary._mergedScenario = extractLessonScenario(primary.homework || '') || bestScenario;
   primary._mergedPresentation = bestPresentation;
   primary._mergedMaterials = bestMaterials;
@@ -2040,8 +2036,10 @@ function matchStudent(allStudents, query) {
 
 function buildStudentKeyboard(st, lesson, chatIdOrUserId = null) {
   const actor = resolveStudentActor(st, chatIdOrUserId);
-  const topic = ((lesson?._mergedTopic || lesson?.topic || '') + ' ' + (st?.name || '')).toLowerCase();
-  const textContent = ((lesson?.homework || '')).toLowerCase();
+  const topic = (lesson?.topic || lesson?._mergedTopic || '').toLowerCase();
+  const scenario = (lesson?._mergedScenario || extractLessonScenario(lesson?.homework || '') || '').toLowerCase();
+  const hwText = (lesson?.homework || '').toLowerCase();
+  const allContent = `${topic} ${scenario} ${hwText}`;
 
   const hwStatus = getHwCompletionSummary(st, lesson, chatIdOrUserId);
   const submitBtnText = hwStatus.canSubmit
@@ -2049,12 +2047,18 @@ function buildStudentKeyboard(st, lesson, chatIdOrUserId = null) {
     : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`;
 
   let dynamicBtn = { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` };
-  if (st.name.includes('Курочкина') || topic.includes('местоимен') || topic.includes('pronoun') || topic.includes('whose') || topic.includes('owner') || topic.includes("'s") || textContent.includes('притяжательн')) {
-    dynamicBtn = { text: '🧩 Чей питомец? (Местоимения)', callback_data: `student_grammar_rule:${st.id}` };
-  } else if (topic.includes('shopping') || topic.includes('магазин') || st.name.includes('Воронины')) {
+  if (allContent.includes('shopping') || allContent.includes('магазин') || allContent.includes('clothes') || allContent.includes('покупк') || allContent.includes('store') || allContent.includes('market')) {
     dynamicBtn = { text: '🛒 В магазине (Shopping)', callback_data: `student_grammar_rule:${st.id}` };
-  } else if (topic.includes('verb') || topic.includes('глагол') || topic.includes('present perfect') || topic.includes('past simple') || st.name.includes('Коршук')) {
-    dynamicBtn = { text: '⚡ 5 глаголов', callback_data: `student_verbs:${st.id}` };
+  } else if (allContent.includes('местоимен') || allContent.includes('pronoun') || allContent.includes('whose') || allContent.includes('owner') || allContent.includes('чей') || allContent.includes('притяжательн') || allContent.includes("'s")) {
+    dynamicBtn = { text: '🧩 Местоимения и \'s', callback_data: `student_grammar_rule:${st.id}` };
+  } else if (allContent.includes('сравнен') || allContent.includes('comparative') || allContent.includes('superlative') || allContent.includes('степен')) {
+    dynamicBtn = { text: '⚡ Степени сравнения', callback_data: `student_grammar_rule:${st.id}` };
+  } else if (allContent.includes('артикл') || allContent.includes('article') || allContent.includes(' the ')) {
+    dynamicBtn = { text: '⚡ Артикли (Правило)', callback_data: `student_grammar_rule:${st.id}` };
+  } else if (allContent.includes('verb') || allContent.includes('глагол') || allContent.includes('present perfect') || allContent.includes('past simple') || allContent.includes('irregular')) {
+    dynamicBtn = { text: '⚡ 5 глаголов урока', callback_data: `student_verbs:${st.id}` };
+  } else if (scenario.includes('грамматик') || scenario.includes('правил') || hwText.includes('правил') || topic.includes('present') || topic.includes('past') || topic.includes('future') || topic.includes('modal')) {
+    dynamicBtn = { text: '🧩 Правило урока', callback_data: `student_grammar_rule:${st.id}` };
   }
 
   return {
@@ -4199,8 +4203,9 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
 
       const actor = resolveStudentActor(st, chatId, query.from);
       const lastLs = await getLatestLessonWithMaterials(st.id);
+      const doss = parseStudentDossierBot(st);
       const materialsText = extractAllLessonMaterials(lastLs, st);
-      const cards = getLessonFlashcards(materialsText, lastLs?.homework || '');
+      const cards = getLessonFlashcards(materialsText, lastLs?.homework || '', lastLs?._mergedTopic || lastLs?.topic || '', doss.vocab || '');
       if (idx >= cards.length) idx = 0;
       if (idx < 0) idx = 0;
       const c = cards[idx];
