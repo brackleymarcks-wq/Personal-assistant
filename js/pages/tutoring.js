@@ -1263,12 +1263,26 @@ const TutoringPage = {
     const debriefEl = document.getElementById('ls-debrief-notes');
     if (debriefEl) debriefEl.value = debriefNotes;
 
-    // 1. Extract [ПРЕЗЕНТАЦИЯ]
+    // 1. Extract [ПРЕЗЕНТАЦИЯ] and [ПРЕЗЕНТАЦИЯ_ФАЙЛ]
     this.attachedPresentation = null;
+    this.attachedPresentationName = '';
     const presMatch = displayHomework.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
     if (presMatch) {
       this.attachedPresentation = presMatch[1].trim();
       displayHomework = displayHomework.replace(presMatch[0], '').trim();
+    }
+    const presFileMatch = displayHomework.match(/\[ПРЕЗЕНТАЦИЯ_ФАЙЛ\]:([\s\S]*?)(?=\n\[|$)/);
+    if (presFileMatch) {
+      this.attachedPresentationName = presFileMatch[1].trim();
+      displayHomework = displayHomework.replace(presFileMatch[0], '').trim();
+      if (!this.attachedPresentation && id) {
+        this.getLocalFile('lesson_pres_' + id).then(localData => {
+          if (localData) {
+            this.attachedPresentation = localData;
+            this.renderPresentationBadge();
+          }
+        });
+      }
     }
 
     // 1.1 Extract [ПРЕЗЕНТАЦИЯ_ТЕКСТ]
@@ -1537,6 +1551,7 @@ const TutoringPage = {
       .replace(/(?:\r?\n|\\n)?\[ДЕБРИФИНГ\]:[\s\S]*?\[\/ДЕБРИФИНГ\]/g, '')
       .replace(/(?:\r?\n|\\n)?\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/g, '')
       .replace(/(?:\r?\n|\\n)?\[ПРЕЗЕНТАЦИЯ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ\]/g, '')
+      .replace(/(?:\r?\n|\\n)?\[ПРЕЗЕНТАЦИЯ_ФАЙЛ\]:[\s\S]*?(?=\n\[|$)/g, '')
       .replace(/(?:\r?\n|\\n)?\[ПРЕЗЕНТАЦИЯ_ТЕКСТ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ_ТЕКСТ\]/g, '')
       .replace(/(?:\r?\n|\\n)?\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/g, '')
       .replace(/(?:\r?\n|\\n)?\[МАТЕРИАЛЫ\]:[\s\S]*$/g, '')
@@ -1550,14 +1565,26 @@ const TutoringPage = {
 
     // 1. Serialize presentation file
     if (this.attachedPresentation) {
-      if (this.attachedPresentation.startsWith('http') || this.attachedPresentation.length < 6000000) {
+      if (this.attachedPresentation.startsWith('http')) {
         homework += '\n\n[ПРЕЗЕНТАЦИЯ]:\n' + this.attachedPresentation + '\n[/ПРЕЗЕНТАЦИЯ]';
+      } else if (this.attachedPresentation.length < 150000) {
+        homework += '\n\n[ПРЕЗЕНТАЦИЯ]:\n' + this.attachedPresentation + '\n[/ПРЕЗЕНТАЦИЯ]';
+      } else {
+        if (id) await this.saveLocalFile('lesson_pres_' + id, this.attachedPresentation);
+        homework += '\n\n[ПРЕЗЕНТАЦИЯ_ФАЙЛ]: ' + (this.attachedPresentationName || 'Презентация урока (файл)') + '\n';
       }
+    } else if (this.attachedPresentationName) {
+      homework += '\n\n[ПРЕЗЕНТАЦИЯ_ФАЙЛ]: ' + this.attachedPresentationName + '\n';
     } else if (id) {
       const oldLs = this.lessons.find(l => l.id === id);
       const oldPres = oldLs?.homework?.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
-      if (oldPres) {
+      if (oldPres && (oldPres[1].trim().startsWith('http') || oldPres[1].length < 150000)) {
         homework += '\n\n' + oldPres[0];
+      } else {
+        const oldPresFile = oldLs?.homework?.match(/\[ПРЕЗЕНТАЦИЯ_ФАЙЛ\]:([\s\S]*?)(?=\n\[|$)/);
+        if (oldPresFile) {
+          homework += '\n\n' + oldPresFile[0];
+        }
       }
     }
 
@@ -1584,8 +1611,19 @@ const TutoringPage = {
       }
     }
 
-    // 3. Serialize cards
+    // 3. Serialize cards with auto-compression to avoid PostgreSQL statement timeout
     if (this.attachedCards && this.attachedCards.length > 0) {
+      const compressedCards = await Promise.all(this.attachedCards.map(async (card) => {
+        if (card && card.startsWith('data:image/') && card.length > 200000) {
+          try {
+            return await this.compressImage(card, 960, 0.75);
+          } catch (e) {
+            return card;
+          }
+        }
+        return card;
+      }));
+      this.attachedCards = compressedCards;
       homework += '\n\n[КАРТОЧКИ_ДЗ]:\n' + this.attachedCards.join('||') + '\n[/КАРТОЧКИ_ДЗ]';
     }
 
@@ -2887,8 +2925,54 @@ const TutoringPage = {
   _voiceRec: null,
 
   attachedPresentation: null,
+  attachedPresentationName: '',
   attachedPresentationText: '',
   _lastAutoWorksheetCard: null,
+
+  _openIDB() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) return reject(new Error('IndexedDB not supported'));
+      const req = indexedDB.open('AssistantMediaDB', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('files')) {
+          db.createObjectStore('files');
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async saveLocalFile(key, value) {
+    try {
+      const db = await this._openIDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('files', 'readwrite');
+        tx.objectStore('files').put(value, key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (e) {
+      console.warn('saveLocalFile error:', e);
+      try { sessionStorage.setItem(key, value); } catch (_) {}
+    }
+  },
+
+  async getLocalFile(key) {
+    try {
+      const db = await this._openIDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction('files', 'readonly');
+        const req = tx.objectStore('files').get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (e) {
+      console.warn('getLocalFile error:', e);
+      return sessionStorage.getItem(key) || null;
+    }
+  },
 
   async extractTextFromPresentationFile(file) {
     if (!file) return '';
@@ -2956,6 +3040,7 @@ const TutoringPage = {
       fileInput.onchange = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        this.attachedPresentationName = file.name || 'Презентация урока (файл)';
         if (file.type.startsWith('image/')) {
           const dataUrl = await this.compressImage(file);
           this.attachedPresentation = dataUrl;
@@ -2964,9 +3049,9 @@ const TutoringPage = {
           this.handleVisionRecognition(dataUrl);
           return;
         }
-        if (file.size > 15 * 1024 * 1024) {
+        if (file.size > 25 * 1024 * 1024) {
           if (fileInput) fileInput.value = '';
-          return UI.toast('Файл больше 15MB. Вставьте ссылку на Google Диск / Gamma в поле «Ссылка на презентацию» выше!', 'warning');
+          return UI.toast('Файл больше 25MB. Вставьте ссылку на Google Диск / Gamma в поле «Ссылка на презентацию» выше!', 'warning');
         }
         const extracted = await this.extractTextFromPresentationFile(file);
         if (extracted) {
@@ -2980,7 +3065,7 @@ const TutoringPage = {
         reader.onload = (ev) => {
           this.attachedPresentation = ev.target.result;
           this.renderPresentationBadge();
-          UI.toast(extracted ? 'Презентация прикреплена и прочитана ИИ для ДЗ!' : 'Материалы прикреплены к уроку!', 'success');
+          UI.toast(extracted ? 'Презентация прикреплена и прочитана ИИ для ДЗ!' : 'Презентация прикреплена к уроку!', 'success');
         };
         reader.readAsDataURL(file);
       };
@@ -2989,23 +3074,36 @@ const TutoringPage = {
     if (removeBtn) {
       removeBtn.onclick = () => {
         this.attachedPresentation = null;
+        this.attachedPresentationName = '';
         this.attachedPresentationText = '';
         if (fileInput) fileInput.value = '';
         this.renderPresentationBadge();
       };
     }
 
-    if (this.attachedPresentation) {
+    if (this.attachedPresentation || this.attachedPresentationName || this.attachedPresentationText) {
       badge.style.display = 'inline-flex';
-      nameSpan.textContent = '📄 Презентация урока (PDF/PPTX)';
-      linkA.href = this.attachedPresentation;
-      linkA.onclick = (e) => {
-        if (this.attachedPresentation.startsWith('data:')) {
-          e.preventDefault();
-          const win = window.open();
-          win.document.write('<iframe src="' + this.attachedPresentation + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
-        }
-      };
+      nameSpan.textContent = this.attachedPresentationName || '📄 Презентация урока (PDF/PPTX)';
+      if (this.attachedPresentation) {
+        linkA.style.display = 'inline';
+        linkA.href = this.attachedPresentation;
+        linkA.onclick = (e) => {
+          if (this.attachedPresentation.startsWith('data:')) {
+            e.preventDefault();
+            if (this.attachedPresentation.startsWith('data:application/pdf') || this.attachedPresentation.startsWith('data:image/')) {
+              const win = window.open();
+              win.document.write('<iframe src="' + this.attachedPresentation + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+            } else {
+              const a = document.createElement('a');
+              a.href = this.attachedPresentation;
+              a.download = (this.attachedPresentationName || 'presentation').replace(/[^\w\.\-\_]/g, '_');
+              a.click();
+            }
+          }
+        };
+      } else {
+        linkA.style.display = 'none';
+      }
     } else {
       badge.style.display = 'none';
     }
@@ -3042,10 +3140,16 @@ const TutoringPage = {
     this.renderCardsPreview();
   },
 
-  addCardDataUrl(dataUrl) {
+  async addCardDataUrl(dataUrl) {
     if (!this.attachedCards) this.attachedCards = [];
     if (this.attachedCards.length >= 10) return UI.toast('Максимум 10 карточек на урок', 'warning');
-    this.attachedCards.push(dataUrl);
+    let finalCard = dataUrl;
+    if (dataUrl && dataUrl.startsWith('data:image/') && dataUrl.length > 200000) {
+      try {
+        finalCard = await this.compressImage(dataUrl, 960, 0.75);
+      } catch (_) {}
+    }
+    this.attachedCards.push(finalCard);
     this.renderCardsPreview();
     UI.toast('Карточка прикреплена к ДЗ!', 'success');
   },
