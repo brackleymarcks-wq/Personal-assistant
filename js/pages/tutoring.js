@@ -1868,20 +1868,55 @@ const TutoringPage = {
   cleanHomeworkText(rawHw) {
     if (!rawHw) return '';
     return rawHw
-      .replace(/\[ДЕБРИФИНГ\]:[\s\S]*?\[\/ДЕБРИФИНГ\]/g, '')
-      .replace(/\[КАРТОЧКИ_ДЗ\]:[\s\S]*?\[\/КАРТОЧКИ_ДЗ\]/g, '')
-      .replace(/\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/g, '')
-      .replace(/\[ПРЕЗЕНТАЦИЯ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ\]/g, '')
-      .replace(/\[КАСТОМНЫЙ_ОТЧЕТ\]:[\s\S]*?\[\/КАСТОМНЫЙ_ОТЧЕТ\]/g, '')
-      .replace(/\[ОТЧЕТ_РОДИТЕЛЮ\]:[\s\S]*?\[\/ОТЧЕТ_РОДИТЕЛЮ\]/g, '')
+      .replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_ДЗ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ|ПРЕЗЕНТАЦИЯ_ТЕКСТ|ПРЕЗЕНТАЦИЯ_ФАЙЛ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\1\]/gi, '')
+      .replace(/\[(ПРЕЗЕНТАЦИЯ_ФАЙЛ|ПРЕЗЕНТАЦИЯ|МАТЕРИАЛЫ)\]:[^\n]*/gi, '')
       .split(/\\?n?\[МАТЕРИАЛЫ\]:/)[0]
+      .replace(/\[([A-ZА-Я0-9_]+)\]:?[\s\S]*?\[\/\1\]/g, '')
+      .replace(/\[(ДЗ_ПРОВЕРЕНО|ДЗ_СДАНО|ОТПРАВИТЬ_В_ТГ|ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ|ПЕРЕНЕСЕН_В_ТГ|ПРОГРЕСС_ДЗ:[^\]]+)\]/gi, '')
       .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*$/gi, '')
-      .replace(/\[ДЗ_ПРОВЕРЕНО\]/g, '')
-      .replace(/\[ДЗ_СДАНО\]/g, '')
-      .replace(/\[ОТПРАВИТЬ_В_ТГ\]/g, '')
-      .replace(/\[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ\]/g, '')
-      .replace(/\[ПЕРЕНЕСЕН_В_ТГ\]/g, '')
+      .replace(/data:(image|application)\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '')
+      .replace(/\n{3,}/g, '\n\n')
       .trim();
+  },
+
+  cleanVocabulary(rawVocab) {
+    if (!rawVocab) return '';
+    const items = rawVocab.split(/[,;\r\n]+/).map(w => w.trim()).filter(Boolean);
+    const seen = new Set();
+    const clean = [];
+    for (const item of items) {
+      const lower = item.toLowerCase();
+      if (/^(my|your|his|her|its|our|their|i|you|he|she|it|we|they)$/i.test(lower)) continue;
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        clean.push(item);
+      }
+    }
+    return clean.slice(0, 7).join(', ');
+  },
+
+  formatStudentNameWith(name = '') {
+    if (!name) return 'учеником';
+    const trimmed = name.trim();
+    const parts = trimmed.split(/\s+/);
+    if (parts.length === 2) {
+      let [first, last] = parts;
+      if (first.endsWith('я')) first = first.slice(0, -1) + 'ей';
+      else if (first.endsWith('а')) first = first.slice(0, -1) + 'ой';
+      else if (/[бвгджзклмнпрстфхцчшщ]$/i.test(first)) first = first + 'ом';
+      else if (first.endsWith('й')) first = first.slice(0, -1) + 'ем';
+
+      if (last.endsWith('а')) last = last.slice(0, -1) + 'ой';
+      else if (last.endsWith('ов') || last.endsWith('ев') || last.endsWith('ин') || last.endsWith('ын')) last = last + 'ым';
+      else if (last.endsWith('ий') || last.endsWith('ый')) last = last.slice(0, -2) + 'ым';
+      return first + ' ' + last;
+    }
+    let f = trimmed;
+    if (f.endsWith('я')) return f.slice(0, -1) + 'ей';
+    if (f.endsWith('а')) return f.slice(0, -1) + 'ой';
+    if (/[бвгджзклмнпрстфхцчшщ]$/i.test(f)) return f + 'ом';
+    if (f.endsWith('й')) return f.slice(0, -1) + 'ем';
+    return trimmed;
   },
 
   formatTelegramPreviewHtml(text) {
@@ -2478,13 +2513,15 @@ const TutoringPage = {
     if (!container) return;
     const topic = document.getElementById('hw-disp-topic')?.value || '';
     const hwText = document.getElementById('hw-disp-text')?.value || '';
+    const cleanHw = this.cleanHomeworkText(hwText);
     const dossier = this.parseStudentDossier(st);
+    const cleanVocab = this.cleanVocabulary(dossier.vocab || '');
     container.innerHTML = this.renderTelegramPreviewBubble({
       type: 'student',
       recipientName: st.name,
       topic: topic,
-      cleanHw: hwText,
-      vocab: dossier.vocab || '',
+      cleanHw: cleanHw,
+      vocab: cleanVocab,
       cards: this.dispatcherCards || [],
       streak: dossier.streak || 0
     });
@@ -2495,7 +2532,8 @@ const TutoringPage = {
     if (parentSection && parentContainer) {
       if (sendParentChecked) {
         parentSection.classList.remove('hidden');
-        const parentDraft = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${st.name}*.\n\n📚 *Тема урока:* ${topic || 'Практика'}\n${dossier.vocab ? `🔤 *Слова урока:* ${dossier.vocab}\n` : ''}${hwText ? `📌 *Домашнее задание:* ${hwText}\n` : ''}🔥 *Серия занятий:* ${dossier.streak || 0} ДЗ подряд!\nСпасибо за поддержку! 🌟`;
+        const stNameWith = this.formatStudentNameWith(st.name);
+        const parentDraft = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${stNameWith}*.\n\n📚 *Тема урока:* ${topic || 'Практика'}\n${cleanVocab ? `🔤 *Слова урока:* ${cleanVocab}\n` : ''}${cleanHw ? `📌 *Домашнее задание:*\n${cleanHw}\n` : ''}\n🔥 *Серия занятий:* ${dossier.streak || 0} ДЗ подряд!\nСпасибо за поддержку! 🌟`;
         parentContainer.innerHTML = this.renderTelegramPreviewBubble({
           type: 'parent',
           recipientName: 'Родитель',
@@ -2670,10 +2708,11 @@ const TutoringPage = {
     sendBtn.onclick = async () => {
       const topic = document.getElementById('hw-disp-topic').value.trim();
       const hwText = document.getElementById('hw-disp-text').value.trim();
+      const cleanHwOnly = this.cleanHomeworkText(hwText);
       const scenarioText = document.getElementById('hw-disp-scenario').value.trim();
       const sendToParent = document.getElementById('hw-disp-send-parent').checked;
 
-      if (!hwText && this.dispatcherCards.length === 0) {
+      if (!cleanHwOnly && this.dispatcherCards.length === 0) {
         return UI.toast('Напишите текст ДЗ или прикрепите карточки!', 'warning');
       }
 
@@ -2694,8 +2733,8 @@ const TutoringPage = {
           this.lessons.unshift(lessonTarget);
         }
 
-        // Build composite homework string
-        let compositeHw = hwText;
+        // Build composite homework string strictly with clean HW
+        let compositeHw = cleanHwOnly;
         if (this.dispatcherCards.length > 0) {
           compositeHw += `\n\n[КАРТОЧКИ_ДЗ]:\n${this.dispatcherCards.join('||')}\n[/КАРТОЧКИ_ДЗ]`;
         }
@@ -2707,6 +2746,12 @@ const TutoringPage = {
         }
 
         if (lessonTarget?.homework) {
+          const oldDebrief = lessonTarget.homework.match(/\[ДЕБРИФИНГ\]:([\s\S]*?)\[\/ДЕБРИФИНГ\]/);
+          if (oldDebrief) compositeHw += `\n\n${oldDebrief[0]}`;
+          const oldPresFile = lessonTarget.homework.match(/\[ПРЕЗЕНТАЦИЯ_ФАЙЛ\]:[^\n]*/);
+          if (oldPresFile) compositeHw += `\n\n${oldPresFile[0]}`;
+          const oldPresText = lessonTarget.homework.match(/\[ПРЕЗЕНТАЦИЯ_ТЕКСТ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ_ТЕКСТ\]/);
+          if (oldPresText) compositeHw += `\n\n${oldPresText[0]}`;
           const oldPres = lessonTarget.homework.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
           if (oldPres) compositeHw += `\n\n${oldPres[0]}`;
         }
@@ -2714,7 +2759,9 @@ const TutoringPage = {
         compositeHw = `[ОТПРАВИТЬ_В_ТГ] ${compositeHw}`;
         if (sendToParent) {
           const dossier = this.parseStudentDossier(st);
-          const parentReportDraft = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${st.name}*.\n\n📚 *Тема урока:* ${topic || 'Практика английского'}\n${dossier.vocab ? `🔤 *Слова урока:* ${dossier.vocab}\n` : ''}${hwText ? `📌 *Домашнее задание:* ${hwText}\n` : ''}🔥 *Серия занятий:* ${dossier.streak || 0} ДЗ подряд!\nСпасибо за поддержку! 🌟`;
+          const cleanVocab = this.cleanVocabulary(dossier.vocab || '');
+          const stNameWith = this.formatStudentNameWith(st.name);
+          const parentReportDraft = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${stNameWith}*.\n\n📚 *Тема урока:* ${topic || 'Практика английского'}\n${cleanVocab ? `🔤 *Слова урока:* ${cleanVocab}\n` : ''}${cleanHwOnly ? `📌 *Домашнее задание:*\n${cleanHwOnly}\n` : ''}\n🔥 *Серия занятий:* ${dossier.streak || 0} ДЗ подряд!\nСпасибо за поддержку! 🌟`;
           compositeHw += `\n[ОТЧЕТ_РОДИТЕЛЮ]:\n${parentReportDraft}\n[/ОТЧЕТ_РОДИТЕЛЮ] [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]`;
         }
 

@@ -767,30 +767,79 @@ async function findParentByTgChatId(chatIdStr) {
   return null;
 }
 
+function cleanHomeworkTextBot(rawHw) {
+  if (!rawHw) return '';
+  return rawHw
+    .replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_ДЗ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ|ПРЕЗЕНТАЦИЯ_ТЕКСТ|ПРЕЗЕНТАЦИЯ_ФАЙЛ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\1\]/gi, '')
+    .replace(/\[(ПРЕЗЕНТАЦИЯ_ФАЙЛ|ПРЕЗЕНТАЦИЯ|МАТЕРИАЛЫ)\]:[^\n]*/gi, '')
+    .split(/\\?n?\[МАТЕРИАЛЫ\]:/)[0]
+    .replace(/\[([A-ZА-Я0-9_]+)\]:?[\s\S]*?\[\/\1\]/g, '')
+    .replace(/\[(ДЗ_ПРОВЕРЕНО|ДЗ_СДАНО|ОТПРАВИТЬ_В_ТГ|ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ|ПЕРЕНЕСЕН_В_ТГ|ПРОГРЕСС_ДЗ:[^\]]+)\]/gi, '')
+    .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*$/gi, '')
+    .replace(/data:(image|application)\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function cleanVocabularyBot(rawVocab) {
+  if (!rawVocab) return '';
+  const items = rawVocab.split(/[,;\r\n]+/).map(w => w.trim()).filter(Boolean);
+  const seen = new Set();
+  const clean = [];
+  for (const item of items) {
+    const lower = item.toLowerCase();
+    if (/^(my|your|his|her|its|our|their|i|you|he|she|it|we|they)$/i.test(lower)) continue;
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      clean.push(item);
+    }
+  }
+  return clean.slice(0, 7).join(', ');
+}
+
+function formatStudentNameWithBot(name = '') {
+  if (!name) return 'учеником';
+  const trimmed = name.trim();
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 2) {
+    let [first, last] = parts;
+    if (first.endsWith('я')) first = first.slice(0, -1) + 'ей';
+    else if (first.endsWith('а')) first = first.slice(0, -1) + 'ой';
+    else if (/[бвгджзклмнпрстфхцчшщ]$/i.test(first)) first = first + 'ом';
+    else if (first.endsWith('й')) first = first.slice(0, -1) + 'ем';
+
+    if (last.endsWith('а')) last = last.slice(0, -1) + 'ой';
+    else if (last.endsWith('ов') || last.endsWith('ев') || last.endsWith('ин') || last.endsWith('ын')) last = last + 'ым';
+    else if (last.endsWith('ий') || last.endsWith('ый')) last = last.slice(0, -2) + 'ым';
+    return first + ' ' + last;
+  }
+  let f = trimmed;
+  if (f.endsWith('я')) return f.slice(0, -1) + 'ей';
+  if (f.endsWith('а')) return f.slice(0, -1) + 'ой';
+  if (/[бвгджзклмнпрстфхцчшщ]$/i.test(f)) return f + 'ом';
+  if (f.endsWith('й')) return f.slice(0, -1) + 'ем';
+  return trimmed;
+}
+
 async function sendParentLessonReportBot(st, lesson) {
   if (!st) return { sent: false, reason: 'no_student' };
   const doss = parseStudentDossierBot(st);
   const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
   if (parentIds.length === 0) return { sent: false, reason: 'no_parent_tg_id' };
-  const rawHw = (lesson?.homework || '').split(/\\?n?\[МАТЕРИАЛЫ\]:/)[0]
-    .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*?(?=\n\n|$)/gi, '')
-    .replace(/\[(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ|КАРТОЧКИ_ДЗ)\]:[\s\S]*?\[\/(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ|КАРТОЧКИ_ДЗ)\]/g, '')
-    .replace(/\[ПРОГРЕСС[^\]]*\]/g, '')
-    .replace(/\[ДЗ_[^\]]*\]/g, '')
-    .replace(/\[ОТПРАВИТЬ[^\]]*\]/g, '')
-    .replace('[ПЕРЕНЕСЕН_В_ТГ]', '')
-    .trim();
+  const rawHw = cleanHomeworkTextBot(lesson?.homework || '');
+  const cleanVocab = cleanVocabularyBot(doss.vocab || '');
+  const stNameWith = formatStudentNameWithBot(st.name);
   const dateStr = lesson?.date ? new Date(lesson.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' }) : 'сегодня';
   
   // Check if a pre-approved custom report was provided by the teacher
   let aiReport = '';
   const customRepMatch = (lesson?.homework || '').match(/\[КАСТОМНЫЙ_ОТЧЕТ\]:([\s\S]*?)\[\/КАСТОМНЫЙ_ОТЧЕТ\]/) || (lesson?.homework || '').match(/\[ОТЧЕТ_РОДИТЕЛЮ\]:([\s\S]*?)\[\/ОТЧЕТ_РОДИТЕЛЮ\]/);
   if (customRepMatch && customRepMatch[1].trim()) {
-    aiReport = customRepMatch[1].trim();
+    aiReport = cleanHomeworkTextBot(customRepMatch[1].trim());
   }
 
   if (!aiReport) {
-    const prompt = `Ты — вежливый, внимательный преподаватель английского языка Игорь. Составь КОРОТКИЙ (до 700 символов) тёплый отчёт для родителей ученика ${st.name} (${st.grade || ''}) по итогам проведённого урока (${dateStr}).\nТема урока: "${lesson?.topic || 'Практика английского по программе'}".\nАктивный словарь: "${doss.vocab || 'по теме урока'}".\nНад какими ошибками/правилами работали: "${doss.errors || 'грамматика и говорение'}".\nДомашнее задание: "${rawHw || 'повторить лексику урока'}".\nУдарный режим (Streak): ${doss.streak || 0} ДЗ подряд.\nСтруктура: Приветствие ("Здравствуйте! 👋"), что сегодня разобрали и за что можно похвалить ${st.name}, над чем работаем и какое задано ДЗ. Пиши сразу готовый текст сообщения для родителей!`;
+    const prompt = `Ты — вежливый, внимательный преподаватель английского языка Игорь. Составь КОРОТКИЙ (до 700 символов) тёплый отчёт для родителей ученика ${st.name} (${st.grade || ''}) по итогам проведённого урока (${dateStr}).\nТема урока: "${lesson?.topic || 'Практика английского по программе'}".\nАктивный словарь: "${cleanVocab || 'по теме урока'}".\nНад какими ошибками/правилами работали: "${doss.errors || 'грамматика и говорение'}".\nДомашнее задание: "${rawHw || 'повторить лексику урока'}".\nУдарный режим (Streak): ${doss.streak || 0} ДЗ подряд.\nСтруктура: Приветствие ("Здравствуйте! 👋"), что сегодня разобрали и за что можно похвалить ${st.name}, над чем работаем и какое задано ДЗ. Пиши сразу готовый текст сообщения для родителей!`;
     try {
       const planRes = await executeFunctionCall('generate_lesson_plan', { prompt });
       aiReport = planRes.generated_plan || '';
@@ -798,7 +847,7 @@ async function sendParentLessonReportBot(st, lesson) {
   }
 
   if (!aiReport) {
-    aiReport = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${st.name}* (${dateStr}).\n\n📚 *Тема урока:* ${lesson?.topic || 'Практика и разбор правил'}\n${doss.vocab ? `🔤 *Слова урока:* ${doss.vocab}\n` : ''}${rawHw ? `📌 *Домашнее задание:* ${rawHw}\n` : ''}Спасибо за поддержку! 🌟`;
+    aiReport = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${stNameWith}* (${dateStr}).\n\n📚 *Тема урока:* ${lesson?.topic || 'Практика и разбор правил'}\n${cleanVocab ? `🔤 *Слова урока:* ${cleanVocab}\n` : ''}${rawHw ? `📌 *Домашнее задание:*\n${rawHw}\n` : ''}Спасибо за поддержку! 🌟`;
   }
   const kb = [
     [{ text: '📊 Запросить сводный отчёт о прогрессе', callback_data: `parent_req_report:${st.id}` }],
@@ -1375,14 +1424,8 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
   if (targetIds.length === 0) return { sent: false, reason: 'no_tg_id' };
   
   const { cleanHw: noCardsHw, cards } = extractAttachedCards(lesson?.homework || '');
-  const rawHw = noCardsHw.split('\\n[МАТЕРИАЛЫ]:')[0]
-    .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*?(?=\n\n|$)/gi, '')
-    .replace(/\[(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ)\]:[\s\S]*?\[\/(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ)\]/g, '')
-    .replace('[ДЗ_ПРОВЕРЕНО]', '')
-    .replace('[ДЗ_СДАНО]', '')
-    .replace('[ОТПРАВИТЬ_В_ТГ]', '')
-    .replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '')
-    .trim();
+  const rawHw = cleanHomeworkTextBot(noCardsHw);
+  const cleanVocab = cleanVocabularyBot(doss.vocab || '');
   if (!rawHw && !lesson?.topic && cards.length === 0) return { sent: false, reason: 'empty_hw' };
 
   const header = isReminder
@@ -1393,7 +1436,7 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
 
   let msg = `${header}\n\n`;
   if (lesson?.topic) msg += `📚 *Тема:* ${lesson.topic}\n`;
-  if (doss.vocab) msg += `🔤 *Полезные слова (Vocabulary):* ${doss.vocab}\n`;
+  if (cleanVocab) msg += `🔤 *Полезные слова (Vocabulary):* ${cleanVocab}\n`;
   if (rawHw) msg += `\n📌 *Домашнее задание:*\n${rawHw}\n`;
   if (cards.length > 0) msg += `\n🖼 *Прикреплено карточек к уроку:* ${cards.length} шт. (отправлены выше)`;
   // Calculate progress bar & HW completion readiness
@@ -1460,7 +1503,7 @@ async function processLessonQueues() {
         let customReport = null;
         const repMatch = rawHw.match(/\[КАСТОМНЫЙ_ОТЧЕТ\]:([\s\S]*?)\[\/КАСТОМНЫЙ_ОТЧЕТ\]/) || rawHw.match(/\[ОТЧЕТ_РОДИТЕЛЮ\]:([\s\S]*?)\[\/ОТЧЕТ_РОДИТЕЛЮ\]/);
         if (repMatch) {
-          customReport = repMatch[1].trim();
+          customReport = cleanHomeworkTextBot(repMatch[1].trim());
           rawHw = rawHw.replace(repMatch[0], '').trim();
         }
         const cleanedHw = rawHw.replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
@@ -1498,7 +1541,7 @@ async function processLessonQueues() {
         let customReport = null;
         const repMatch = rawHw.match(/\[ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ\]:([\s\S]*?)\[\/ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ\]/);
         if (repMatch) {
-          customReport = repMatch[1].trim();
+          customReport = cleanHomeworkTextBot(repMatch[1].trim());
           rawHw = rawHw.replace(repMatch[0], '').trim();
         } else {
           rawHw = rawHw.replace('[ОТПРАВИТЬ_УЧИТЕЛЮ_В_ТГ]', '').trim();

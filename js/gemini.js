@@ -673,7 +673,8 @@ const Gemini = {
         const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ['gsk', 'FagNCC3UXjF8iCIDPvkfWGdyb3FYB8mfWlbFUH7CatLFR9pxUrQ9'].join('_') },
-          body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: systemInstruction }, ...messages], temperature: 0.6, max_tokens: 3500 })
+          body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: systemInstruction }, ...messages], temperature: 0.6, max_tokens: 3500 }),
+          signal: AbortSignal.timeout(8000)
         });
         if (gRes.ok) return gRes.json();
       } catch (e) {}
@@ -681,6 +682,15 @@ const Gemini = {
     const apiUrl = Config.aiApiUrl || DEFAULT_API_URL;
     const FALLBACK_MODELS = [Config.aiModel || DEFAULT_MODEL, 'google/gemma-4-31b-it:free', 'openrouter/free'];
     const model = FALLBACK_MODELS[Math.min(retryCount, FALLBACK_MODELS.length - 1)];
+
+    // Ensure messages don't pass raw giant base64 data URLs into text models
+    const sanitizedMessages = messages.map(m => {
+      if (Array.isArray(m.content)) {
+        const textParts = m.content.filter(p => p.type === 'text').map(p => p.text).join('\n');
+        return { role: m.role, content: textParts || 'Продолжи' };
+      }
+      return m;
+    });
 
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -692,12 +702,13 @@ const Gemini = {
         model: model,
         messages: [
           { role: 'system', content: systemInstruction },
-          ...messages
+          ...sanitizedMessages
         ],
         tools: disableTools ? undefined : TOOLS,
         temperature: 0.7,
         max_tokens: 3500
-      })
+      }),
+      signal: AbortSignal.timeout(12000)
     });
 
     if (!res.ok) {
@@ -1010,36 +1021,17 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
       prompt = `До конца урока осталось 5-7 минут! Создай живую, увлекательную устную мини-игру на 5 минут по теме "${currentLesson.topic || 'Повторение и лексика'}", используя активный словарь, типичные ошибки и интересы ученика.\nВыбери один из форматов: "Детективное расследование / Алиби", "Угадай слово по 3 подсказкам (Taboo)", "2 правды и 1 ложь с ловушками на грамматику" или "Блиц-аукцион ошибок".\nПиши сразу готовый сценарий и реплики для преподавателя (с правильными ответами в скобках)!`;
     }
 
-    const visionImages = [];
     if (mode === 'homework') {
-      if (Array.isArray(currentLesson.cards)) {
-        for (const c of currentLesson.cards.slice(0, 3)) {
-          if (typeof c === 'string' && (c.startsWith('data:image/') || c.startsWith('http'))) {
-            visionImages.push(c);
-          }
-        }
+      if (Array.isArray(currentLesson.cards) && currentLesson.cards.length > 0) {
+        prompt += `\n[К уроку преподавателем прикреплены карточки с упражнениями: ${currentLesson.cards.length} шт.]`;
       }
-      if (typeof currentLesson.presentation === 'string' && currentLesson.presentation.startsWith('data:image/')) {
-        visionImages.push(currentLesson.presentation);
+      if (currentLesson.presentationText) {
+        prompt += `\n[Текст из презентации урока:\n${currentLesson.presentationText.slice(0, 1500)}]`;
       }
     }
 
     const sysInstruction = `Ты — топовый методист и ИИ-ассистент преподавателя английского языка (Twee + Lesson Mate AI).\nДОСЬЕ УЧЕНИКА:\n${dossierText}`;
-    let data;
-    if (visionImages.length > 0) {
-      try {
-        const multimodalContent = [
-          { type: 'text', text: prompt },
-          ...visionImages.map(url => ({ type: 'image_url', image_url: { url } }))
-        ];
-        data = await this._callAPI(apiUrl, apiKey, model, sysInstruction, [{ role: 'user', content: multimodalContent }], true);
-      } catch (visionErr) {
-        console.warn('Multimodal homework generation fallback to text-only:', visionErr.message);
-        data = await this._callAPI(apiUrl, apiKey, model, sysInstruction, [{ role: 'user', content: prompt }], true);
-      }
-    } else {
-      data = await this._callAPI(apiUrl, apiKey, model, sysInstruction, [{ role: 'user', content: prompt }], true);
-    }
+    const data = await this._callAPI(apiUrl, apiKey, model, sysInstruction, [{ role: 'user', content: prompt }], true);
     let out = data.choices?.[0]?.message?.content?.trim() || '';
     if (mode === 'homework') {
       out = out.replace(/\*\*/g, '').replace(/\*/g, '');
