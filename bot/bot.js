@@ -3777,7 +3777,15 @@ bot.on('callback_query', async (query) => {
         const botUser = BOT_USERNAME || (await bot.getMe().then(m => m.username).catch(() => ''));
         const link = `https://t.me/${botUser}?start=pr_${st.id}`;
         await bot.answerCallbackQuery(query.id, { text: 'Родитель ещё не привязан к боту!' });
-        return bot.sendMessage(chatId, `⚠️ Родитель ученика *${st.name}* ещё не нажал Start в боте.\nПерешли родителю эту ссылку один раз:\n\`${link}\``, { parse_mode: 'Markdown' });
+        
+        const kb = [];
+        if (doss.tgId) {
+          kb.push([{ text: `📨 Отправить в подключённый чат (${doss.tgUser || 'семьи'})`, callback_data: `send_rep_to_family:${lessonId}` }]);
+        }
+        return bot.sendMessage(chatId, `⚠️ Отдельный контакт родителя для *${st.name}* ещё не привязан по ссылке \`pr_...\`.\n\n${doss.tgId ? `💡 Но уже подключён чат: *${doss.tgUser || 'ученика/семьи'}*.\nТы можешь отправить отчёт прямо туда или переслать маме персональную ссылку:` : 'Перешли родителю эту ссылку один раз:'}\n\`${link}\``, {
+          parse_mode: 'Markdown',
+          reply_markup: kb.length ? { inline_keyboard: kb } : undefined
+        });
       }
       await bot.answerCallbackQuery(query.id, { text: '👨‍👩‍👧 Генерирую и отправляю отчёт родителю...' });
       const sendRes = await sendParentLessonReportBot(st, ls);
@@ -3785,6 +3793,31 @@ bot.on('callback_query', async (query) => {
         await bot.sendMessage(chatId, `👨‍👩‍👧 Отчёт по уроку успешно отправлен родителю ученика *${st.name}* в Telegram!`, { parse_mode: 'Markdown' });
       } else {
         await bot.sendMessage(chatId, `❌ Ошибка отправки родителю: ${sendRes.reason}`);
+      }
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('send_rep_to_family:')) {
+    const lessonId = data.split(':')[1];
+    try {
+      const { data: ls } = await db.from('lessons').select('*, students(*)').eq('id', lessonId).maybeSingle();
+      const st = ls?.students;
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      const doss = parseStudentDossierBot(st);
+      if (!doss.parentTgId && doss.tgId) {
+        // Привязываем общий семейный контакт и как родительский
+        doss.parentTgId = doss.tgId;
+        doss.parentTgUser = doss.tgUser || '';
+        const newSched = serializeStudentDossierBot(doss);
+        await db.from('students').update({ schedule: newSched }).eq('id', st.id);
+        st.schedule = newSched;
+      }
+      await bot.answerCallbackQuery(query.id, { text: '👨‍👩‍👧 Отправляю отчёт в семейный чат...' });
+      const sendRes = await sendParentLessonReportBot(st, ls);
+      if (sendRes.sent) {
+        await bot.sendMessage(chatId, `👨‍👩‍👧 Отчёт по уроку успешно отправлен в семейный чат *${doss.tgUser || st.name}* в Telegram!`, { parse_mode: 'Markdown' });
+      } else {
+        await bot.sendMessage(chatId, `❌ Ошибка отправки: ${sendRes.reason}`);
       }
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
