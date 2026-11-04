@@ -3341,6 +3341,34 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
         }
       });
     }
+
+    // Smart auto-match for family members who started bot without referral link
+    const rawUname = (msg.from?.username || '').toLowerCase();
+    const rawFname = `${msg.from?.first_name || ''} ${msg.from?.last_name || ''}`.toLowerCase();
+    if (rawUname.includes('kuroch') || rawFname.includes('курочк')) {
+      const { data: stKuroch } = await db.from('students').select('*').ilike('name', '%Курочкин%').maybeSingle();
+      if (stKuroch) {
+        const doss = parseStudentDossierBot(stKuroch);
+        doss.parentTgId = incomingChatId;
+        doss.parentTgUser = msg.from?.username ? '@' + msg.from.username : (msg.from?.first_name || 'Мама Сони');
+        const newSched = serializeStudentDossierBot(doss);
+        await db.from('students').update({ schedule: newSched }).eq('id', stKuroch.id);
+        stKuroch.schedule = newSched;
+
+        await bot.sendMessage(incomingChatId, `Здравствуйте! 👋\nВы успешно подключены к электронному дневнику успеваемости ученика *${stKuroch.name}* по английскому языку (преподаватель — Игорь) 🇬🇧\n\nСюда я буду присылать отчёты после каждого проведённого урока.`, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${stKuroch.id}` }],
+              [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${stKuroch.id}` }]
+            ]
+          }
+        });
+        await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Мама Сони Курочкиной (@${msg.from?.username || 'ilkuroch'}) успешно привязана к карточке ученика!*\nТеперь отчёты после уроков будут уходить ей в Telegram автоматически! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+        return;
+      }
+    }
+
     return bot.sendMessage(incomingChatId, '🔒 Это закрытый бот для учеников по английскому языку. Пожалуйста, перейдите по персональной ссылке-приглашению от преподавателя!');
   }
   if (false) {
@@ -3409,6 +3437,24 @@ bot.on('photo', async (msg) => {
     }
     const found = await findStudentByTgChatId(chatId);
     if (!found) {
+      // Auto-match for Kurochkina's mom if she wrote without referral
+      const rawUname = (msg.from?.username || '').toLowerCase();
+      const rawFname = `${msg.from?.first_name || ''} ${msg.from?.last_name || ''}`.toLowerCase();
+      if (rawUname.includes('kuroch') || rawFname.includes('курочк')) {
+        const { data: stKuroch } = await db.from('students').select('*').ilike('name', '%Курочкин%').maybeSingle();
+        if (stKuroch) {
+          const doss = parseStudentDossierBot(stKuroch);
+          doss.parentTgId = String(chatId);
+          doss.parentTgUser = msg.from?.username ? '@' + msg.from.username : (msg.from?.first_name || 'Мама Сони');
+          const newSched = serializeStudentDossierBot(doss);
+          await db.from('students').update({ schedule: newSched }).eq('id', stKuroch.id);
+          stKuroch.schedule = newSched;
+
+          await bot.sendMessage(chatId, `Здравствуйте! 👋\nВы успешно подключены к электронному дневнику успеваемости ученика *${stKuroch.name}* по английскому языку! 🇬🇧\n\nСюда я буду присылать отчёты после каждого проведённого урока.`, { parse_mode: 'Markdown' });
+          await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Мама Сони Курочкиной (@${msg.from?.username || 'ilkuroch'}) написала в бот и автоматически привязана!*\nТеперь отчёты после уроков будут уходить ей в Telegram автоматически! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+          return;
+        }
+      }
       return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
     }
     // Фото от ученика обрабатывается комплексно (с ИИ-проверкой рукописи, 75% прогрессом и копией учителю) в едином обработчике bot.on('message') ниже
@@ -5640,6 +5686,24 @@ bot.on('message', async (msg) => {
     }
     const found = await findStudentByTgChatId(chatId);
     if (!found) {
+      // Auto-match for Kurochkina's mom if she wrote without referral
+      const rawUname = (msg.from?.username || '').toLowerCase();
+      const rawFname = `${msg.from?.first_name || ''} ${msg.from?.last_name || ''}`.toLowerCase();
+      if (rawUname.includes('kuroch') || rawFname.includes('курочк')) {
+        const { data: stKuroch } = await db.from('students').select('*').ilike('name', '%Курочкин%').maybeSingle();
+        if (stKuroch) {
+          const doss = parseStudentDossierBot(stKuroch);
+          doss.parentTgId = String(chatId);
+          doss.parentTgUser = msg.from?.username ? '@' + msg.from.username : (msg.from?.first_name || 'Мама Сони');
+          const newSched = serializeStudentDossierBot(doss);
+          await db.from('students').update({ schedule: newSched }).eq('id', stKuroch.id);
+          stKuroch.schedule = newSched;
+
+          await bot.sendMessage(chatId, `Здравствуйте! 👋\nВы успешно подключены к электронному дневнику успеваемости ученика *${stKuroch.name}* по английскому языку! 🇬🇧\n\nСюда я буду присылать отчёты после каждого проведённого урока.`, { parse_mode: 'Markdown' });
+          await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Мама Сони Курочкиной (@${msg.from?.username || 'ilkuroch'}) написала в бот и автоматически привязана!*\nТеперь отчёты после уроков будут уходить ей в Telegram автоматически! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+          return;
+        }
+      }
       return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
     }
     const st = found.student;
