@@ -164,65 +164,48 @@ const TutoringPage = {
               <!-- Two-tab clean navigation -->
               <div style="display:flex;border-bottom:1px solid var(--border-light);margin-bottom:14px;background:var(--bg-primary);border-radius:8px;padding:3px;">
                 <button type="button" id="tab-btn-prep" onclick="TutoringPage.switchLessonTab('prep')" style="flex:1;padding:8px 12px;border:none;background:transparent;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;color:var(--accent);border-bottom:2px solid var(--accent);display:flex;align-items:center;justify-content:center;gap:6px;">
-                  <span>📚 1. Подготовка и материалы</span>
+                  <span>📚 1. Подготовка к уроку</span>
                 </button>
                 <button type="button" id="tab-btn-post" onclick="TutoringPage.switchLessonTab('post')" style="flex:1;padding:8px 12px;border:none;background:transparent;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;color:var(--text-muted);border-bottom:none;display:flex;align-items:center;justify-content:center;gap:6px;">
                   <span>🎙️ 2. Итоги урока, ДЗ и Отправка</span>
                 </button>
               </div>
 
-              <!-- TAB 1: PREPARATION & MATERIALS -->
+              <!-- TAB 1: PREPARATION BEFORE LESSON (Perplexity Scenario & Presentation) -->
               <div id="lesson-sec-prep">
                 <div id="ls-memory-banner" style="margin-bottom:12px;"></div>
 
+                <!-- 1. Perplexity Scenario & Lesson Plan -->
                 <div style="margin-bottom:12px;padding:12px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-light);">
-                  <div style="margin-bottom:8px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                      <label class="form-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px;">
-                        <i data-lucide="image" style="width:15px;height:15px;color:var(--accent);"></i>
-                        <span>Материалы и карточки к уроку (PNG / PDF)</span>
-                      </label>
-                    </div>
-                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                      <button type="button" id="ls-btn-add-card-file" class="btn btn-primary btn-xs" style="background:#0284c7;border-color:#0284c7;color:#fff;font-size:11px;padding:6px 10px;font-weight:600;display:flex;align-items:center;gap:5px;" title="Выбрать файл с диска (PNG, JPG, PDF)">
-                        📁 Выбрать файл с диска
-                      </button>
-                      <button type="button" id="ls-btn-vision-ai" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#0ea5e9;border-color:rgba(14,165,233,0.4);background:rgba(14,165,233,0.06);display:flex;align-items:center;gap:4px;" title="Загрузить страницу учебника/фото и определить тему, лексику и анонс">
-                        📸 Распознать тему из файла
-                      </button>
-                      <button type="button" id="ls-btn-gen-cards" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#0d9488;border-color:rgba(13,148,136,0.35);display:flex;align-items:center;gap:4px;" title="Сгенерировать PNG-карточки слов">
-                        🎨 Создать карточки
-                      </button>
-                    </div>
-                  </div>
-                  <input type="file" id="ls-card-file-input" accept="image/*,.pdf" multiple style="display:none;" />
-                  <input type="file" id="ls-vision-file-input" accept="image/*,.pdf" style="display:none;" />
-                  <div id="ls-cards-dropzone" style="border:2px dashed var(--border-light);border-radius:8px;padding:12px;text-align:center;cursor:pointer;background:var(--bg-secondary);transition:border-color 0.2s;" title="Перетащите сюда PNG или нажмите Ctrl+V для вставки из буфера">
-                    <div style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:6px;">
-                      <i data-lucide="upload-cloud" style="width:16px;height:16px;color:var(--accent);"></i>
-                      <span>Перетащите PNG-карточки сюда, выберите файл или вставьте из буфера (<b>Ctrl+V</b>)</span>
-                    </div>
-                    <div id="ls-cards-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
-                  </div>
-                </div>
-
-                <div style="margin-bottom:12px;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <label class="form-label" style="margin-bottom:0;font-weight:700;display:flex;align-items:center;gap:6px;">
-                      <i data-lucide="file-text" style="width:14px;height:14px;color:#0d9488;"></i>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <label class="form-label" style="margin-bottom:0;font-weight:700;display:flex;align-items:center;gap:6px;font-size:13px;">
+                      <i data-lucide="sparkles" style="width:15px;height:15px;color:#0d9488;"></i>
                       <span>Сценарий и план урока (из Perplexity)</span>
                     </label>
                     <div style="display:flex;gap:6px;">
-                      <button type="button" id="ls-btn-perplexity" class="btn btn-primary btn-xs" style="font-size:11px;background:linear-gradient(135deg,#0d9488,#0284c7);border:none;color:#fff;" title="Открыть Perplexity Space">🔮 В Perplexity Space</button>
+                      <button type="button" id="ls-btn-perplexity" class="btn btn-primary btn-xs" style="font-size:11px;background:linear-gradient(135deg,#0d9488,#0284c7);border:none;color:#fff;" title="Открыть Perplexity Space с промптом по ученику">🔮 В Perplexity Space</button>
                       <button type="button" id="ls-btn-pplx-fill" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0d9488;" title="Вставить текст конспекта">📥 Вставить конспект</button>
                     </div>
                   </div>
-                  <textarea id="ls-scenario" class="form-input" rows="3" style="font-size:12px;font-family:inherit;" placeholder="Вставьте сюда сценарий / конспект урока из Perplexity (слова, упражнения, правила)..."></textarea>
-                  <input id="ls-materials" type="text" class="form-input" style="margin-top:6px;" placeholder="Ссылка на презентацию в Gamma / Google Диск / YouTube (https://...)" />
-                  <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:6px;">
+                  <textarea id="ls-scenario" class="form-input" rows="5" style="font-size:12px;font-family:inherit;line-height:1.5;" placeholder="Вставьте сюда сценарий / конспект урока из Perplexity (Warm-up, план объяснения, упражнения, правила, примеры)..."></textarea>
+                </div>
+
+                <!-- 2. Lesson Presentation (Google Slides / Gamma / PPTX / PDF) -->
+                <div style="margin-bottom:12px;padding:12px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-light);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <label class="form-label" style="margin-bottom:0;font-weight:700;display:flex;align-items:center;gap:6px;font-size:13px;">
+                      <i data-lucide="presentation" style="width:15px;height:15px;color:#0284c7;"></i>
+                      <span>Презентация к уроку (Google Презентации / Gamma / PPTX)</span>
+                    </label>
+                    <button type="button" id="ls-btn-open-presentation-link" class="btn btn-secondary btn-xs" style="font-size:11px;color:#0284c7;border-color:rgba(2,132,199,0.35);display:flex;align-items:center;gap:4px;" title="Открыть презентацию в новой вкладке">
+                      ▶️ Открыть ссылку
+                    </button>
+                  </div>
+                  <input id="ls-materials" type="text" class="form-input" placeholder="Ссылка на презентацию в Gamma / Google Презентациях / Canva / YouTube (https://...)" />
+                  <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px;">
                     <input type="file" id="ls-presentation-file" accept=".pdf,.pptx,.ppt,image/*" style="display:none;" />
                     <button type="button" id="ls-btn-upload-pres" class="btn btn-secondary btn-xs" style="font-size:11px;display:inline-flex;align-items:center;gap:4px;">
-                      <i data-lucide="file" style="width:12px;height:12px;"></i> 📎 Прикрепить файл презентации
+                      <i data-lucide="file" style="width:12px;height:12px;"></i> 📎 Прикрепить файл презентации (.pptx / .pdf)
                     </button>
                     <div id="ls-pres-badge" style="display:none;align-items:center;gap:6px;padding:3px 8px;background:rgba(13,148,136,0.12);border:1px solid rgba(13,148,136,0.3);border-radius:6px;font-size:11px;color:#0d9488;">
                       <span id="ls-pres-name">Презентация.pdf</span>
@@ -232,6 +215,7 @@ const TutoringPage = {
                   </div>
                 </div>
 
+                <!-- Lesson Launch Actions -->
                 <div style="display:flex;gap:8px;margin-top:10px;">
                   <button type="button" id="ls-btn-announce-tg" class="btn btn-secondary btn-sm" style="flex:1;font-size:12px;color:#f59e0b;border-color:rgba(245,158,11,0.4);background:rgba(245,158,11,0.06);display:flex;align-items:center;justify-content:center;gap:6px;">
                     📢 Анонс урока в ТГ (ученику и маме)
@@ -242,9 +226,9 @@ const TutoringPage = {
                 </div>
               </div>
 
-              <!-- TAB 2: POST-LESSON, DEBRIEF, HOMEWORK & TELEGRAM -->
+              <!-- TAB 2: POST-LESSON (Debrief, Homework Cards, HW Text & Telegram) -->
               <div id="lesson-sec-post" style="display:none;">
-                <!-- Debrief section -->
+                <!-- 1. Debrief section -->
                 <div style="margin-bottom:12px;padding:12px;border-radius:10px;background:linear-gradient(145deg, rgba(13,148,136,0.08), rgba(99,102,241,0.08));border:1px solid rgba(13,148,136,0.3);">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <label class="form-label" style="margin-bottom:0;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:6px;">
@@ -263,7 +247,39 @@ const TutoringPage = {
                   <textarea id="ls-debrief-notes" class="form-input" rows="2" style="font-size:12px;" placeholder="Надиктуйте или запишите своими словами: что прошли, что получилось, где ошибся (например: путал was/were, забывал -s), какие новые слова взяли..."></textarea>
                 </div>
 
-                <!-- Homework section -->
+                <!-- 2. Homework Cards & Materials (PNG / PDF) -->
+                <div style="margin-bottom:12px;padding:12px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-light);">
+                  <div style="margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                      <label class="form-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px;">
+                        <i data-lucide="image" style="width:15px;height:15px;color:var(--accent);"></i>
+                        <span>Карточки к домашнему заданию (PNG / PDF)</span>
+                      </label>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                      <button type="button" id="ls-btn-add-card-file" class="btn btn-primary btn-xs" style="background:#0284c7;border-color:#0284c7;color:#fff;font-size:11px;padding:6px 10px;font-weight:600;display:flex;align-items:center;gap:5px;" title="Выбрать файл с диска (PNG, JPG, PDF)">
+                        📁 Выбрать файл с диска
+                      </button>
+                      <button type="button" id="ls-btn-vision-ai" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#0ea5e9;border-color:rgba(14,165,233,0.4);background:rgba(14,165,233,0.06);display:flex;align-items:center;gap:4px;" title="Загрузить страницу учебника/фото и определить тему, лексику и анонс">
+                        📸 Распознать тему из файла
+                      </button>
+                      <button type="button" id="ls-btn-gen-cards" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#0d9488;border-color:rgba(13,148,136,0.35);display:flex;align-items:center;gap:4px;" title="Сгенерировать PNG-карточки слов">
+                        🎨 Создать карточки
+                      </button>
+                    </div>
+                  </div>
+                  <input type="file" id="ls-card-file-input" accept="image/*,.pdf" multiple style="display:none;" />
+                  <input type="file" id="ls-vision-file-input" accept="image/*,.pdf" style="display:none;" />
+                  <div id="ls-cards-dropzone" style="border:2px dashed var(--border-light);border-radius:8px;padding:12px;text-align:center;cursor:pointer;background:var(--bg-secondary);transition:border-color 0.2s;" title="Перетащите сюда PNG карточек ДЗ или нажмите Ctrl+V для вставки из буфера">
+                    <div style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:6px;">
+                      <i data-lucide="upload-cloud" style="width:16px;height:16px;color:var(--accent);"></i>
+                      <span>Перетащите карточки ДЗ сюда, выберите файл или вставьте из буфера (<b>Ctrl+V</b>)</span>
+                    </div>
+                    <div id="ls-cards-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
+                  </div>
+                </div>
+
+                <!-- 3. Homework Text section -->
                 <div style="margin-bottom:12px;">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <label class="form-label" style="margin-bottom:0;font-weight:700;">Домашнее задание (15–25 минут)</label>
@@ -1117,7 +1133,11 @@ const TutoringPage = {
                   ${ls.topic ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="book" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(ls.topic)}</span></div>` : ''} 
                   ${hwRow}
                   ${(ls.status === 'Запланирован' && prevDoneLesson && prevHwClean) ? `<div style="margin-top:4px;padding:6px 8px;border-radius:8px;background:${prevHwChecked ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.12)'};border:1px solid ${prevHwChecked ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.3)'};font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${prevHwChecked ? '✅ ДЗ проверено:' : '📌 <b>Проверить ДЗ:</b>'} ${this.escapeHtml(prevHwClean)}</span>${!prevHwChecked ? `<button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${prevDoneLesson.id}')">✅ Проверено</button>` : ''}</div>` : ''}
-                  ${ls.status === 'Запланирован' ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;color:#0d9488;border-color:rgba(13,148,136,0.35);background:rgba(13,148,136,0.06);" onclick="event.stopPropagation(); TutoringPage.launchPerplexity('${ls.student_id}', '${ls.id}')">🔮 В Perplexity</button><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;" onclick="event.stopPropagation(); TutoringPage.openZenBoard('${ls.id}')">🖥 Экран ученика</button></div>` : ''}
+                  ${ls.status === 'Запланирован' ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+  <button class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;color:#0d9488;border-color:rgba(13,148,136,0.35);background:rgba(13,148,136,0.06);" onclick="event.stopPropagation(); TutoringPage.launchPerplexity('${ls.student_id}', '${ls.id}')">🔮 В Perplexity</button>
+  <button class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;" onclick="event.stopPropagation(); TutoringPage.openZenBoard('${ls.id}')">🖥 Экран ученика</button>
+  ${hasLinks ? `<a href="${displayMaterials}" target="_blank" onclick="event.stopPropagation()" class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;color:#0284c7;border-color:rgba(2,132,199,0.35);background:rgba(2,132,199,0.06);display:inline-flex;align-items:center;gap:3px;"><i data-lucide="presentation" style="width:11px;height:11px;"></i> Презентация</a>` : ''}
+</div>` : ''}
                   ${displayMaterials ? `<div style="display:flex;align-items:center;gap:6px;color:var(--accent);"><i data-lucide="paperclip" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${hasLinks ? `<a href="${displayMaterials}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:underline;">Материалы прикреплены</a>` : this.escapeHtml(displayMaterials)}</span></div>` : ''}
                 </div>
               </div>
@@ -3287,6 +3307,15 @@ const TutoringPage = {
   },
 
   bindLessonModalMediaAndDebrief(ls, studentId) {
+    const openPresBtn = document.getElementById('ls-btn-open-presentation-link');
+    if (openPresBtn) {
+      openPresBtn.onclick = () => {
+        const url = document.getElementById('ls-materials')?.value?.trim();
+        if (!url) return UI.toast('Введите ссылку на презентацию (Google Презентации, Gamma, Canva)', 'warning');
+        const validUrl = url.startsWith('http') ? url : 'https://' + url;
+        window.open(validUrl, '_blank');
+      };
+    }
     const fileInput = document.getElementById('ls-card-file-input');
     const addFileBtn = document.getElementById('ls-btn-add-card-file');
     const dropzone = document.getElementById('ls-cards-dropzone');
