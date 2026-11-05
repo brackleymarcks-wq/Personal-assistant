@@ -557,7 +557,7 @@ const TutoringPage = {
   },
 
 
-  openPaymentHistoryModal(studentId = null, filterStatus = 'all') {
+  openPaymentHistoryModal(studentId = null, filterStatus = 'all', filterMonth = null) {
     const modal = document.getElementById('payment-history-modal');
     if (!modal) return;
 
@@ -594,6 +594,11 @@ const TutoringPage = {
         const label = d.toLocaleString('ru', { month: 'long', year: 'numeric' });
         return `<option value="${m}">${label.charAt(0).toUpperCase() + label.slice(1)}</option>`;
       }).join('');
+      if (filterMonth && (filterMonth === 'all' || monthSelect.querySelector(`option[value="${filterMonth}"]`))) {
+        monthSelect.value = filterMonth;
+      } else {
+        monthSelect.value = filterMonth || 'all';
+      }
     }
 
     modal.classList.remove('hidden');
@@ -637,7 +642,7 @@ const TutoringPage = {
     // Sort by date descending
     filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Calculate metrics
+    // Calculate metrics for the selected filter
     let totalPaidAmount = 0;
     let totalPaidCount = 0;
     let totalUnpaidAmount = 0;
@@ -655,22 +660,44 @@ const TutoringPage = {
       }
     });
 
+    // Calculate all-time unpaid debt for the selected student / all students
+    let allTimeUnpaidAmount = 0;
+    let allTimeUnpaidCount = 0;
+    this.lessons.forEach(l => {
+      if (l.status === 'Проведен' && !l.paid) {
+        if (studentFilter === 'all' || l.student_id === studentFilter) {
+          const st = this.students.find(s => s.id === l.student_id);
+          allTimeUnpaidAmount += st ? (Number(st.price) || 0) : 0;
+          allTimeUnpaidCount++;
+        }
+      }
+    });
+
+    const isMonthFiltered = monthFilter !== 'all';
+    const periodLabel = isMonthFiltered ? 'ЗА ПЕРИОД' : 'ЗА ВСЁ ВРЕМЯ';
+
     // Render KPIs
     const kpiContainer = document.getElementById('pay-summary-kpis');
     if (kpiContainer) {
       kpiContainer.innerHTML = `
         <div style="padding:10px 14px; border-radius:12px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2);">
-          <div style="font-size:11px; color:var(--text-muted); font-weight:600;">🟢 ОПЛАЧЕНО</div>
+          <div style="font-size:11px; color:var(--text-muted); font-weight:600;">🟢 ОПЛАЧЕНО ${periodLabel}</div>
           <div style="font-size:18px; font-weight:800; color:var(--success); margin-top:2px;">${totalPaidAmount} BYN <span style="font-size:11px; color:var(--text-muted); font-weight:500;">(${totalPaidCount} ур.)</span></div>
         </div>
         <div style="padding:10px 14px; border-radius:12px; background:${totalUnpaidCount > 0 ? 'rgba(239,68,68,0.08)' : 'var(--bg-primary)'}; border:1px solid ${totalUnpaidCount > 0 ? 'rgba(239,68,68,0.25)' : 'var(--border-light)'};">
-          <div style="font-size:11px; color:${totalUnpaidCount > 0 ? 'var(--danger)' : 'var(--text-muted)'}; font-weight:600;">🔴 ЖДЁТ ОПЛАТЫ (ДОЛГ)</div>
+          <div style="font-size:11px; color:${totalUnpaidCount > 0 ? 'var(--danger)' : 'var(--text-muted)'}; font-weight:600;">🔴 ЖДЁТ ОПЛАТЫ ${periodLabel}</div>
           <div style="font-size:18px; font-weight:800; color:${totalUnpaidCount > 0 ? 'var(--danger)' : 'var(--text-primary)'}; margin-top:2px;">${totalUnpaidAmount} BYN <span style="font-size:11px; color:var(--text-muted); font-weight:500;">(${totalUnpaidCount} ур.)</span></div>
         </div>
         <div style="padding:10px 14px; border-radius:12px; background:var(--bg-primary); border:1px solid var(--border-light);">
-          <div style="font-size:11px; color:var(--text-muted); font-weight:600;">📚 ВСЕГО ПРОВЕДЕНО</div>
-          <div style="font-size:18px; font-weight:800; color:var(--text-primary); margin-top:2px;">${filtered.length} уроков</div>
+          <div style="font-size:11px; color:var(--text-muted); font-weight:600;">📚 ПРОВЕДЕНО ${periodLabel}</div>
+          <div style="font-size:18px; font-weight:800; color:var(--text-primary); margin-top:2px;">${this.pluralizeLessons(filtered.length)}</div>
         </div>
+        ${isMonthFiltered && allTimeUnpaidAmount > totalUnpaidAmount ? `
+          <div style="grid-column:1 / -1; padding:8px 14px; border-radius:10px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); font-size:12px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <span style="color:var(--text-primary);">⚠️ <b>Накопленный долг за все месяцы:</b> <span style="color:var(--danger); font-weight:800;">${allTimeUnpaidAmount} BYN</span> (${allTimeUnpaidCount} ур. с учётом прошлых месяцев)</span>
+            <button class="btn btn-secondary btn-xs" style="padding:3px 10px; font-size:11px; font-weight:600;" onclick="document.getElementById('pay-filter-month').value='all'; TutoringPage.updatePaymentHistoryView();">Показать за всё время →</button>
+          </div>
+        ` : ''}
       `;
     }
 
@@ -825,24 +852,32 @@ const TutoringPage = {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
+    const monthNamesPrep = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
+    const monthNamesNom = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+    const currentMonthPrep = monthNamesPrep[currentMonth];
+    const currentMonthNom = monthNamesNom[currentMonth];
+    const currentMonthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
     
     let monthlyIncome = 0;
     let lessonsThisMonth = 0;
     let unpaidLessonsAmount = 0;
+    let totalUnpaidAllTime = 0;
 
     this.lessons.forEach(ls => {
       const d = new Date(ls.date);
+      const isConducted = ls.status === 'Проведен';
       if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
         lessonsThisMonth++;
-        if (ls.status === 'Проведен') {
-          // Find student price
+        if (isConducted) {
           const st = this.students.find(s => s.id === ls.student_id);
           const price = st ? (st.price || 0) : 0;
-          if (ls.paid) { monthlyIncome += price; } else if (false) { monthlyIncome += price; }
-          if (!ls.paid) {
-            unpaidLessonsAmount += price;
-          }
+          if (ls.paid) { monthlyIncome += price; }
+          else { unpaidLessonsAmount += price; }
         }
+      }
+      if (isConducted && !ls.paid) {
+        const st = this.students.find(s => s.id === ls.student_id);
+        totalUnpaidAllTime += st ? (st.price || 0) : 0;
       }
     });
 
@@ -857,17 +892,24 @@ const TutoringPage = {
           <div style="font-size:24px;font-weight:800;color:var(--text-primary);">${activeSt}</div>
         </div>
       </div>
-      <div class="glass-panel" onclick="TutoringPage.openPaymentHistoryModal()" title="Нажмите, чтобы открыть полную историю оплат и долгов" style="padding:20px;border-radius:16px;display:flex;align-items:center;gap:16px;background:linear-gradient(145deg, var(--bg-surface), var(--bg-primary));border:1px solid var(--border-light);cursor:pointer;transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='var(--success)';this.style.boxShadow='0 4px 16px rgba(16,185,129,0.15)';" onmouseout="this.style.transform='none';this.style.borderColor='var(--border-light)';this.style.boxShadow='none';">
+      <div class="glass-panel" onclick="TutoringPage.openPaymentHistoryModal(null, 'all', '${currentMonthKey}')" title="Нажмите, чтобы открыть историю оплат за ${currentMonthNom} и долги" style="padding:20px;border-radius:16px;display:flex;align-items:center;gap:16px;background:linear-gradient(145deg, var(--bg-surface), var(--bg-primary));border:1px solid var(--border-light);cursor:pointer;transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='var(--success)';this.style.boxShadow='0 4px 16px rgba(16,185,129,0.15)';" onmouseout="this.style.transform='none';this.style.borderColor='var(--border-light)';this.style.boxShadow='none';">
         <div style="width:48px;height:48px;border-radius:12px;background:rgba(16, 185, 129, 0.1);color:var(--success);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           <i data-lucide="wallet" style="width:24px;height:24px;"></i>
         </div>
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-            <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Оплачено в ${now.toLocaleString('ru', {month:'long'})}</div>
-            <span style="font-size:10px;padding:2px 6px;border-radius:8px;background:rgba(16,185,129,0.12);color:var(--success);font-weight:700;">🧾 История →</span>
+            <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Оплачено в ${currentMonthPrep}</div>
+            <span style="font-size:10px;padding:2px 6px;border-radius:8px;background:rgba(16,185,129,0.12);color:var(--success);font-weight:700;">🧾 Детали →</span>
           </div>
           <div style="font-size:24px;font-weight:800;color:var(--text-primary);margin-top:2px;">${monthlyIncome} <span style="font-size:14px;color:var(--text-muted);font-weight:600;">BYN</span></div>
-          ${unpaidLessonsAmount > 0 ? `<div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px;">⏳ Ждёт оплаты: ${unpaidLessonsAmount} BYN (нажмите для деталей)</div>` : `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Все проведённые уроки оплачены</div>`}
+          ${unpaidLessonsAmount > 0 ? `
+            <div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px;display:flex;flex-direction:column;gap:1px;">
+              <span>⏳ Ждёт оплаты: ${unpaidLessonsAmount} BYN (${currentMonthNom})</span>
+              ${totalUnpaidAllTime > unpaidLessonsAmount ? `<span style="color:var(--text-muted);font-size:10px;font-weight:500;">⚠️ Общий долг: ${totalUnpaidAllTime} BYN (все месяцы)</span>` : ''}
+            </div>
+          ` : (totalUnpaidAllTime > 0 ? `
+            <div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px;">⚠️ За ${currentMonthNom} всё оплачено • Долг за прошлые месяцы: ${totalUnpaidAllTime} BYN</div>
+          ` : `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Все проведённые уроки оплачены</div>`)}
         </div>
       </div>
       <div class="glass-panel" style="padding:20px;border-radius:16px;display:flex;align-items:center;gap:16px;background:linear-gradient(145deg, var(--bg-surface), var(--bg-primary));border:1px solid var(--border-light);">
@@ -875,7 +917,7 @@ const TutoringPage = {
           <i data-lucide="book-open-check" style="width:24px;height:24px;"></i>
         </div>
         <div>
-          <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Уроков за месяц</div>
+          <div style="font-size:13px;color:var(--text-secondary);font-weight:500;">Уроков за ${currentMonthNom}</div>
           <div style="font-size:24px;font-weight:800;color:var(--text-primary);">${lessonsThisMonth}</div>
         </div>
       </div>
@@ -890,7 +932,7 @@ const TutoringPage = {
         
         // Find unpaid lessons for this student
         const unpaidCount = this.lessons.filter(l => l.student_id === st.id && l.status === 'Проведен' && !l.paid).length;
-        const debtBadge = unpaidCount > 0 ? `<div onclick="event.stopPropagation(); TutoringPage.openPaymentHistoryModal('${st.id}', 'unpaid')" title="Нажмите, чтобы посмотреть неоплаченные уроки ${this.escapeHtml(st.name)}" style="background:rgba(239, 68, 68, 0.1);color:var(--danger);font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;border:1px solid rgba(239,68,68,0.2);cursor:pointer;display:inline-flex;align-items:center;gap:4px;">⏳ Не оплачено: ${unpaidCount} уроков</div>` : '';
+        const debtBadge = unpaidCount > 0 ? `<div onclick="event.stopPropagation(); TutoringPage.openPaymentHistoryModal('${st.id}', 'unpaid')" title="Нажмите, чтобы посмотреть неоплаченные уроки ${this.escapeHtml(st.name)}" style="background:rgba(239, 68, 68, 0.1);color:var(--danger);font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;border:1px solid rgba(239,68,68,0.2);cursor:pointer;display:inline-flex;align-items:center;gap:4px;">⏳ Не оплачено: ${this.pluralizeLessons(unpaidCount)}</div>` : '';
 
         // Extract notes from schedule
         const dossier = this.parseStudentDossier(st);
@@ -903,7 +945,7 @@ const TutoringPage = {
           const rawHw = lastHwLesson.homework || '';
           const isDone = rawHw.includes('[ДЗ_СДАНО]');
           const isChecked = rawHw.includes('[ДЗ_ПРОВЕРЕНО]');
-          const cleanHwText = rawHw.split('\\n[МАТЕРИАЛЫ]:')[0].split('\\n[КАРТОЧКИ_ДЗ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').replace('[ОТПРАВИТЬ_В_ТГ]', '').replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
+          const cleanHwText = this.cleanHomeworkText(rawHw);
           if (isDone && !isChecked) {
             hwStatusBadge = `<div style="margin-top:8px;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:6px;min-width:0;overflow:hidden;"><span style="color:#2563eb;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">📬 Сдано в ТГ: ${this.escapeHtml(cleanHwText || 'Домашка')}</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${lastHwLesson.id}')">✅ Проверено</button></div>`;
           } else if (isChecked) {
@@ -954,7 +996,17 @@ const TutoringPage = {
               </div>
               ${debtBadge}
             </div>
-            ${(dossier.unit || dossier.interests || dossier.errors) ? `<div style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;overflow:hidden;word-break:break-word;min-width:0;">${dossier.unit ? `<div style="color:var(--accent);">📖 <b>Программа:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}${dossier.errors ? `<div style="color:var(--warning);">⚠️ <b>Ошибки:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}</div>` : ''}
+            ${(dossier.unit || dossier.interests || dossier.errors) ? `
+              <div style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:flex;flex-direction:column;gap:3px;overflow:hidden;word-break:break-word;min-width:0;">
+                ${dossier.unit ? `<div style="color:var(--accent);">📖 <b>Программа:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}
+                ${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}
+                ${dossier.errors ? `
+                  <div style="color:var(--warning);line-height:1.35;">
+                    ⚠️ <b>Ошибки:</b>
+                    <span id="st-err-${st.id}" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${this.escapeHtml(dossier.errors)}</span>
+                    ${dossier.errors.length > 80 ? `<span onclick="event.stopPropagation(); const el = document.getElementById('st-err-${st.id}'); const isClamped = el.style.webkitLineClamp !== 'unset'; el.style.webkitLineClamp = isClamped ? 'unset' : '2'; this.textContent = isClamped ? '▲ Свернуть' : '▼ Развернуть подробнее'; this.style.color = isClamped ? 'var(--accent)' : 'var(--text-muted)';" style="font-size:10px;text-decoration:underline;cursor:pointer;color:var(--text-muted);margin-top:2px;display:inline-block;">▼ Развернуть подробнее</span>` : ''}
+                  </div>` : ''}
+              </div>` : ''}
             ${hwStatusBadge}
 
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-light); width: 100%; flex-wrap:wrap; min-width:0;">
@@ -1035,8 +1087,20 @@ const TutoringPage = {
           const prevDoneLesson = ls.status === 'Запланирован' ? this.getPrevConductedLesson(ls.student_id, ls.date) : null;
           const prevHwRaw = prevDoneLesson ? ((prevDoneLesson.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].trim()) : '';
           const prevHwChecked = prevHwRaw.includes('[ДЗ_ПРОВЕРЕНО]');
-          const prevHwClean = prevHwRaw.replace('[ДЗ_ПРОВЕРЕНО]', '').trim();
+          const prevHwClean = this.cleanHomeworkText(prevHwRaw);
           const hasLinks = displayMaterials.includes('http');
+
+          let hwRow = '';
+          const isDone = (ls.homework || '').includes('[ДЗ_СДАНО]');
+          const isChecked = (ls.homework || '').includes('[ДЗ_ПРОВЕРЕНО]');
+          if (displayHomework || isDone || isChecked) {
+            hwRow = `
+              <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+                ${displayHomework ? `<i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(displayHomework)}</span>` : ''}
+                ${isDone && !isChecked ? `<span style="font-size:10px;background:rgba(59,130,246,0.15);color:#3b82f6;font-weight:700;padding:2px 6px;border-radius:6px;display:inline-flex;align-items:center;gap:2px;">📬 Сдано в ТГ!</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${ls.id}')">✅ Проверено</button>` : (isChecked ? `<span style="font-size:10px;background:rgba(16,185,129,0.12);color:var(--success);font-weight:700;padding:2px 6px;border-radius:6px;">✅ Проверено</span>` : '')}
+              </div>
+            `;
+          }
 
           return `
             <div class="glass-panel lesson-card" data-id="${ls.id}" style="padding:14px;border-radius:12px;display:flex;align-items:center;gap:16px;cursor:pointer;border-left:4px solid ${statusColor};background:var(--bg-surface);transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
@@ -1051,7 +1115,7 @@ const TutoringPage = {
                 </div>
                 <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;display:flex;flex-direction:column;gap:4px;">
                   ${ls.topic ? `<div style="display:flex;align-items:center;gap:6px;"><i data-lucide="book" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(ls.topic)}</span></div>` : ''} 
-                  ${displayHomework ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(displayHomework.replace('[ДЗ_ПРОВЕРЕНО]', '✅ ').replace('[ДЗ_СДАНО]', '📬 '))}</span> ${(ls.homework || '').includes('[ДЗ_СДАНО]') && !(ls.homework || '').includes('[ДЗ_ПРОВЕРЕНО]') ? `<span style="font-size:10px;background:rgba(59,130,246,0.15);color:#3b82f6;font-weight:700;padding:2px 6px;border-radius:6px;display:inline-flex;align-items:center;gap:2px;">📬 Сдано в ТГ!</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${ls.id}')">✅ Проверено</button>` : ((ls.homework || '').includes('[ДЗ_ПРОВЕРЕНО]') ? `<span style="font-size:10px;background:rgba(16,185,129,0.12);color:var(--success);font-weight:700;padding:2px 6px;border-radius:6px;">✅ Проверено</span>` : '')}</div>` : ''}
+                  ${hwRow}
                   ${(ls.status === 'Запланирован' && prevDoneLesson && prevHwClean) ? `<div style="margin-top:4px;padding:6px 8px;border-radius:8px;background:${prevHwChecked ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.12)'};border:1px solid ${prevHwChecked ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.3)'};font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${prevHwChecked ? '✅ ДЗ проверено:' : '📌 <b>Проверить ДЗ:</b>'} ${this.escapeHtml(prevHwClean)}</span>${!prevHwChecked ? `<button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${prevDoneLesson.id}')">✅ Проверено</button>` : ''}</div>` : ''}
                   ${ls.status === 'Запланирован' ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;color:#0d9488;border-color:rgba(13,148,136,0.35);background:rgba(13,148,136,0.06);" onclick="event.stopPropagation(); TutoringPage.launchPerplexity('${ls.student_id}', '${ls.id}')">🔮 В Perplexity</button><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:3px 8px;" onclick="event.stopPropagation(); TutoringPage.openZenBoard('${ls.id}')">🖥 Экран ученика</button></div>` : ''}
                   ${displayMaterials ? `<div style="display:flex;align-items:center;gap:6px;color:var(--accent);"><i data-lucide="paperclip" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${hasLinks ? `<a href="${displayMaterials}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:underline;">Материалы прикреплены</a>` : this.escapeHtml(displayMaterials)}</span></div>` : ''}
@@ -1271,7 +1335,7 @@ const TutoringPage = {
       this.attachedPresentation = presMatch[1].trim();
       displayHomework = displayHomework.replace(presMatch[0], '').trim();
     }
-    const presFileMatch = displayHomework.match(/\[ПРЕЗЕНТАЦИЯ_ФАЙЛ\]:([\s\S]*?)(?=\n\[|$)/);
+    const presFileMatch = displayHomework.match(/\[ПРЕЗЕНТАЦИЯ_?ФАЙЛ\]:([\s\S]*?)(?=\n\[|$)/i);
     if (presFileMatch) {
       this.attachedPresentationName = presFileMatch[1].trim();
       displayHomework = displayHomework.replace(presFileMatch[0], '').trim();
@@ -1287,7 +1351,7 @@ const TutoringPage = {
 
     // 1.1 Extract [ПРЕЗЕНТАЦИЯ_ТЕКСТ]
     this.attachedPresentationText = '';
-    const presTextMatch = displayHomework.match(/\[ПРЕЗЕНТАЦИЯ_ТЕКСТ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ_ТЕКСТ\]/);
+    const presTextMatch = displayHomework.match(/\[ПРЕЗЕНТАЦИЯ_?ТЕКСТ\]:([\s\S]*?)(?:\[\/?\s*ПРЕЗЕНТАЦИЯ_?ТЕКСТ\s*\]|(?=\n\[|$))/i);
     if (presTextMatch) {
       this.attachedPresentationText = presTextMatch[1].trim();
       displayHomework = displayHomework.replace(presTextMatch[0], '').trim();
@@ -1296,14 +1360,14 @@ const TutoringPage = {
 
     // 2. Extract [СЦЕНАРИЙ_УРОКА]
     let scenario = '';
-    const scMatch = displayHomework.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
+    const scMatch = displayHomework.match(/\[СЦЕНАРИЙ_?УРОКА\]:([\s\S]*?)\[\/?\s*СЦЕНАРИЙ_?УРОКА\s*\]/i);
     if (scMatch) {
       scenario = scMatch[1].trim();
       displayHomework = displayHomework.replace(scMatch[0], '').trim();
     }
 
     // 3. Extract [КАРТОЧКИ_ДЗ]
-    const cardsMatch = displayHomework.match(/\[КАРТОЧКИ_ДЗ\]:([\s\S]*?)\[\/КАРТОЧКИ_ДЗ\]/);
+    const cardsMatch = displayHomework.match(/\[КАРТОЧКИ_?ДЗ\]:([\s\S]*?)\[\/?\s*КАРТОЧКИ_?ДЗ\s*\]/i);
     this.attachedCards = cardsMatch ? cardsMatch[1].trim().split('||').map(s => s.trim()).filter(Boolean) : [];
     if (cardsMatch) {
       displayHomework = displayHomework.replace(cardsMatch[0], '').trim();
@@ -1312,17 +1376,19 @@ const TutoringPage = {
 
     // 4. Strip custom reports from homework input field
     displayHomework = displayHomework
-      .replace(/\[КАСТОМНЫЙ_ОТЧЕТ\]:[\s\S]*?\[\/КАСТОМНЫЙ_ОТЧЕТ\]/g, '')
-      .replace(/\[ОТЧЕТ_РОДИТЕЛЮ\]:[\s\S]*?\[\/ОТЧЕТ_РОДИТЕЛЮ\]/g, '')
+      .replace(/\[КАСТОМНЫЙ_?ОТЧЕТ\]:[\s\S]*?\[\/?КАСТОМНЫЙ_?ОТЧЕТ\]/gi, '')
+      .replace(/\[ОТЧЕТ_?РОДИТЕЛЮ\]:[\s\S]*?\[\/?ОТЧЕТ_?РОДИТЕЛЮ\]/gi, '')
       .trim();
 
     // 5. Extract [МАТЕРИАЛЫ]
     let materials = '';
-    const matMatch = displayHomework.match(/(?:\r?\n|\\n)?\[МАТЕРИАЛЫ\]:([\s\S]*)$/);
+    const matMatch = displayHomework.match(/(?:\r?\n|\\n)?\[МАТЕРИАЛЫ\]:([\s\S]*)$/i);
     if (matMatch) {
       materials = matMatch[1].trim();
       displayHomework = displayHomework.replace(matMatch[0], '').trim();
     }
+
+    displayHomework = this.cleanHomeworkText(displayHomework);
 
     document.getElementById('ls-homework').value = displayHomework;
     const scenEl = document.getElementById('ls-scenario');
@@ -1868,11 +1934,20 @@ const TutoringPage = {
   cleanHomeworkText(rawHw) {
     if (!rawHw) return '';
     return rawHw
-      .replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_ДЗ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ|ПРЕЗЕНТАЦИЯ_ТЕКСТ|ПРЕЗЕНТАЦИЯ_ФАЙЛ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\1\]/gi, '')
-      .replace(/\[(ПРЕЗЕНТАЦИЯ_ФАЙЛ|ПРЕЗЕНТАЦИЯ|МАТЕРИАЛЫ)\]:[^\n]*/gi, '')
-      .split(/\\?n?\[МАТЕРИАЛЫ\]:/)[0]
-      .replace(/\[([A-ZА-Я0-9_]+)\]:?[\s\S]*?\[\/\1\]/g, '')
-      .replace(/\[(ДЗ_ПРОВЕРЕНО|ДЗ_СДАНО|ОТПРАВИТЬ_В_ТГ|ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ|ПЕРЕНЕСЕН_В_ТГ|ПРОГРЕСС_ДЗ:[^\]]+)\]/gi, '')
+      // 1. Remove blocks with opening and closing tags (with or without underscore, mismatched closing tags)
+      .replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\s*\1\s*\]/gi, '')
+      .replace(/\[ПРЕЗЕНТАЦИЯ_?ТЕКСТ\]:?[\s\S]*?\[\/?\s*ПРЕЗЕНТАЦИЯ_?ТЕКСТ\s*\]/gi, '')
+      .replace(/\[КАРТОЧКИ_?ДЗ\]:?[\s\S]*?\[\/?\s*КАРТОЧКИ_?ДЗ\s*\]/gi, '')
+      .replace(/\[СЦЕНАРИЙ_?УРОКА\]:?[\s\S]*?\[\/?\s*СЦЕНАРИЙ_?УРОКА\s*\]/gi, '')
+      .replace(/\[([A-ZА-Я0-9_]+)\]:?[\s\S]*?\[\/\s*\1\s*\]/g, '')
+      // 2. Remove single-line file/text/material tags
+      .replace(/\[(ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ|МАТЕРИАЛЫ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ)\]:?[^\n]*/gi, '')
+      .split(/\\?n?\[МАТЕРИАЛЫ\]:/i)[0]
+      // 3. Remove status / progress / dispatch bracket tags
+      .replace(/\[\/?(ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|МАТЕРИАЛЫ)\]/gi, '')
+      .replace(/\[(ДЗ_ПРОВЕРЕНО[A-ZА-Я0-9_]*|ДЗ_СДАНО[A-ZА-Я0-9_]*|ОТПРАВИТЬ[A-ZА-Я0-9_]*|ПЕРЕНЕСЕН[A-ZА-Я0-9_]*|АНОНС[A-ZА-Я0-9_]*|ПРОГРЕСС[A-ZА-Я0-9_]*:[^\]]+)\]/gi, '')
+      .replace(/\[([A-ZА-Я0-9_]{3,}):[^\]]+\]/g, '')
+      // 4. Answers / Teacher keys / base64
       .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*$/gi, '')
       .replace(/data:(image|application)\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '')
       .replace(/\n{3,}/g, '\n\n')
@@ -1882,17 +1957,27 @@ const TutoringPage = {
   cleanVocabulary(rawVocab) {
     if (!rawVocab) return '';
     const items = rawVocab.split(/[,;\r\n]+/).map(w => w.trim()).filter(Boolean);
-    const seen = new Set();
+    const seenEng = new Set();
     const clean = [];
     for (const item of items) {
-      const lower = item.toLowerCase();
-      if (/^(my|your|his|her|its|our|their|i|you|he|she|it|we|they)$/i.test(lower)) continue;
-      if (!seen.has(lower)) {
-        seen.add(lower);
+      const head = (item.split(/[-—–:]/)[0] || '').trim().toLowerCase();
+      if (/^(my|your|his|her|its|our|their|i|you|he|she|it|we|they)$/i.test(head)) continue;
+      if (head && !seenEng.has(head)) {
+        seenEng.add(head);
         clean.push(item);
       }
     }
-    return clean.slice(0, 7).join(', ');
+    return clean.slice(0, 10).join(', ');
+  },
+
+  pluralizeLessons(count) {
+    const c = Math.abs(Number(count) || 0);
+    const rem100 = c % 100;
+    const rem10 = c % 10;
+    if (rem100 >= 11 && rem100 <= 19) return `${c} уроков`;
+    if (rem10 === 1) return `${c} урок`;
+    if (rem10 >= 2 && rem10 <= 4) return `${c} урока`;
+    return `${c} уроков`;
   },
 
   formatStudentNameWith(name = '') {
@@ -2484,10 +2569,10 @@ const TutoringPage = {
 
     // Extract raw homework, cards, and scenario
     const rawHw = ls?.homework || '';
-    const cardsMatch = rawHw.match(/\[КАРТОЧКИ_ДЗ\]:([\s\S]*?)\[\/КАРТОЧКИ_ДЗ\]/);
+    const cardsMatch = rawHw.match(/\[КАРТОЧКИ_?ДЗ\]:([\s\S]*?)\[\/?\s*КАРТОЧКИ_?ДЗ\s*\]/i);
     this.dispatcherCards = cardsMatch ? cardsMatch[1].trim().split('||').map(s=>s.trim()).filter(Boolean) : [];
     
-    const scenMatch = rawHw.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
+    const scenMatch = rawHw.match(/\[СЦЕНАРИЙ_?УРОКА\]:([\s\S]*?)\[\/?\s*СЦЕНАРИЙ_?УРОКА\s*\]/i);
     const existingScenario = scenMatch ? scenMatch[1].trim() : '';
 
     const cleanHwText = this.cleanHomeworkText(rawHw);

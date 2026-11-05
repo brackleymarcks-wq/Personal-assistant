@@ -770,11 +770,20 @@ async function findParentByTgChatId(chatIdStr) {
 function cleanHomeworkTextBot(rawHw) {
   if (!rawHw) return '';
   return rawHw
-    .replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_ДЗ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ|ПРЕЗЕНТАЦИЯ_ТЕКСТ|ПРЕЗЕНТАЦИЯ_ФАЙЛ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\1\]/gi, '')
-    .replace(/\[(ПРЕЗЕНТАЦИЯ_ФАЙЛ|ПРЕЗЕНТАЦИЯ|МАТЕРИАЛЫ)\]:[^\n]*/gi, '')
-    .split(/\\?n?\[МАТЕРИАЛЫ\]:/)[0]
-    .replace(/\[([A-ZА-Я0-9_]+)\]:?[\s\S]*?\[\/\1\]/g, '')
-    .replace(/\[(ДЗ_ПРОВЕРЕНО|ДЗ_СДАНО|ОТПРАВИТЬ_В_ТГ|ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ|ПЕРЕНЕСЕН_В_ТГ|ПРОГРЕСС_ДЗ:[^\]]+)\]/gi, '')
+    // 1. Remove blocks with opening and closing tags (with or without underscore, mismatched closing tags)
+    .replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\s*\1\s*\]/gi, '')
+    .replace(/\[ПРЕЗЕНТАЦИЯ_?ТЕКСТ\]:?[\s\S]*?\[\/?\s*ПРЕЗЕНТАЦИЯ_?ТЕКСТ\s*\]/gi, '')
+    .replace(/\[КАРТОЧКИ_?ДЗ\]:?[\s\S]*?\[\/?\s*КАРТОЧКИ_?ДЗ\s*\]/gi, '')
+    .replace(/\[СЦЕНАРИЙ_?УРОКА\]:?[\s\S]*?\[\/?\s*СЦЕНАРИЙ_?УРОКА\s*\]/gi, '')
+    .replace(/\[([A-ZА-Я0-9_]+)\]:?[\s\S]*?\[\/\s*\1\s*\]/g, '')
+    // 2. Remove single-line file/text/material tags
+    .replace(/\[(ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ|МАТЕРИАЛЫ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ)\]:?[^\n]*/gi, '')
+    .split(/\\?n?\[МАТЕРИАЛЫ\]:/i)[0]
+    // 3. Remove status / progress / dispatch bracket tags
+    .replace(/\[\/?(ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|МАТЕРИАЛЫ)\]/gi, '')
+    .replace(/\[(ДЗ_ПРОВЕРЕНО[A-ZА-Я0-9_]*|ДЗ_СДАНО[A-ZА-Я0-9_]*|ОТПРАВИТЬ[A-ZА-Я0-9_]*|ПЕРЕНЕСЕН[A-ZА-Я0-9_]*|АНОНС[A-ZА-Я0-9_]*|ПРОГРЕСС[A-ZА-Я0-9_]*:[^\]]+)\]/gi, '')
+    .replace(/\[([A-ZА-Я0-9_]{3,}):[^\]]+\]/g, '')
+    // 4. Answers / Teacher keys / base64
     .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*$/gi, '')
     .replace(/data:(image|application)\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '')
     .replace(/\n{3,}/g, '\n\n')
@@ -784,17 +793,17 @@ function cleanHomeworkTextBot(rawHw) {
 function cleanVocabularyBot(rawVocab) {
   if (!rawVocab) return '';
   const items = rawVocab.split(/[,;\r\n]+/).map(w => w.trim()).filter(Boolean);
-  const seen = new Set();
+  const seenEng = new Set();
   const clean = [];
   for (const item of items) {
-    const lower = item.toLowerCase();
-    if (/^(my|your|his|her|its|our|their|i|you|he|she|it|we|they)$/i.test(lower)) continue;
-    if (!seen.has(lower)) {
-      seen.add(lower);
+    const head = (item.split(/[-—–:]/)[0] || '').trim().toLowerCase();
+    if (/^(my|your|his|her|its|our|their|i|you|he|she|it|we|they)$/i.test(head)) continue;
+    if (head && !seenEng.has(head)) {
+      seenEng.add(head);
       clean.push(item);
     }
   }
-  return clean.slice(0, 7).join(', ');
+  return clean.slice(0, 10).join(', ');
 }
 
 function formatStudentNameWithBot(name = '') {
