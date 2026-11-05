@@ -667,20 +667,9 @@ const Gemini = {
     const systemInstruction = isExtendedSig ? arg4 : arg2;
     const messages = isExtendedSig ? arg5 : (Array.isArray(arg3) ? arg3 : []);
     const retryCount = isExtendedSig ? 0 : (typeof arg4 === 'number' ? arg4 : 0);
-    const disableTools = isExtendedSig ? !!arg6 : false;
-    if (disableTools) {
-      try {
-        const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ['gsk', 'FagNCC3UXjF8iCIDPvkfWGdyb3FYB8mfWlbFUH7CatLFR9pxUrQ9'].join('_') },
-          body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: systemInstruction }, ...messages], temperature: 0.6, max_tokens: 3500 }),
-          signal: AbortSignal.timeout(8000)
-        });
-        if (gRes.ok) return gRes.json();
-      } catch (e) {}
-    }
+    const disableTools = isExtendedSig ? !!arg6 : (typeof arg6 === 'boolean' ? arg6 : false);
     const apiUrl = Config.aiApiUrl || DEFAULT_API_URL;
-    const FALLBACK_MODELS = [Config.aiModel || DEFAULT_MODEL, 'google/gemma-4-31b-it:free', 'openrouter/free'];
+    const FALLBACK_MODELS = [Config.aiModel || DEFAULT_MODEL, 'openrouter/free', 'nvidia/nemotron-3-ultra-550b-a55b:free'];
     const model = FALLBACK_MODELS[Math.min(retryCount, FALLBACK_MODELS.length - 1)];
 
     // Ensure messages don't pass raw giant base64 data URLs into text models
@@ -708,7 +697,7 @@ const Gemini = {
         temperature: 0.7,
         max_tokens: 3500
       }),
-      signal: AbortSignal.timeout(12000)
+      signal: AbortSignal.timeout(45000)
     });
 
     if (!res.ok) {
@@ -739,7 +728,7 @@ const Gemini = {
       if ((res.status === 429 || res.status === 404 || res.status >= 500) && retryCount < 2) {
         console.warn(`AI API status ${res.status} on model. Switching to fallback model #${retryCount + 1}...`);
         await new Promise(r => setTimeout(r, 1200));
-        return this._callAPI(apiKey, systemInstruction, messages, retryCount + 1);
+        return this._callAPI(apiKey, systemInstruction, messages, retryCount + 1, null, disableTools);
       }
       
       throw new Error(errMsg);
