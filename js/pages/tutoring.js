@@ -260,9 +260,6 @@ const TutoringPage = {
                       <button type="button" id="ls-btn-add-card-file" class="btn btn-primary btn-xs" style="background:#0284c7;border-color:#0284c7;color:#fff;font-size:11px;padding:6px 10px;font-weight:600;display:flex;align-items:center;gap:5px;" title="Выбрать файл с диска (PNG, JPG, PDF)">
                         📁 Выбрать файл с диска
                       </button>
-                      <button type="button" id="ls-btn-vision-ai" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#0ea5e9;border-color:rgba(14,165,233,0.4);background:rgba(14,165,233,0.06);display:flex;align-items:center;gap:4px;" title="Загрузить страницу учебника/фото и определить тему, лексику и анонс">
-                        📸 Распознать тему из файла
-                      </button>
                       <button type="button" id="ls-btn-gen-cards" class="btn btn-secondary btn-xs" style="font-size:11px;padding:6px 10px;color:#0d9488;border-color:rgba(13,148,136,0.35);display:flex;align-items:center;gap:4px;" title="Сгенерировать PNG-карточки слов">
                         🎨 Создать карточки
                       </button>
@@ -3352,17 +3349,10 @@ const TutoringPage = {
         e.preventDefault();
         dropzone.style.borderColor = 'var(--border-light)';
         const files = Array.from(e.dataTransfer.files || []);
-        let askedVision = false;
         files.forEach(async (file) => {
           if (!file.type.startsWith('image/')) return;
           const compressed = await this.compressImage(file);
           this.addCardDataUrl(compressed);
-          if (!askedVision) {
-            askedVision = true;
-            if (confirm('📸 Распознать тему урока, сценарий и лексику из этого файла через ИИ?')) {
-              this.handleVisionRecognition(compressed);
-            }
-          }
         });
       };
       dropzone.onclick = (e) => {
