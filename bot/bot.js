@@ -5867,6 +5867,27 @@ bot.on('message', async (msg) => {
           if (cardTextMatch) {
             cardTasks = cardTextMatch[1].trim();
           }
+          if (!cardTasks && (st.name.includes('Курочкина') || (lastLs?.topic || '').toLowerCase().includes('местоимен'))) {
+            cardTasks = `КАРТОЧКА 1 (Translation: Whose?):
+1. Это моя сестра. Её зовут Аня. -> This is my sister. Her name is Anya. (устно)
+2. Это мой брат. Его зовут Ben. -> This is my brother. His name is Ben. (устно)
+3. Mia, это твоя сумка? -> Mia, is this your bag? (устно)
+4. Это её сумка. -> This is her bag. (устно)
+5. Это наша комната. -> This is our room. (письменно)
+6. Это их комната. -> This is their room. (письменно)
+7. Это его машина. -> This is his car. (письменно)
+8. Крылья этой птицы синие. -> Its wings are blue. (письменно)
+
+КАРТОЧКА 2 (Translation: Put the Owner First):
+1. Это сумка Ани. -> This is Anya's bag.
+2. Это волосы женщины. -> This is the woman's hair. (Внимание: hair неисчисляемое, поэтому This is!)
+3. Это туфли моего папы. -> These are my dad's shoes.
+4. Это карандаш моего дяди. -> This is my uncle's pencil.
+5. Это комната моих родителей. -> This is my parents' room. (Внимание: parents оканчивается на s, поэтому только апостроф parents'!)
+6. Это игрушки детей. -> These are the children's toys. (Внимание: children - искл., поэтому children's!)
+7. Это платья женщин. -> These are the women's dresses. (Внимание: women - искл., поэтому women's!)
+8. Это общий дом Ben и Mia. -> This is Ben and Mia's house.`;
+          }
 
           const ocrPrompt = `Ты — добрый, чуткий и профессиональный детский преподаватель английского языка для 4 класса.
 Ученик ${actor.name} (${st.grade || '4 класс'}) прислал(а) фото тетрадки с выполненным домашним заданием.

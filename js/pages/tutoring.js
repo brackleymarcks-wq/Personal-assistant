@@ -1797,7 +1797,7 @@ const TutoringPage = {
 
   async payAllDebts(studentId, unpaidCount, pricePerLesson, studentName) {
     const total = unpaidCount * pricePerLesson;
-    if (!confirm(`Отметить все неоплаченные проведенные уроки (${unpaidCount} шт.) для ${studentName} как оплаченные?\nОбщая сумма: ${total} BYN`)) {
+    if (!confirm(`Отметить все неоплаченные проведенные уроки (${this.pluralizeLessons(unpaidCount)}) для ${studentName} как оплаченные?\nОбщая сумма: ${total} BYN`)) {
       return;
     }
 
@@ -1814,7 +1814,7 @@ const TutoringPage = {
           type: 'income',
           amount: total,
           category: 'Репетиторство',
-          description: JSON.stringify({ text: `Оплата долга за ${unpaidCount} уроков: ${studentName}` })
+          description: JSON.stringify({ text: `Оплата долга за ${this.pluralizeLessons(unpaidCount)}: ${studentName}` })
         });
         UI.toast('Оплата занесена в Финансы!', 'success');
       }
