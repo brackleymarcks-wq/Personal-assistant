@@ -3055,13 +3055,21 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
   }
   
   if (imageUrl) {
-    messages.push({ 
-      role: 'user', 
-      content: [
-        { type: 'text', text: userMessage },
-        { type: 'image_url', image_url: { url: imageUrl } }
-      ] 
-    });
+    if (Array.isArray(imageUrl)) {
+      const parts = [{ type: 'text', text: userMessage }];
+      for (const img of imageUrl) {
+        if (img) parts.push({ type: 'image_url', image_url: { url: img } });
+      }
+      messages.push({ role: 'user', content: parts });
+    } else {
+      messages.push({ 
+        role: 'user', 
+        content: [
+          { type: 'text', text: userMessage },
+          { type: 'image_url', image_url: { url: imageUrl } }
+        ] 
+      });
+    }
   } else {
     messages.push({ role: 'user', content: userMessage });
   }
@@ -4129,8 +4137,8 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
       const topic = ((lastLs?.topic || '') + ' ' + (lastLs?._mergedTopic || '') + ' ' + (st.name || '')).toLowerCase();
       const textContent = (materialsText + ' ' + (doss.errors || '')).toLowerCase();
 
-      let ruleTitle = '🧩 Грамматическое правило урока';
-      let ruleFocus = 'ключевое правило урока';
+      let ruleTitle = lastLs?.topic ? `🧩 Правило урока: ${lastLs.topic}` : '🧩 Грамматическое правило урока';
+      let ruleFocus = lastLs?.topic ? `тема урока "${lastLs.topic}"` : 'ключевое грамматическое правило прошедшего урока';
       if (topic.includes('местоимен') || topic.includes('pronoun') || topic.includes('whose') || topic.includes('owner') || topic.includes("'s") || textContent.includes('притяжательн')) {
         ruleTitle = '🧩 Чей это питомец? Притяжательные местоимения (my, your, his, her, its, our, their) и правило \'s';
         ruleFocus = 'притяжательные местоимения (my, your, his, her, its, our, their), вопрос Whose is it? и притяжательный падеж \'s (например: Tom\'s dog, Emma\'s cat)';
@@ -5862,49 +5870,42 @@ bot.on('message', async (msg) => {
 
         // Call Vision OCR to transcribe English handwriting, explain mistakes to student, and send full copy to Igor
         try {
+          const { cards: lessonCards } = extractAttachedCards(lastLs?.homework || '');
           let cardTasks = '';
           const cardTextMatch = (lastLs?.homework || '').match(/\[ТЕКСТ_КАРТОЧЕК\]:([\s\S]*?)\[\/ТЕКСТ_КАРТОЧЕК\]/);
           if (cardTextMatch) {
             cardTasks = cardTextMatch[1].trim();
           }
-          if (!cardTasks && (st.name.includes('Курочкина') || (lastLs?.topic || '').toLowerCase().includes('местоимен'))) {
-            cardTasks = `КАРТОЧКА 1 (Translation: Whose?):
-1. Это моя сестра. Её зовут Аня. -> This is my sister. Her name is Anya. (устно)
-2. Это мой брат. Его зовут Ben. -> This is my brother. His name is Ben. (устно)
-3. Mia, это твоя сумка? -> Mia, is this your bag? (устно)
-4. Это её сумка. -> This is her bag. (устно)
-5. Это наша комната. -> This is our room. (письменно)
-6. Это их комната. -> This is their room. (письменно)
-7. Это его машина. -> This is his car. (письменно)
-8. Крылья этой птицы синие. -> Its wings are blue. (письменно)
 
-КАРТОЧКА 2 (Translation: Put the Owner First):
-1. Это сумка Ани. -> This is Anya's bag.
-2. Это волосы женщины. -> This is the woman's hair. (Внимание: hair неисчисляемое, поэтому This is!)
-3. Это туфли моего папы. -> These are my dad's shoes.
-4. Это карандаш моего дяди. -> This is my uncle's pencil.
-5. Это комната моих родителей. -> This is my parents' room. (Внимание: parents оканчивается на s, поэтому только апостроф parents'!)
-6. Это игрушки детей. -> These are the children's toys. (Внимание: children - искл., поэтому children's!)
-7. Это платья женщин. -> These are the women's dresses. (Внимание: women - искл., поэтому women's!)
-8. Это общий дом Ben и Mia. -> This is Ben and Mia's house.`;
+          // Build vision images payload: first student's notebook photo, then up to 2 teacher's assignment card images for direct visual comparison
+          const visionImages = [base64ImageUrl];
+          if (lessonCards && lessonCards.length > 0) {
+            visionImages.push(...lessonCards.slice(0, 2));
           }
 
-          const ocrPrompt = `Ты — добрый, чуткий и профессиональный детский преподаватель английского языка для 4 класса.
-Ученик ${actor.name} (${st.grade || '4 класс'}) прислал(а) фото тетрадки с выполненным домашним заданием.
+          const hasAttachedCards = visionImages.length > 1;
+          const ocrPrompt = `Ты — добрый, чуткий, внимательный и профессиональный детский преподаватель английского языка для ученика ${actor.name} (${st.grade || 'школьник'}).
+Ученик прислал фото тетрадки с выполненным домашним заданием.
 
-${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ С КАРТОЧЕК К УРОКУ И ПРАВИЛЬНЫЕ ОТВЕТЫ:\n${cardTasks}\n` : `Заданное ДЗ: "${cleanHw || 'упражнение из карточек/учебника'}".`}
+${hasAttachedCards ? `ВАЖНО: К сообщению прикреплены изображения:
+- Изображение 1: Фото тетрадки ученика с рукописными ответами.
+- Изображение 2${visionImages.length > 2 ? ' и 3' : ''}: Исходные карточки с заданиями, выданные преподавателем к этому уроку.
+Сопоставь написанные учеником ответы напрямую с заданиями на выданных карточках!\n` : ''}
+${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${cardTasks}\n` : ''}
+Тема урока: "${lastLs?.topic || 'Практика английского языка'}".
+Заданное ДЗ: "${cleanHw || 'Выполнить упражнения из карточек / тетради'}".
 
-Твоя задача — тщательно проверить каждое написанное в тетрадке предложение:
+Твоя задача — тщательно и профессионально проверить работу ребёнка:
 1. 🔍 Что написано в тетрадке (расшифруй каждую строчку/номер, как написал ребёнок).
-2. ✅ Что сделано идеально (похвали каждый правильный ответ с эмодзи!).
-3. 💡 Разбор ошибок (по-доброму, без заумных терминов, объясни детским языком):
-   - Если ошибка в апострофе (например, parent's вместо parents' или childrens's вместо children's) — покажи, где хозяин один ('s), а где много (только апостроф ').
-   - Если ошибка в This is / These are — напомни про единственное и множественное число (и что hair — всегда This is!).
-   - Покажи, как написать правильно.
-4. ⭐ Оценка и вердикт (например, "Молодец! Твой страйк в безопасности! 🔥").
-Пиши вдохновляюще, понятно для 10-летнего ребёнка, без методического занудства!`;
+2. 🎯 Сопоставь с выданным заданием (номера 1, 2, 3... или предложения с карточек/учебника).
+3. ✅ Похвали за правильные ответы (с добрыми детскими эмодзи).
+4. 💡 Разбор ошибок (по-доброму, понятным детским языком, без заумной академической терминологии):
+   - Объясни, почему здесь ошибка и какое правило нужно вспомнить (время глагола, артикль, единственное/множественное число, апостроф, форма слова).
+   - Напиши, как правильно пишется предложение.
+5. ⭐ Оценка и вердикт (например: "Отличная работа! Твой ударный режим в безопасности! 🔥").
+Пиши воодушевляюще и тепло, чтобы у ребёнка появлялось желание учиться дальше!`;
 
-          const ocrAnalysis = await askAI(ocrPrompt, '', base64ImageUrl, true, true, null, true);
+          const ocrAnalysis = await askAI(ocrPrompt, '', visionImages, true, true, null, true);
           if (ocrAnalysis) {
             await saveHwWarmupErrorsToDossier(st, ocrAnalysis.slice(0, 450)).catch(() => {});
             const studentOcrMsg = `🤖 *Разбор твоего письменного ДЗ по фото, ${actor.name}:*\n\n${ocrAnalysis}`;
