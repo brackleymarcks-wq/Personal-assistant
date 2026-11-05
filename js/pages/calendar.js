@@ -155,16 +155,21 @@ const CalendarPage = {
     }
     const tabEvents = document.getElementById('cal-tab-events');
     const tabTasks = document.getElementById('cal-tab-tasks');
-    if (this.currentTab === 'events' || this.currentTab === 'all') {
+    if (this.currentTab === 'events') {
       tabEvents.classList.add('btn-primary');
       tabEvents.classList.remove('btn-secondary');
       tabTasks.classList.add('btn-secondary');
       tabTasks.classList.remove('btn-primary');
-    } else {
+    } else if (this.currentTab === 'tasks') {
       tabTasks.classList.add('btn-primary');
       tabTasks.classList.remove('btn-secondary');
       tabEvents.classList.add('btn-secondary');
       tabEvents.classList.remove('btn-primary');
+    } else {
+      tabEvents.classList.remove('btn-primary');
+      tabEvents.classList.add('btn-secondary');
+      tabTasks.classList.remove('btn-primary');
+      tabTasks.classList.add('btn-secondary');
     }
 
     const btn = document.getElementById('add-event-btn');
@@ -181,9 +186,15 @@ const CalendarPage = {
     document.getElementById('cal-month-label').textContent =
       new Date(year, month, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
     
-    const count = this.currentTab === 'events' ? this.events.length : this.tasks.length;
-    const countLabel = this.currentTab === 'events' ? 'событий' : 'дедлайнов';
-    document.getElementById('cal-subtitle').textContent = `${count} ${countLabel} в этом месяце`;
+    let countLabel = '';
+    if (this.currentTab === 'events') {
+      countLabel = `${this.events.length} событий в этом месяце`;
+    } else if (this.currentTab === 'tasks') {
+      countLabel = `${this.tasks.length} задач в этом месяце`;
+    } else {
+      countLabel = `${this.events.length} событий и ${this.tasks.length} задач (Motion)`;
+    }
+    document.getElementById('cal-subtitle').textContent = countLabel;
 
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
@@ -352,7 +363,37 @@ const CalendarPage = {
       return `${evY}-${evM}-${evD}` === dateStr;
     });
 
-    const dayTaskDeadlines = this.tasks.filter(t => t.deadline === dateStr && t.status !== 'Отменена');
+    // Helper to get local date YYYY-MM-DD from ISO timestamp
+    const toLocalDateStr = (iso) => {
+      if (!iso) return '';
+      const dt = new Date(iso);
+      if (isNaN(dt.getTime())) return '';
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    };
+
+    // Tasks for this date:
+    // 1) Scheduled tasks whose deadline is this date
+    // 2) Tasks completed on this date (so they are always permanently recorded in the calendar!)
+    const dayTasksMap = new Map();
+
+    (this.tasks || []).forEach(t => {
+      if (t.status === 'Отменена') return;
+      const isDone = t.status === 'Готово';
+      const isDeadlineDay = t.deadline === dateStr;
+      const completedDateStr = isDone && t.updated_at ? toLocalDateStr(t.updated_at) : '';
+      const isCompletedToday = completedDateStr === dateStr;
+
+      if (isDeadlineDay || isCompletedToday) {
+        dayTasksMap.set(t.id, {
+          task: t,
+          isDone,
+          isDeadlineDay,
+          isCompletedToday
+        });
+      }
+    });
+
+    const dayTaskItems = Array.from(dayTasksMap.values());
 
     const dayLessons = (this.lessons || []).filter(ls => {
       if (!ls.date) return false;
@@ -387,8 +428,7 @@ const CalendarPage = {
     }
     
     if (this.currentTab === 'tasks' || this.currentTab === 'all') {
-      eventsHtml.push(...dayTaskDeadlines.map(t => {
-        const isDone = t.status === 'Готово';
+      eventsHtml.push(...dayTaskItems.map(({ task: t, isDone, isDeadlineDay, isCompletedToday }) => {
         let projectIcon = '';
         if (t.project_id) {
           const project = this.projects.find(p => p.id === t.project_id);
@@ -396,10 +436,15 @@ const CalendarPage = {
             projectIcon = `[${this.esc(project.name)}] `;
           }
         }
+        let prefix = '';
+        if (isCompletedToday && !isDeadlineDay) {
+          prefix = '✅ ';
+        }
+        const tooltipTitle = isDone ? `Выполнено: ${this.esc(t.title)}` : `Дедлайн: ${this.esc(t.title)}`;
         return `
-          <div class="calendar-event event-deadline ${isDone ? 'event-done' : ''} ${t.status === 'В работе' ? 'event-in-progress' : ''}" data-id="${t.id}" data-type="task" title="Дедлайн: ${this.esc(t.title)}" draggable="true">
+          <div class="calendar-event event-deadline ${isDone ? 'event-done' : ''} ${t.status === 'В работе' ? 'event-in-progress' : ''}" data-id="${t.id}" data-type="task" title="${tooltipTitle}" draggable="true">
             <i data-lucide="${isDone ? 'check-square' : 'target'}" style="width:12px;height:12px;min-width:12px;"></i>
-            ${projectIcon}${this.esc(t.title)}
+            ${projectIcon}${prefix}${this.esc(t.title)}
           </div>
         `;
       }));

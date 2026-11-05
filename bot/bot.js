@@ -576,7 +576,11 @@ async function getInbox() {
 
 async function completeTask(taskId) {
   const user = await getUser();
-  const { data, error } = await db.from('tasks').update({ status: 'Готово' }).eq('id', taskId).eq('user_id', user?.id).select().single();
+  const nowIso = new Date().toISOString();
+  const { data, error } = await db.from('tasks').update({ 
+    status: 'Готово',
+    updated_at: nowIso
+  }).eq('id', taskId).eq('user_id', user?.id).select().single();
   if (error) throw error;
   return data;
 }
@@ -2346,6 +2350,9 @@ async function executeFunctionCall(name, args) {
           if (d && !d.match(/^\d{4}-\d{2}-\d{2}$/)) {
             try { d = new Date(d).toISOString().split('T')[0]; } catch(e) { d = null; }
           }
+          if (!d) {
+            d = getMinskDateString(0);
+          }
           t.deadline = d;
           const task = await createTask(t.title, t);
           created.push(task);
@@ -3765,7 +3772,10 @@ bot.on('callback_query', async (query) => {
     const taskId = data.split(':')[1];
     try {
       const tomorrow = getMinskDateString(1);
-      const { data: t } = await db.from('tasks').update({ deadline: tomorrow }).eq('id', taskId).select().single();
+      const { data: t } = await db.from('tasks').update({ 
+        deadline: tomorrow,
+        updated_at: new Date().toISOString()
+      }).eq('id', taskId).select().single();
       await bot.answerCallbackQuery(query.id, { text: `⏭ Перенесено на завтра (${tomorrow})` });
       await sendTaskPulseReminder('⏰ *Пульс задач: День и Неделя*', chatId, messageId).catch(() => {});
     } catch (e) {
@@ -5494,10 +5504,14 @@ bot.onText(/\/tasks/, async (msg) => {
       text += `${i+1}. ${emoji} ${t.title}${deadline}\n   _${t.direction} · ${t.status}_\n\n`;
     });
     if (tasks.length > 15) text += `... и ещё ${tasks.length - 15} задач`;
-    const taskButtons = tasks.slice(0, 5).map(t => ([
-      { text: `✅ ${t.title.substring(0, 18)}`, callback_data: `task_done:${t.id}` },
-      { text: `⏭ Завтра`, callback_data: `task_tomorrow:${t.id}` }
+    const taskButtons = tasks.slice(0, 8).map(t => ([
+      { text: `✅ ${t.title.substring(0, 22)}`, callback_data: `task_done:${t.id}` },
+      { text: `⏭ На завтра`, callback_data: `task_tomorrow:${t.id}` }
     ]));
+    taskButtons.push([
+      { text: '🔄 Обновить сводку', callback_data: 'tasks_pulse_refresh' },
+      { text: '🍅 Фокус 25 мин', callback_data: 'focus_start:25' }
+    ]);
     return bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: taskButtons } }).catch(() => {
       bot.sendMessage(chatId, text, { reply_markup: { inline_keyboard: taskButtons } });
     });
@@ -5559,8 +5573,19 @@ bot.onText(/\/briefing/, async (msg) => {
   bot.sendMessage(chatId, '⏳ Готовлю утренний брифинг...');
   try {
     const text = await generateMorningBriefing();
-    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' }).catch(() => {
-      bot.sendMessage(chatId, text); // Без markdown в случае ошибки
+    const todayTasks = await getTasksDueToday();
+    const overdue = await getOverdueTasks();
+    const actionable = [...todayTasks, ...overdue].slice(0, 6);
+    const inlineKeyboard = actionable.map(t => ([
+      { text: `✅ ${t.title.substring(0, 22)}`, callback_data: `task_done:${t.id}` },
+      { text: `⏭ На завтра`, callback_data: `task_tomorrow:${t.id}` }
+    ]));
+    inlineKeyboard.push([
+      { text: '⏰ Пульс задач дня', callback_data: 'tasks_pulse_refresh' },
+      { text: '🍅 Фокус 25 мин', callback_data: 'focus_start:25' }
+    ]);
+    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: inlineKeyboard } }).catch(() => {
+      bot.sendMessage(chatId, text, { reply_markup: { inline_keyboard: inlineKeyboard } });
     });
   } catch(e) {
     bot.sendMessage(chatId, '❌ Ошибка генерации брифинга: ' + e.message);
@@ -6521,13 +6546,13 @@ async function sendTaskPulseReminder(headerTitle = '⏰ *Пульс задач: 
       }
     }
 
-    // Интерактивные кнопки для быстрого закрытия/переноса
-    const actionable = [...todayTasks, ...overdue.slice(0, 2)].slice(0, 6);
+    // Интерактивные кнопки для быстрого закрытия/переноса по ВСЕМ задачам
+    const actionable = [...todayTasks, ...overdue, ...(todayTasks.length + overdue.length < 4 ? upcomingWeek : [])].slice(0, 8);
     const inlineKeyboard = actionable.map(t => ([
-      { text: `✅ ${t.title.substring(0, 22)}`, callback_data: `task_done:${t.id}` },
+      { text: `✅ ${t.title.substring(0, 24)}`, callback_data: `task_done:${t.id}` },
       { text: `⏭ На завтра`, callback_data: `task_tomorrow:${t.id}` }
     ]));
-    if (overdue.length > 1) {
+    if (overdue.length > 0) {
       inlineKeyboard.push([{ text: `🧹 Закрыть все вчерашние хвосты (${overdue.length})`, callback_data: 'tasks_close_overdue' }]);
     }
     inlineKeyboard.push([
@@ -6567,7 +6592,27 @@ cron.schedule('45 5 * * *', async () => {
   try {
     const text = await generateMorningBriefing();
     await saveMessage('assistant', text);
-    sendProactiveMessage('📝 *План на день*\n\n' + text);
+    const todayTasks = await getTasksDueToday();
+    const overdue = await getOverdueTasks();
+    const actionable = [...todayTasks, ...overdue].slice(0, 6);
+    const inlineKeyboard = actionable.map(t => ([
+      { text: `✅ ${t.title.substring(0, 22)}`, callback_data: `task_done:${t.id}` },
+      { text: `⏭ На завтра`, callback_data: `task_tomorrow:${t.id}` }
+    ]));
+    inlineKeyboard.push([
+      { text: '⏰ Пульс задач дня', callback_data: 'tasks_pulse_refresh' },
+      { text: '🍅 Фокус 25 мин', callback_data: 'focus_start:25' }
+    ]);
+    if (CHAT_ID) {
+      await bot.sendMessage(CHAT_ID, '📝 *План на день*\n\n' + text, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: inlineKeyboard }
+      }).catch(async () => {
+        await bot.sendMessage(CHAT_ID, '📝 *План на день*\n\n' + text, {
+          reply_markup: { inline_keyboard: inlineKeyboard }
+        }).catch(() => {});
+      });
+    }
   } catch (e) {
     console.error('Cron morning error:', e);
     const todayStr = new Date().toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'long', day: 'numeric', month: 'long' });
