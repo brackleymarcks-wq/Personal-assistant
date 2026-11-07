@@ -1583,7 +1583,9 @@ async function processLessonQueues() {
     }
 
     // 4. Анонсы предстоящих уроков ученикам и родителям
-    const { data: queuedAnnouncements } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[АНОНС_УРОКА_В_ТГ]%');
+    const { data: queuedAnnouncements } = await db.from('lessons')
+      .select('*, students(*)')
+      .or('homework.ilike.%[АНОНС_УРОКА_В_ТГ]%,homework.ilike.%[ОТПРАВИТЬ_АНОНС_УРОКА_В_ТГ]%,homework.ilike.%[ОТПРАВИТЬ_АНОНС_В_ТГ]%');
     if (queuedAnnouncements && queuedAnnouncements.length > 0) {
       for (const als of queuedAnnouncements) {
         let rawHw = als.homework || '';
@@ -1602,7 +1604,11 @@ async function processLessonQueues() {
           rawHw = rawHw.replace(pMatch[0], '').trim();
         }
 
-        const cleanedHw = rawHw.replace('[АНОНС_УРОКА_В_ТГ]', '').replace('[ОТПРАВИТЬ_АНОНС_В_ТГ]', '').trim();
+        const cleanedHw = rawHw
+          .replace('[ОТПРАВИТЬ_АНОНС_УРОКА_В_ТГ]', '')
+          .replace('[ОТПРАВИТЬ_АНОНС_В_ТГ]', '')
+          .replace('[АНОНС_УРОКА_В_ТГ]', '')
+          .trim();
         await db.from('lessons').update({ homework: cleanedHw }).eq('id', als.id);
 
         if (als.students) {
@@ -6752,28 +6758,7 @@ cron.schedule('0 7 * * *', async () => {
     for (const task of upcoming) {
       sendProactiveMessage(`⚠️ Завтра дедлайн: *${task.title}*\nЧто осталось сделать?`);
     }
-    const twoDaysAgoIso = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
-    const { data: oldUnpaid } = await db.from('lessons').select('*, students(name, price)').eq('status', 'Проведен').eq('paid', false).lte('date', twoDaysAgoIso);
-    if (oldUnpaid && oldUnpaid.length > 0 && CHAT_ID) {
-      for (const ul of oldUnpaid) {
-        const stName = ul.students?.name || 'Ученик';
-        const price = ul.students?.price || 0;
-        const dStr = new Date(ul.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-        await bot.sendMessage(CHAT_ID, `⏳ *Контроль оплаты (прошло >48ч):*\nУрок с *${stName}* от ${dStr} (${price} BYN) всё ещё отмечен как неоплаченный.`, {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: `💰 Уже оплатили (+${price} BYN)`, callback_data: `lesson_pay:${ul.id}` },
-                { text: '📲 Текст напоминания', callback_data: `lesson_remind_text:${ul.id}` }
-              ]
-            ]
-          }
-        }).catch(() => {});
-      }
-    }
-    if (false) {
-    }
+    // Контроль оплаты уроков отключен: вся информация доступна в приложении
   } catch(e) {
     console.error('Cron deadline check error:', e);
   }
@@ -6900,6 +6885,53 @@ cron.schedule('* * * * *', async () => {
         }
       }
     }
+
+    // 2б. Авто-напоминание перед уроком (за 15-45 минут до начала, даже если урок был создан в последний момент)
+    const futureSoonMax = new Date(now.getTime() + 45 * 60000);
+    const futureSoonMin = new Date(now.getTime() - 5 * 60000);
+    const { data: lessonsSoon } = await db.from('lessons')
+      .select('*, students(*)')
+      .eq('status', 'Запланирован')
+      .gte('date', futureSoonMin.toISOString())
+      .lte('date', futureSoonMax.toISOString());
+
+    for (const lsSoon of (lessonsSoon || [])) {
+      const keySoon = `soon_${lsSoon.id}`;
+      if (!notifiedEvents.has(keySoon) && lsSoon.students) {
+        notifiedEvents.add(keySoon);
+        const doss = parseStudentDossierBot(lsSoon.students);
+        const targetIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+        const timeStr = new Date(lsSoon.date).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' });
+        const minutesLeft = Math.max(1, Math.round((new Date(lsSoon.date).getTime() - now.getTime()) / 60000));
+        const topicText = lsSoon.topic ? `\n🎯 *Тема:* ${lsSoon.topic}` : '';
+
+        const soonMsg = `⏰ *Привет, ${lsSoon.students.name}! Скоро урок!* 🇬🇧\nНаш урок английского начнётся через *${minutesLeft} мин* (в *${timeStr}*)!${topicText}\nПриготовь тетрадь, ручку и хорошее настроение! 👍`;
+        const soonKb = [
+          [{ text: '🔤 5 слов урока', callback_data: `student_words:${lsSoon.students.id}` }],
+          [{ text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${lsSoon.students.id}:0` }]
+        ];
+
+        for (const tid of targetIds) {
+          await bot.sendMessage(tid, soonMsg, {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: soonKb }
+          }).catch(() => {});
+        }
+
+        if (doss.parentTgId) {
+          const pIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+          const pSoonMsg = `⏰ *Напоминание:* Урок по английскому с *${lsSoon.students.name}* начнётся через *${minutesLeft} мин* (в *${timeStr}*)!${topicText}`;
+          for (const pid of pIds) {
+            await bot.sendMessage(pid, pSoonMsg, { parse_mode: 'Markdown' }).catch(() => {});
+          }
+        }
+
+        if (CHAT_ID) {
+          bot.sendMessage(CHAT_ID, `⏰ *Скоро урок:* Напоминание отправлено *${lsSoon.students.name}* (урок через ${minutesLeft} мин в ${timeStr})!`, { parse_mode: 'Markdown' }).catch(() => {});
+        }
+      }
+    }
+
     const finishedPast = new Date(now.getTime() - 180 * 60000);
     const finishedFuture = new Date(now.getTime() - 55 * 60000);
     const { data: finishedLessons } = await db.from('lessons')

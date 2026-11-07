@@ -1315,6 +1315,7 @@ const TutoringPage = {
   openLessonModal(id = null, studentId = null) {
     if (this.students.length === 0) return UI.toast('Сначала добавьте ученика', 'warning');
     
+    this.currentLessonId = id;
     const ls = id ? this.lessons.find(l => l.id === id) : null;
     const modal = document.getElementById('lesson-modal');
     
@@ -1614,6 +1615,7 @@ const TutoringPage = {
   },
 
   async saveLesson(id = null) {
+    if (!id && this.currentLessonId) id = this.currentLessonId;
     const student_id = document.getElementById('ls-student').value;
     const dStr = document.getElementById('ls-date').value;
     if (!student_id || !dStr) return UI.toast('Заполните обязательные поля', 'warning');
@@ -1717,8 +1719,28 @@ const TutoringPage = {
     }
     if (id) {
       const oldLs = this.lessons.find(l => l.id === id);
-      if (false && oldLs) {
-        homework = (homework ? homework + '\n' : '') + '[ПЕРЕНЕСЕН_В_ТГ]';
+      if (oldLs?.homework) {
+        // Не перезаписывать ожидающие отправки теги очереди в ТГ-бот
+        const pendingTags = [
+          '[АНОНС_УРОКА_В_ТГ]',
+          '[ОТПРАВИТЬ_АНОНС_УРОКА_В_ТГ]',
+          '[ОТПРАВИТЬ_АНОНС_В_ТГ]',
+          '[ОТПРАВИТЬ_В_ТГ]',
+          '[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]'
+        ];
+        for (const tag of pendingTags) {
+          if (oldLs.homework.includes(tag) && !homework.includes(tag)) {
+            homework += `\n${tag}`;
+          }
+        }
+        const sAnnMatch = oldLs.homework.match(/\[АНОНС_УЧЕНИКУ\]:[\s\S]*?\[\/АНОНС_УЧЕНИКУ\]/);
+        if (sAnnMatch && !homework.includes('[АНОНС_УЧЕНИКУ]')) {
+          homework += `\n${sAnnMatch[0]}`;
+        }
+        const pAnnMatch = oldLs.homework.match(/\[АНОНС_РОДИТЕЛЮ\]:[\s\S]*?\[\/АНОНС_РОДИТЕЛЮ\]/);
+        if (pAnnMatch && !homework.includes('[АНОНС_РОДИТЕЛЮ]')) {
+          homework += `\n${pAnnMatch[0]}`;
+        }
       }
     }
     const data = {
@@ -3890,17 +3912,24 @@ const TutoringPage = {
             paid: false
           });
           targetLessonId = newLesson.id;
+          this.currentLessonId = newLesson.id;
         } else {
           const existing = this.lessons.find(l => l.id === targetLessonId);
           const cleanHw = (existing?.homework || '')
             .replace('[АНОНС_УРОКА_В_ТГ]', '')
+            .replace('[ОТПРАВИТЬ_АНОНС_УРОКА_В_ТГ]', '')
+            .replace('[ОТПРАВИТЬ_АНОНС_В_ТГ]', '')
             .replace(/\[АНОНС_УЧЕНИКУ\]:[\s\S]*?\[\/АНОНС_УЧЕНИКУ\]/g, '')
             .replace(/\[АНОНС_РОДИТЕЛЮ\]:[\s\S]*?\[\/АНОНС_РОДИТЕЛЮ\]/g, '')
             .trim();
+          const updatedHw = `${cleanHw}${queuePayload}`.trim();
           await DB.updateLesson(targetLessonId, {
             topic: topicVal,
-            homework: `${cleanHw}${queuePayload}`.trim()
+            homework: updatedHw
           });
+          if (existing) {
+            existing.homework = updatedHw;
+          }
         }
 
         UI.toast('📢 Анонс урока успешно отправлен в Telegram бот!', 'success');
