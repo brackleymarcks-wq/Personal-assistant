@@ -1352,6 +1352,7 @@ const TutoringPage = {
 
     // 1. Extract [ПРЕЗЕНТАЦИЯ] and [ПРЕЗЕНТАЦИЯ_ФАЙЛ]
     this.attachedPresentation = null;
+    this.attachedPresentationFile = null;
     this.attachedPresentationName = '';
     const presMatch = displayHomework.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
     if (presMatch) {
@@ -1362,10 +1363,14 @@ const TutoringPage = {
     if (presFileMatch) {
       this.attachedPresentationName = presFileMatch[1].trim();
       displayHomework = displayHomework.replace(presFileMatch[0], '').trim();
-      if (!this.attachedPresentation && id) {
+      if (id) {
         this.getLocalFile('lesson_pres_' + id).then(localData => {
           if (localData) {
-            this.attachedPresentation = localData;
+            if (localData instanceof Blob || localData instanceof File) {
+              this.attachedPresentationFile = localData;
+            } else {
+              this.attachedPresentation = localData;
+            }
             this.renderPresentationBadge();
           }
         });
@@ -1379,6 +1384,28 @@ const TutoringPage = {
       this.attachedPresentationText = presTextMatch[1].trim();
       displayHomework = displayHomework.replace(presTextMatch[0], '').trim();
     }
+
+    // Очищаем XML-теги и дедуп-хэши из старого текста презентации, но не удаляем сам текст
+    if (this.attachedPresentationText) {
+      if (this.attachedPresentationText.includes('pk!') || this.attachedPresentationText.includes('p!kiW') || this.attachedPresentationText.startsWith('PK\x03\x04')) {
+        this.attachedPresentationText = '';
+      } else if (this.attachedPresentationText.includes('<a:tblPr') || this.attachedPresentationText.includes('<a:')) {
+        this.attachedPresentationText = this.attachedPresentationText
+          .replace(/<[^>]+>/g, '')
+          .replace(/gen-dedup-[a-f0-9]+\.png/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+    }
+
+    // Если имя файла презентации не было сохранено отдельно, но есть в тексте презентации:
+    if (!this.attachedPresentationName && this.attachedPresentationText) {
+      const nameMatch = this.attachedPresentationText.match(/\[(?:Конспект|Извлечено) из презентации ([^\]]+)\]/i);
+      if (nameMatch) {
+        this.attachedPresentationName = nameMatch[1].trim();
+      }
+    }
+
     this.renderPresentationBadge();
 
     // 2. Extract [СЦЕНАРИЙ_УРОКА]
@@ -1391,9 +1418,6 @@ const TutoringPage = {
     // Clean legacy binary zip garbage or accidentally injected presentation text from scenario
     if (scenario && (scenario.includes('pk!') || scenario.includes('p!kiW') || scenario.startsWith('PK\x03\x04') || scenario.startsWith('[Извлечено из презентации') || scenario.startsWith('[Конспект из презентации'))) {
       scenario = '';
-    }
-    if (this.attachedPresentationText && (this.attachedPresentationText.includes('pk!') || this.attachedPresentationText.includes('p!kiW') || this.attachedPresentationText.includes('<a:tblPr'))) {
-      this.attachedPresentationText = '';
     }
 
     // 3. Extract [КАРТОЧКИ_ДЗ]
@@ -1689,10 +1713,14 @@ const TutoringPage = {
     }
 
     // 1. Serialize presentation file
-    if (this.attachedPresentation) {
-      if (this.attachedPresentation.startsWith('http')) {
+    const fileToPersist = this.attachedPresentationFile || this.attachedPresentation;
+    if (this.attachedPresentationFile) {
+      if (id) await this.saveLocalFile('lesson_pres_' + id, this.attachedPresentationFile);
+      homework += '\n\n[ПРЕЗЕНТАЦИЯ_ФАЙЛ]: ' + (this.attachedPresentationName || 'Презентация урока (файл)') + '\n';
+    } else if (this.attachedPresentation) {
+      if (typeof this.attachedPresentation === 'string' && this.attachedPresentation.startsWith('http')) {
         homework += '\n\n[ПРЕЗЕНТАЦИЯ]:\n' + this.attachedPresentation + '\n[/ПРЕЗЕНТАЦИЯ]';
-      } else if (this.attachedPresentation.length < 150000) {
+      } else if (typeof this.attachedPresentation === 'string' && this.attachedPresentation.length < 150000) {
         homework += '\n\n[ПРЕЗЕНТАЦИЯ]:\n' + this.attachedPresentation + '\n[/ПРЕЗЕНТАЦИЯ]';
       } else {
         if (id) await this.saveLocalFile('lesson_pres_' + id, this.attachedPresentation);
@@ -1821,8 +1849,25 @@ const TutoringPage = {
     }
 
     try {
-      if (id) await DB.updateLesson(id, data);
-      else await DB.createLesson(data);
+      let savedLessonId = id;
+      if (id) {
+        await DB.updateLesson(id, data);
+      } else {
+        const created = await DB.createLesson(data);
+        if (created && created.id) {
+          savedLessonId = created.id;
+          this.currentLessonId = created.id;
+        }
+      }
+      
+      // Гарантированное сохранение файла презентации в локальную БД для этого урока
+      if (savedLessonId && fileToPersist) {
+        try {
+          await this.saveLocalFile('lesson_pres_' + savedLessonId, fileToPersist);
+        } catch (fErr) {
+          console.warn('saveLocalFile error after lesson save:', fErr);
+        }
+      }
       
       // Execute Finance Transaction if confirmed
       if (createTx) {
@@ -1869,6 +1914,7 @@ const TutoringPage = {
     if (!confirm('Удалить урок?')) return;
     try {
       await DB.deleteLesson(id);
+      this.saveLocalFile('lesson_pres_' + id, null).catch(() => {});
       UI.toast('Урок удален', 'info');
       await this.load();
     } catch(e) { UI.toast('Ошибка: ' + e.message, 'error'); }
@@ -3150,6 +3196,7 @@ const TutoringPage = {
   _voiceRec: null,
 
   attachedPresentation: null,
+  attachedPresentationFile: null,
   attachedPresentationName: '',
   attachedPresentationText: '',
   _lastAutoWorksheetCard: null,
@@ -3174,13 +3221,21 @@ const TutoringPage = {
       const db = await this._openIDB();
       return new Promise((resolve, reject) => {
         const tx = db.transaction('files', 'readwrite');
-        tx.objectStore('files').put(value, key);
+        if (value === null || value === undefined) {
+          tx.objectStore('files').delete(key);
+        } else {
+          tx.objectStore('files').put(value, key);
+        }
         tx.oncomplete = () => resolve(true);
         tx.onerror = () => reject(tx.error);
       });
     } catch (e) {
       console.warn('saveLocalFile error:', e);
-      try { sessionStorage.setItem(key, value); } catch (_) {}
+      try {
+        if (typeof value === 'string' && value.length < 5000000) {
+          sessionStorage.setItem(key, value);
+        }
+      } catch (_) {}
     }
   },
 
@@ -3378,18 +3433,23 @@ const TutoringPage = {
         const file = e.target.files?.[0];
         if (!file) return;
         this.attachedPresentationName = file.name || 'Презентация урока (файл)';
+        this.attachedPresentationFile = file;
+        this.renderPresentationBadge();
+
         if (file.type.startsWith('image/')) {
           const dataUrl = await this.compressImage(file);
           this.attachedPresentation = dataUrl;
+          this.attachedPresentationFile = null;
           this.renderPresentationBadge();
           UI.toast('Изображение материалов прикреплено!', 'success');
           this.handleVisionRecognition(dataUrl);
           return;
         }
-        if (file.size > 25 * 1024 * 1024) {
+        if (file.size > 80 * 1024 * 1024) {
           if (fileInput) fileInput.value = '';
-          return UI.toast('Файл больше 25MB. Вставьте ссылку на Google Диск / Gamma в поле «Ссылка на презентацию» выше!', 'warning');
+          return UI.toast('Файл больше 80MB. Вставьте ссылку на Google Диск / Gamma в поле «Ссылка на презентацию» выше!', 'warning');
         }
+        UI.toast('⏳ Распознаю презентацию...', 'info');
         const extracted = await this.extractTextFromPresentationFile(file);
         if (extracted) {
           this.attachedPresentationText = extracted;
@@ -3413,22 +3473,29 @@ const TutoringPage = {
         const detectTopicBtn = document.getElementById('ls-btn-detect-topic');
         if (detectTopicBtn) detectTopicBtn.style.display = 'inline-flex';
 
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          this.attachedPresentation = ev.target.result;
-          this.renderPresentationBadge();
-          UI.toast(extracted ? 'Презентация прикреплена, текст распознан для ДЗ!' : 'Презентация прикреплена к уроку!', 'success');
-        };
-        reader.readAsDataURL(file);
+        if (this.currentLessonId) {
+          try {
+            await this.saveLocalFile('lesson_pres_' + this.currentLessonId, file);
+          } catch (fErr) {
+            console.warn('saveLocalFile error on upload:', fErr);
+          }
+        }
+
+        this.renderPresentationBadge();
+        UI.toast(extracted ? 'Презентация прикреплена, текст распознан для ДЗ!' : 'Презентация прикреплена к уроку!', 'success');
       };
     }
 
     if (removeBtn) {
       removeBtn.onclick = () => {
         this.attachedPresentation = null;
+        this.attachedPresentationFile = null;
         this.attachedPresentationName = '';
         this.attachedPresentationText = '';
         if (fileInput) fileInput.value = '';
+        if (this.currentLessonId) {
+          this.saveLocalFile('lesson_pres_' + this.currentLessonId, null).catch(() => {});
+        }
         const detectTopicBtn = document.getElementById('ls-btn-detect-topic');
         if (detectTopicBtn) detectTopicBtn.style.display = 'none';
         this.renderPresentationBadge();
@@ -3451,24 +3518,45 @@ const TutoringPage = {
       };
     }
 
-    if (this.attachedPresentation || this.attachedPresentationName || this.attachedPresentationText) {
+    if (this.attachedPresentation || this.attachedPresentationFile || this.attachedPresentationName || this.attachedPresentationText) {
       badge.style.display = 'inline-flex';
       nameSpan.textContent = this.attachedPresentationName || '📄 Презентация урока (PDF/PPTX)';
-      if (this.attachedPresentation) {
+      const target = this.attachedPresentationFile || this.attachedPresentation;
+      if (target) {
         linkA.style.display = 'inline';
-        linkA.href = this.attachedPresentation;
         linkA.onclick = (e) => {
-          if (this.attachedPresentation.startsWith('data:')) {
-            e.preventDefault();
-            if (this.attachedPresentation.startsWith('data:application/pdf') || this.attachedPresentation.startsWith('data:image/')) {
-              const win = window.open();
-              win.document.write('<iframe src="' + this.attachedPresentation + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+          e.preventDefault();
+          const cur = this.attachedPresentationFile || this.attachedPresentation;
+          if (!cur) return;
+          if (cur instanceof Blob || cur instanceof File) {
+            const url = URL.createObjectURL(cur);
+            if (cur.type === 'application/pdf') {
+              window.open(url, '_blank');
             } else {
               const a = document.createElement('a');
-              a.href = this.attachedPresentation;
+              a.href = url;
               a.download = (this.attachedPresentationName || 'presentation').replace(/[^\w\.\-\_]/g, '_');
+              document.body.appendChild(a);
               a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(url), 60000);
             }
+            return;
+          }
+          if (typeof cur === 'string' && cur.startsWith('data:')) {
+            if (cur.startsWith('data:application/pdf') || cur.startsWith('data:image/')) {
+              const win = window.open();
+              win.document.write('<iframe src="' + cur + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+            } else {
+              const a = document.createElement('a');
+              a.href = cur;
+              a.download = (this.attachedPresentationName || 'presentation').replace(/[^\w\.\-\_]/g, '_');
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            }
+          } else if (typeof cur === 'string' && cur.startsWith('http')) {
+            window.open(cur, '_blank');
           }
         };
       } else {
