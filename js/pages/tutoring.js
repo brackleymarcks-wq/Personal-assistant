@@ -1388,11 +1388,11 @@ const TutoringPage = {
       scenario = scMatch[1].trim();
       displayHomework = displayHomework.replace(scMatch[0], '').trim();
     }
-    // Clean legacy binary zip garbage if previously extracted incorrectly
-    if (scenario && (scenario.includes('pk!') || scenario.includes('p!kiW') || scenario.startsWith('PK\x03\x04'))) {
+    // Clean legacy binary zip garbage or accidentally injected presentation text from scenario
+    if (scenario && (scenario.includes('pk!') || scenario.includes('p!kiW') || scenario.startsWith('PK\x03\x04') || scenario.startsWith('[Извлечено из презентации') || scenario.startsWith('[Конспект из презентации'))) {
       scenario = '';
     }
-    if (this.attachedPresentationText && (this.attachedPresentationText.includes('pk!') || this.attachedPresentationText.includes('p!kiW'))) {
+    if (this.attachedPresentationText && (this.attachedPresentationText.includes('pk!') || this.attachedPresentationText.includes('p!kiW') || this.attachedPresentationText.includes('<a:tblPr'))) {
       this.attachedPresentationText = '';
     }
 
@@ -1423,9 +1423,7 @@ const TutoringPage = {
     document.getElementById('ls-homework').value = displayHomework;
     const scenEl = document.getElementById('ls-scenario');
     if (scenEl) {
-      if (!scenario && this.attachedPresentationText) {
-        scenario = `[Конспект из презентации ${this.attachedPresentationName || ''}]:\n` + this.attachedPresentationText;
-      }
+      // Окно сценария предназначено строго для плана урока из Perplexity, не перезаписываем его презентацией
       scenEl.value = scenario;
     }
     document.getElementById('ls-materials').value = materials;
@@ -3259,14 +3257,26 @@ const TutoringPage = {
           const slideLines = [];
           for (let i = 0; i < slideKeys.length; i++) {
             const xml = await zip.file(slideKeys[i]).async('text');
-            // 1. Descriptions from Gamma / AI exports
-            const descrs = (xml.match(/descr="([^"]+)"/g) || []).map(m => m.slice(7, -1).trim()).filter(Boolean);
+            // 1. Human descriptions from Gamma / AI exports (filter image files, gen-dedup hashes, raw xml, urls)
+            const descrs = (xml.match(/descr="([^"]+)"/g) || [])
+              .map(m => m.slice(7, -1).trim())
+              .filter(d => d && !/\.(?:png|jpe?g|gif|svg|webp|mp[34])$/i.test(d) && !/^gen-dedup/i.test(d) && !d.includes('<') && !d.startsWith('http') && !/^[a-f0-9_\-]{16,}$/i.test(d) && d.length > 2);
             // 2. Standard PowerPoint text nodes <a:t>
             const texts = [];
-            const tRegex = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g;
+            const tRegex = /<a:t(?:\s+[^>]*)?>([\s\S]*?)<\/a:t>/gi;
             let tm;
             while ((tm = tRegex.exec(xml)) !== null) {
-              if (tm[1] && tm[1].trim()) texts.push(tm[1].trim());
+              let t = tm[1]
+                .replace(/<[^>]+>/g, '')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&apos;/g, "'")
+                .trim();
+              if (t && !t.startsWith('http://') && !t.startsWith('https://') && !/^gen-dedup/i.test(t)) {
+                texts.push(t);
+              }
             }
             const combined = [...descrs, ...texts].join(' ').replace(/\s+/g, ' ').trim();
             if (combined && !combined.startsWith('preencoded.png')) {
@@ -3274,7 +3284,7 @@ const TutoringPage = {
             }
           }
           if (slideLines.length > 0) {
-            return slideLines.join('\n').slice(0, 8000);
+            return slideLines.join('\n').slice(0, 10000);
           }
         }
       }
@@ -3289,24 +3299,43 @@ const TutoringPage = {
     // 1. Очистка имени ученика из названия файла
     if (studentName) {
       for (const p of studentName.split(/\s+/)) {
-        if (p.length > 2) raw = raw.replace(new RegExp(p, 'gi'), '');
+        if (p.length > 2) raw = raw.replace(new RegExp(`\\b${p}\\b`, 'gi'), '');
       }
     }
     if (this.students && Array.isArray(this.students)) {
       for (const s of this.students) {
         if (s?.name) {
           for (const p of s.name.split(/\s+/)) {
-            if (p.length > 2) raw = raw.replace(new RegExp(p, 'gi'), '');
+            if (p.length > 2) raw = raw.replace(new RegExp(`\\b${p}\\b`, 'gi'), '');
           }
         }
       }
     }
 
-    // 2. Очистка служебных штампов дат и классов
+    // 2. Очистка служебных штампов дат, классов и мусора
     raw = raw.replace(/\b\d{1,2}[._]\d{1,2}(?:[._]\d{2,4})?\b/g, '');
     raw = raw.replace(/\b\d{6,8}\b/g, '');
-    raw = raw.replace(/\b\d+\s*класс\b/gi, '');
+    raw = raw.replace(/\b\d+\s*(?:класс|кл)\b/gi, '');
     raw = raw.replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // Удаляем висячие союзы и предлоги по краям (например, "The Academy Shop и" -> "The Academy Shop")
+    const noiseWords = ['и', 'с', 'со', 'для', 'от', 'к', 'по', 'в', 'на', 'and', 'with', 'for', 'to', 'lesson', 'урок', 'класс'];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      raw = raw.replace(/^[\s\-_:–—,.]+|[\s\-_:–—,.]+$/g, '').trim();
+      const parts = raw.split(/\s+/);
+      if (parts.length > 1 && noiseWords.includes(parts[parts.length - 1].toLowerCase())) {
+        parts.pop();
+        raw = parts.join(' ').trim();
+        changed = true;
+      }
+      if (parts.length > 1 && noiseWords.includes(parts[0].toLowerCase())) {
+        parts.shift();
+        raw = parts.join(' ').trim();
+        changed = true;
+      }
+    }
 
     // 3. Анализ заголовка 1-го слайда
     if (presentationText) {
@@ -3364,9 +3393,11 @@ const TutoringPage = {
         const extracted = await this.extractTextFromPresentationFile(file);
         if (extracted) {
           this.attachedPresentationText = extracted;
+          // Окно сценария ls-scenario НЕ трогаем! Оно строго для конспекта Perplexity.
+          // Если там висел старый ошибочный авто-дамп презентации, очищаем его.
           const scenEl = document.getElementById('ls-scenario');
-          if (scenEl && (!scenEl.value.trim() || scenEl.value.includes('pk!') || scenEl.value.includes('p!kiW') || scenEl.value.startsWith('[Извлечено из презентации') || scenEl.value.startsWith('[Конспект из презентации'))) {
-            scenEl.value = `[Конспект из презентации ${file.name}]:\n` + extracted;
+          if (scenEl && (scenEl.value.startsWith('[Конспект из презентации') || scenEl.value.startsWith('[Извлечено из презентации') || scenEl.value.includes('pk!') || scenEl.value.includes('p!kiW'))) {
+            scenEl.value = '';
           }
         }
 
@@ -3946,11 +3977,7 @@ const TutoringPage = {
         }
 
         if (pdfText) {
-          const scenEl = document.getElementById('ls-scenario');
-          if (scenEl) {
-            scenEl.value = scenEl.value ? `${scenEl.value}\n\n[Текст из презентации]:\n${pdfText}` : `[Текст из презентации]:\n${pdfText}`;
-          }
-          UI.toast('✅ Презентация PDF успешно прочитана! Материалы добавлены в сценарий.', 'success');
+          UI.toast('✅ Презентация PDF успешно распознана для ДЗ!', 'success');
         } else {
           UI.toast('PDF прикреплен к уроку!', 'success');
         }
