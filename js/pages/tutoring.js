@@ -212,10 +212,12 @@ const TutoringPage = {
                     <button type="button" id="ls-btn-upload-pres" class="btn btn-secondary btn-xs" style="font-size:11px;display:inline-flex;align-items:center;gap:4px;">
                       <i data-lucide="file" style="width:12px;height:12px;"></i> 📎 Прикрепить файл презентации (.pptx / .pdf)
                     </button>
-                    <div id="ls-pres-badge" style="display:none;align-items:center;gap:6px;padding:3px 8px;background:rgba(13,148,136,0.12);border:1px solid rgba(13,148,136,0.3);border-radius:6px;font-size:11px;color:#0d9488;">
-                      <span id="ls-pres-name">Презентация.pdf</span>
-                      <a id="ls-pres-link" href="#" target="_blank" style="color:var(--accent);text-decoration:underline;">Открыть</a>
-                      <button type="button" id="ls-pres-remove" style="border:none;background:none;color:var(--danger);cursor:pointer;font-weight:700;">✕</button>
+                    <div id="ls-pres-badge" style="display:none;align-items:center;flex-wrap:wrap;gap:6px;padding:3px 10px;background:rgba(13,148,136,0.12);border:1px solid rgba(13,148,136,0.3);border-radius:6px;font-size:11px;color:#0d9488;">
+                      <span id="ls-pres-name" style="font-weight:600;">Презентация.pdf</span>
+                      <span id="ls-pres-status" style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.15);color:#059669;font-weight:600;font-size:10px;">✅ Прочитано</span>
+                      <button type="button" id="ls-pres-preview-btn" style="border:none;background:rgba(2,132,199,0.12);color:#0284c7;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;font-weight:600;">👁️ Что прочитано</button>
+                      <a id="ls-pres-link" href="#" target="_blank" style="color:var(--accent);text-decoration:underline;">Скачать</a>
+                      <button type="button" id="ls-pres-remove" title="Удалить привязку" style="border:none;background:none;color:var(--danger);cursor:pointer;font-weight:700;margin-left:4px;">✕</button>
                     </div>
                   </div>
                 </div>
@@ -3430,6 +3432,8 @@ const TutoringPage = {
   renderPresentationBadge() {
     const badge = document.getElementById('ls-pres-badge');
     const nameSpan = document.getElementById('ls-pres-name');
+    const statusSpan = document.getElementById('ls-pres-status');
+    const previewBtn = document.getElementById('ls-pres-preview-btn');
     const linkA = document.getElementById('ls-pres-link');
     const removeBtn = document.getElementById('ls-pres-remove');
     const uploadBtn = document.getElementById('ls-btn-upload-pres');
@@ -3489,7 +3493,8 @@ const TutoringPage = {
         }
 
         this.renderPresentationBadge();
-        UI.toast(extracted ? 'Презентация прикреплена, текст распознан для ДЗ!' : 'Презентация прикреплена к уроку!', 'success');
+        const scCount = extracted ? (extracted.match(/Слайд \d+/gi)?.length || 1) : 0;
+        UI.toast(extracted ? `✅ Презентация прочитана (${scCount} сл.)! Текст сохранён для ИИ.` : 'Презентация прикреплена к уроку!', 'success');
       };
     }
 
@@ -3528,6 +3533,40 @@ const TutoringPage = {
     if (this.attachedPresentation || this.attachedPresentationFile || this.attachedPresentationName || this.attachedPresentationText) {
       badge.style.display = 'inline-flex';
       nameSpan.textContent = this.attachedPresentationName || '📄 Презентация урока (PDF/PPTX)';
+
+      // Индикатор статуса распознавания
+      const slideMatches = this.attachedPresentationText ? this.attachedPresentationText.match(/Слайд \d+/gi) : null;
+      const slideCount = slideMatches ? slideMatches.length : (this.attachedPresentationText && this.attachedPresentationText.length > 50 ? 1 : 0);
+
+      if (statusSpan) {
+        if (this.attachedPresentationText && slideCount > 0) {
+          statusSpan.style.display = 'inline-flex';
+          statusSpan.innerHTML = `✅ Прочитано (${slideCount} сл.)`;
+          statusSpan.style.background = 'rgba(16,185,129,0.15)';
+          statusSpan.style.color = '#059669';
+        } else if (this.attachedPresentationFile || this.attachedPresentation || this.attachedPresentationName) {
+          statusSpan.style.display = 'inline-flex';
+          statusSpan.innerHTML = `📎 Файл привязан`;
+          statusSpan.style.background = 'rgba(2,132,199,0.12)';
+          statusSpan.style.color = '#0284c7';
+        } else {
+          statusSpan.style.display = 'none';
+        }
+      }
+
+      // Кнопка быстрого предпросмотра прочитанного текста
+      if (previewBtn) {
+        if (this.attachedPresentationText && this.attachedPresentationText.length > 20) {
+          previewBtn.style.display = 'inline-block';
+          previewBtn.onclick = () => {
+            const previewText = this.attachedPresentationText.slice(0, 1800) + (this.attachedPresentationText.length > 1800 ? `\n\n... (всего распознано ${this.attachedPresentationText.length} символов)` : '');
+            alert(`📖 Текст из презентации, готовый для ИИ (сохранен в базе):\n\n${previewText}`);
+          };
+        } else {
+          previewBtn.style.display = 'none';
+        }
+      }
+
       const target = this.attachedPresentationFile || this.attachedPresentation;
       if (target) {
         linkA.style.display = 'inline';
