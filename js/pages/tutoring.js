@@ -1416,8 +1416,19 @@ const TutoringPage = {
       displayHomework = displayHomework.replace(scMatch[0], '').trim();
     }
     // Clean legacy binary zip garbage or accidentally injected presentation text from scenario
-    if (scenario && (scenario.includes('pk!') || scenario.includes('p!kiW') || scenario.startsWith('PK\x03\x04') || scenario.startsWith('[Извлечено из презентации') || scenario.startsWith('[Конспект из презентации'))) {
-      scenario = '';
+    if (scenario) {
+      if (
+        scenario.includes('pk!') || 
+        scenario.includes('p!kiW') || 
+        scenario.startsWith('PK\x03\x04') || 
+        scenario.startsWith('[Извлечено из презентации') || 
+        scenario.startsWith('[Конспект из презентации') ||
+        scenario.trim().startsWith('Слайд 1:') ||
+        scenario.trim().startsWith('Slide 1:') ||
+        (this.attachedPresentationText && scenario.trim() === this.attachedPresentationText.trim())
+      ) {
+        scenario = '';
+      }
     }
 
     // 3. Extract [КАРТОЧКИ_ДЗ]
@@ -3445,18 +3456,14 @@ const TutoringPage = {
           this.handleVisionRecognition(dataUrl);
           return;
         }
-        if (file.size > 80 * 1024 * 1024) {
-          if (fileInput) fileInput.value = '';
-          return UI.toast('Файл больше 80MB. Вставьте ссылку на Google Диск / Gamma в поле «Ссылка на презентацию» выше!', 'warning');
-        }
-        UI.toast('⏳ Распознаю презентацию...', 'info');
+        UI.toast('⏳ Презентация прикреплена, распознаю текст...', 'info');
         const extracted = await this.extractTextFromPresentationFile(file);
         if (extracted) {
           this.attachedPresentationText = extracted;
           // Окно сценария ls-scenario НЕ трогаем! Оно строго для конспекта Perplexity.
           // Если там висел старый ошибочный авто-дамп презентации, очищаем его.
           const scenEl = document.getElementById('ls-scenario');
-          if (scenEl && (scenEl.value.startsWith('[Конспект из презентации') || scenEl.value.startsWith('[Извлечено из презентации') || scenEl.value.includes('pk!') || scenEl.value.includes('p!kiW'))) {
+          if (scenEl && (scenEl.value.startsWith('[Конспект из презентации') || scenEl.value.startsWith('[Извлечено из презентации') || scenEl.value.includes('pk!') || scenEl.value.includes('p!kiW') || scenEl.value.trim().startsWith('Слайд 1:'))) {
             scenEl.value = '';
           }
         }
