@@ -157,7 +157,12 @@ const TutoringPage = {
               </div>
 
               <div class="form-group" style="margin-bottom:12px;">
-                <label class="form-label" style="margin-bottom:2px;">Тема урока *</label>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                  <label class="form-label" style="margin-bottom:0;">Тема урока *</label>
+                  <button type="button" id="ls-btn-detect-topic" class="btn btn-secondary btn-xs" style="display:none;font-size:11px;padding:2px 8px;gap:4px;color:var(--accent);" title="Определить тему автоматически по прикреплённой презентации">
+                    🪄 Тема из презентации
+                  </button>
+                </div>
                 <input id="ls-topic" type="text" class="form-input" placeholder="Например: Unit 3 Shopping или Detective Owner: Possessive 's" />
               </div>
 
@@ -1383,6 +1388,13 @@ const TutoringPage = {
       scenario = scMatch[1].trim();
       displayHomework = displayHomework.replace(scMatch[0], '').trim();
     }
+    // Clean legacy binary zip garbage if previously extracted incorrectly
+    if (scenario && (scenario.includes('pk!') || scenario.includes('p!kiW') || scenario.startsWith('PK\x03\x04'))) {
+      scenario = '';
+    }
+    if (this.attachedPresentationText && (this.attachedPresentationText.includes('pk!') || this.attachedPresentationText.includes('p!kiW'))) {
+      this.attachedPresentationText = '';
+    }
 
     // 3. Extract [КАРТОЧКИ_ДЗ]
     const cardsMatch = displayHomework.match(/\[КАРТОЧКИ_?ДЗ\]:([\s\S]*?)\[\/?\s*КАРТОЧКИ_?ДЗ\s*\]/i);
@@ -1410,8 +1422,23 @@ const TutoringPage = {
 
     document.getElementById('ls-homework').value = displayHomework;
     const scenEl = document.getElementById('ls-scenario');
-    if (scenEl) scenEl.value = scenario;
+    if (scenEl) {
+      if (!scenario && this.attachedPresentationText) {
+        scenario = `[Конспект из презентации ${this.attachedPresentationName || ''}]:\n` + this.attachedPresentationText;
+      }
+      scenEl.value = scenario;
+    }
     document.getElementById('ls-materials').value = materials;
+
+    // Авто-определение темы урока, если тема пуста, но есть прикреплённая презентация
+    const topicInput = document.getElementById('ls-topic');
+    if (topicInput && !topicInput.value.trim() && (this.attachedPresentationName || this.attachedPresentationText)) {
+      const currentSt = this.students.find(s => s.id === document.getElementById('ls-student').value);
+      const autoTopic = this.detectTopicFromPresentation(this.attachedPresentationName, this.attachedPresentationText, currentSt?.name);
+      if (autoTopic && autoTopic !== 'Практика английского языка') {
+        topicInput.value = autoTopic;
+      }
+    }
 
     const pplxFillBtn = document.getElementById('ls-btn-pplx-fill');
     if (pplxFillBtn) {
@@ -3168,31 +3195,112 @@ const TutoringPage = {
           const buf = await file.arrayBuffer();
           const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
           let fullText = '';
-          const maxPages = Math.min(pdf.numPages, 20);
+          const maxPages = Math.min(pdf.numPages, 30);
           for (let p = 1; p <= maxPages; p++) {
             const page = await pdf.getPage(p);
             const content = await page.getTextContent();
             const pageText = content.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
             if (pageText) fullText += `Слайд ${p}: ${pageText}\n`;
           }
-          if (fullText.trim().length > 15) return fullText.trim().slice(0, 6000);
+          if (fullText.trim().length > 15) return fullText.trim().slice(0, 8000);
         }
       }
-      // Fallback: raw binary text extraction (works for simple PDFs/XML/PPTX uncompressed strings)
-      const ab = await file.arrayBuffer();
-      const dec = new TextDecoder('utf-8', { fatal: false }).decode(ab);
-      const xmlMatches = dec.match(/<a:t>([^<]+)<\/a:t>/g);
-      if (xmlMatches && xmlMatches.length > 0) {
-        return xmlMatches.map(m => m.replace(/<\/?a:t>/g, '')).join(' ').slice(0, 5000);
-      }
-      const asciiMatches = dec.match(/\(([A-Za-zА-Яа-яЁё0-9\s.,?!'"\-:;]{4,})\)/g);
-      if (asciiMatches && asciiMatches.length > 0) {
-        return asciiMatches.map(m => m.slice(1, -1)).join(' ').slice(0, 4000);
+
+      // PPTX extraction via JSZip (unpacking XML slides cleanly)
+      if (name.endsWith('.pptx') || file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+        if (!window.JSZip) {
+          await new Promise((resolve) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+            s.onload = resolve;
+            s.onerror = resolve;
+            document.head.appendChild(s);
+          });
+        }
+        if (window.JSZip) {
+          const ab = await file.arrayBuffer();
+          const zip = await window.JSZip.loadAsync(ab);
+          const slideKeys = Object.keys(zip.files).filter(k => k.startsWith('ppt/slides/slide') && k.endsWith('.xml') && !k.includes('_rels'));
+          slideKeys.sort((a, b) => {
+            const numA = parseInt(a.match(/slide(\d+)\.xml/)?.[1] || 0, 10);
+            const numB = parseInt(b.match(/slide(\d+)\.xml/)?.[1] || 0, 10);
+            return numA - numB;
+          });
+
+          const slideLines = [];
+          for (let i = 0; i < slideKeys.length; i++) {
+            const xml = await zip.file(slideKeys[i]).async('text');
+            // 1. Descriptions from Gamma / AI exports
+            const descrs = (xml.match(/descr="([^"]+)"/g) || []).map(m => m.slice(7, -1).trim()).filter(Boolean);
+            // 2. Standard PowerPoint text nodes <a:t>
+            const texts = [];
+            const tRegex = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g;
+            let tm;
+            while ((tm = tRegex.exec(xml)) !== null) {
+              if (tm[1] && tm[1].trim()) texts.push(tm[1].trim());
+            }
+            const combined = [...descrs, ...texts].join(' ').replace(/\s+/g, ' ').trim();
+            if (combined && !combined.startsWith('preencoded.png')) {
+              slideLines.push(`Слайд ${i + 1}: ${combined}`);
+            }
+          }
+          if (slideLines.length > 0) {
+            return slideLines.join('\n').slice(0, 8000);
+          }
+        }
       }
     } catch (e) {
       console.warn('extractTextFromPresentationFile error:', e);
     }
     return '';
+  },
+
+  detectTopicFromPresentation(filename = '', presentationText = '', studentName = '') {
+    let raw = (filename || '').replace(/\.[^/.]+$/, '').trim();
+    // 1. Очистка имени ученика из названия файла
+    if (studentName) {
+      for (const p of studentName.split(/\s+/)) {
+        if (p.length > 2) raw = raw.replace(new RegExp(p, 'gi'), '');
+      }
+    }
+    if (this.students && Array.isArray(this.students)) {
+      for (const s of this.students) {
+        if (s?.name) {
+          for (const p of s.name.split(/\s+/)) {
+            if (p.length > 2) raw = raw.replace(new RegExp(p, 'gi'), '');
+          }
+        }
+      }
+    }
+
+    // 2. Очистка служебных штампов дат и классов
+    raw = raw.replace(/\b\d{1,2}[._]\d{1,2}(?:[._]\d{2,4})?\b/g, '');
+    raw = raw.replace(/\b\d{6,8}\b/g, '');
+    raw = raw.replace(/\b\d+\s*класс\b/gi, '');
+    raw = raw.replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // 3. Анализ заголовка 1-го слайда
+    if (presentationText) {
+      const firstSlideMatch = presentationText.match(/(?:Слайд 1:[^\n]*|\[Слайд 1\]:[^\n]*)/i) || [presentationText.split('\n')[0]];
+      let firstSlide = (firstSlideMatch ? firstSlideMatch[0] : presentationText.split('\n')[0])
+        .replace(/^(?:Слайд 1:|\[Слайд 1\]:)/i, '')
+        .replace(/preencoded\.png/gi, '')
+        .replace(/Image \d+/gi, '')
+        .trim();
+      const firstLine = firstSlide.split('\n')[0].split(/[—–-]/)[0].trim();
+      if (firstLine.length > 3 && firstLine.length < 50 && !firstLine.toLowerCase().includes('today i can do it')) {
+        const unitMatch = raw.match(/Unit\s*\d+(?:\s*Lesson\s*[\d\-]+)?/i);
+        if (unitMatch && !firstLine.toLowerCase().includes('unit')) {
+          return `${unitMatch[0]}: ${firstLine}`;
+        }
+        if (raw.length > 3 && raw.length < 40 && !raw.toLowerCase().includes('презентация') && !raw.toLowerCase().includes('slajdy')) {
+          return raw;
+        }
+        return firstLine;
+      }
+    }
+
+    return raw || 'Практика английского языка';
   },
 
   renderPresentationBadge() {
@@ -3228,15 +3336,28 @@ const TutoringPage = {
         if (extracted) {
           this.attachedPresentationText = extracted;
           const scenEl = document.getElementById('ls-scenario');
-          if (scenEl && !scenEl.value.trim()) {
-            scenEl.value = `[Извлечено из презентации ${file.name}]:\n` + extracted;
+          if (scenEl && (!scenEl.value.trim() || scenEl.value.includes('pk!') || scenEl.value.includes('p!kiW') || scenEl.value.startsWith('[Извлечено из презентации') || scenEl.value.startsWith('[Конспект из презентации'))) {
+            scenEl.value = `[Конспект из презентации ${file.name}]:\n` + extracted;
           }
         }
+
+        // Автоматическое определение темы урока из презентации
+        const stId = document.getElementById('ls-student')?.value;
+        const st = this.students.find(s => s.id === stId);
+        const detectedTopic = this.detectTopicFromPresentation(file.name, extracted, st?.name);
+        const topicEl = document.getElementById('ls-topic');
+        if (detectedTopic && topicEl && (!topicEl.value.trim() || topicEl.value.trim() === 'Практика английского языка')) {
+          topicEl.value = detectedTopic;
+          UI.toast(`🎯 Тема урока определена: "${detectedTopic}"`, 'success');
+        }
+        const detectTopicBtn = document.getElementById('ls-btn-detect-topic');
+        if (detectTopicBtn) detectTopicBtn.style.display = 'inline-flex';
+
         const reader = new FileReader();
         reader.onload = (ev) => {
           this.attachedPresentation = ev.target.result;
           this.renderPresentationBadge();
-          UI.toast(extracted ? 'Презентация прикреплена и прочитана ИИ для ДЗ!' : 'Презентация прикреплена к уроку!', 'success');
+          UI.toast(extracted ? 'Презентация прикреплена, текст распознан для ДЗ!' : 'Презентация прикреплена к уроку!', 'success');
         };
         reader.readAsDataURL(file);
       };
@@ -3248,7 +3369,25 @@ const TutoringPage = {
         this.attachedPresentationName = '';
         this.attachedPresentationText = '';
         if (fileInput) fileInput.value = '';
+        const detectTopicBtn = document.getElementById('ls-btn-detect-topic');
+        if (detectTopicBtn) detectTopicBtn.style.display = 'none';
         this.renderPresentationBadge();
+      };
+    }
+
+    const detectTopicBtn = document.getElementById('ls-btn-detect-topic');
+    if (detectTopicBtn) {
+      detectTopicBtn.style.display = (this.attachedPresentationName || this.attachedPresentationText) ? 'inline-flex' : 'none';
+      detectTopicBtn.onclick = () => {
+        const stId = document.getElementById('ls-student')?.value;
+        const st = this.students.find(s => s.id === stId);
+        const topic = this.detectTopicFromPresentation(this.attachedPresentationName, this.attachedPresentationText, st?.name);
+        if (topic) {
+          document.getElementById('ls-topic').value = topic;
+          UI.toast(`🎯 Тема урока обновлена: "${topic}"`, 'success');
+        } else {
+          UI.toast('Сначала прикрепите файл презентации', 'info');
+        }
       };
     }
 

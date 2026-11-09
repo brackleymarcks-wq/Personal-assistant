@@ -1030,6 +1030,7 @@ function extractAllLessonMaterials(lesson, st) {
   const doss = st ? parseStudentDossierBot(st) : {};
   const topic = lesson?._mergedTopic || lesson?.topic || 'Практика английского по программе';
   const scenario = lesson?._mergedScenario || extractLessonScenario(lesson?.homework || '');
+  const presText = extractPresentationText(lesson?.homework || '');
   const materials = lesson?._mergedMaterials || '';
   const debrief = lesson?._mergedDebrief || '';
   const cleanHw = lesson?._mergedCleanHw || '';
@@ -1038,6 +1039,9 @@ function extractAllLessonMaterials(lesson, st) {
   if (doss.unit) block += `📖 УЧЕБНИК / ПРОГРАММА: ${doss.unit}\n`;
   if (cleanHw) block += `📌 ЗАДАННОЕ ДЗ ПО УРОКУ:\n${cleanHw.slice(0, 1500)}\n`;
   if (scenario) block += `📋 КОНСПЕКТ / СЦЕНАРИЙ И ТЕКСТ ПРЕЗЕНТАЦИИ УРОКА:\n${scenario.slice(0, 2500)}\n`;
+  if (presText && (!scenario || !scenario.includes(presText.slice(0, 100)))) {
+    block += `📑 СЛАЙДЫ И ПРАВИЛА ИЗ ПРЕЗЕНТАЦИИ:\n${presText.slice(0, 3500)}\n`;
+  }
   if (materials) block += `📎 ДОП. МАТЕРИАЛЫ УРОКА:\n${materials.slice(0, 1000)}\n`;
   if (debrief) block += `📝 ЗАМЕТКИ ПРЕПОДАВАТЕЛЯ ПО УРОКУ:\n${debrief.slice(0, 800)}\n`;
   if (doss.vocab) block += `🔤 АКТИВНЫЙ СЛОВАРЬ УЧЕНИКА:\n${doss.vocab}\n`;
@@ -1400,7 +1404,19 @@ function getLessonFlashcards(scenarioText, hwText = '', topicText = '', dossVoca
 function extractLessonScenario(homeworkText) {
   if (!homeworkText) return '';
   const match = homeworkText.match(/\[СЦЕНАРИЙ_УРОКА\]:([\s\S]*?)\[\/СЦЕНАРИЙ_УРОКА\]/);
-  return match ? match[1].trim() : '';
+  if (!match) return '';
+  const text = match[1].trim();
+  if (text.includes('pk!') || text.includes('p!kiW') || text.startsWith('PK\x03\x04')) return '';
+  return text;
+}
+
+function extractPresentationText(homeworkText) {
+  if (!homeworkText) return '';
+  const match = homeworkText.match(/\[ПРЕЗЕНТАЦИЯ_ТЕКСТ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ_ТЕКСТ\]/);
+  if (!match) return '';
+  const text = match[1].trim();
+  if (text.includes('pk!') || text.includes('p!kiW') || text.startsWith('PK\x03\x04')) return '';
+  return text;
 }
 
 function extractAttachedCards(homeworkText) {

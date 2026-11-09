@@ -937,7 +937,7 @@ const Gemini = {
 
       let materialsBlock = '';
       if (hasScenario) materialsBlock += `\nСЦЕНАРИЙ И ПЛАН УРОКА:\n"""\n${currentLesson.scenario}\n"""\n`;
-      if (presSummary) materialsBlock += `\nСОДЕРЖАНИЕ ПРЕЗЕНТАЦИИ УРОКА (СЛАЙДЫ И УПРАЖНЕНИЯ):\n"""\n${presSummary}\n"""\n`;
+      if (presSummary) materialsBlock += `\nСОДЕРЖАНИЕ ПРЕЗЕНТАЦИИ УРОКА (СЛАЙДЫ, ПРАВИЛА И УПРАЖНЕНИЯ):\n"""\n${presSummary.slice(0, 6000)}\n"""\n`;
       if (hasMaterials) materialsBlock += `\nДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ / ССЫЛКИ УРОКА:\n"""\n${currentLesson.materials}\n"""\n`;
       if (hasDebrief) materialsBlock += `\nИТОГИ УРОКА И ЗАМЕЧАНИЯ ПРЕПОДАВАТЕЛЯ (ДЕБРИФИНГ):\n"""\n${currentLesson.debrief}\n"""\n`;
       if (hasCards) materialsBlock += `\nПРИКРЕПЛЁННЫЕ PNG-КАРТОЧКИ / СКРИНШОТЫ УПРАЖНЕНИЙ: Преподаватель прикрепил ${currentLesson.cards.length} карточек (переданы во вложении). Обязательно считай слова и упражнения с этих карточек и построй ДЗ вокруг них!\n`;
@@ -949,6 +949,7 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
 
 ТВОЯ ЗАДАЧА:
 Сформировать идеальное, понятное и живое домашнее задание НАПРЯМУЮ ДЛЯ УЧЕНИКА.
+ОБЯЗАТЕЛЬНО: Если передано содержание презентации урока, строй домашнее задание ИСКЛЮЧИТЕЛЬНО на правилах, грамматике, словах и сюжетах из этих слайдов!
 ОБЯЗАТЕЛЬНОЕ ТРЕБОВАНИЕ: ДЗ должно быть строго рассчитано на 15–20 МИНУТ МАКСИМУМ (не перегружай ребёнка!).
 Пиши простым, понятным детским языком (на «ты»). Обращайся как дружелюбный репетитор!
 
@@ -1010,7 +1011,7 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
         prompt += `\n[К уроку преподавателем прикреплены карточки с упражнениями: ${currentLesson.cards.length} шт.]`;
       }
       if (currentLesson.presentationText) {
-        prompt += `\n[Текст из презентации урока:\n${currentLesson.presentationText.slice(0, 1500)}]`;
+        prompt += `\n[Материалы из презентации урока:\n${currentLesson.presentationText.slice(0, 6000)}]`;
       }
     }
 
