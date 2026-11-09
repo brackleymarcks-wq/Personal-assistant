@@ -1484,7 +1484,22 @@ const TutoringPage = {
       btnEl.textContent = '⏳ Генерирую...';
       try {
         const scenario = document.getElementById('ls-scenario')?.value?.trim() || '';
-      const res = await Gemini.generateTutoringAI(mode, { name: st.name, grade: st.grade, ...dossier }, { topic, homework: hw, scenario }, prevLs);
+        const debrief = document.getElementById('ls-debrief-notes')?.value?.trim() || '';
+        const materials = document.getElementById('ls-materials')?.value?.trim() || '';
+        const res = await Gemini.generateTutoringAI(mode, 
+          { name: st.name, grade: st.grade, ...dossier }, 
+          { 
+            topic, 
+            homework: hw, 
+            scenario,
+            debrief,
+            materials,
+            cards: this.attachedCards || [],
+            presentation: this.attachedPresentation || '',
+            presentationText: this.attachedPresentationText || ''
+          }, 
+          prevLs
+        );
         if (mode === 'homework') {
           document.getElementById('ls-homework').value = res;
           UI.toast('Персональное ДЗ сгенерировано!', 'success');
@@ -2842,7 +2857,21 @@ const TutoringPage = {
         try {
           const dossier = this.parseStudentDossier(st);
           const scenario = document.getElementById('hw-disp-scenario')?.value?.trim() || '';
-          const hw = await Gemini.generateTutoringAI('homework', { name: st.name, grade: st.grade, ...dossier }, { topic, scenario }, ls);
+          const presTextMatch = ls?.homework?.match(/\[ПРЕЗЕНТАЦИЯ_?ТЕКСТ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ_?ТЕКСТ\]/i);
+          const presText = presTextMatch ? presTextMatch[1].trim() : (this.attachedPresentationText || '');
+          const presFileMatch = ls?.homework?.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/i);
+          const presLink = presFileMatch ? presFileMatch[1].trim() : (this.attachedPresentation || '');
+          const hw = await Gemini.generateTutoringAI('homework', 
+            { name: st.name, grade: st.grade, ...dossier }, 
+            { 
+              topic, 
+              scenario, 
+              cards: this.dispatcherCards || [],
+              presentation: presLink,
+              presentationText: presText
+            }, 
+            ls
+          );
           document.getElementById('hw-disp-text').value = hw;
           this.updateDispatcherPreview(st);
           UI.toast('ДЗ сгенерировано!', 'success');

@@ -978,6 +978,7 @@ async function getLatestLessonWithMaterials(studentId) {
   let bestMaterials = '';
   let bestDebrief = '';
   let bestCleanHw = '';
+  let bestPresText = '';
 
   for (const l of recentLessons) {
     if (l.topic && l.topic.trim() && !topicsList.includes(l.topic.trim())) {
@@ -987,6 +988,10 @@ async function getLatestLessonWithMaterials(studentId) {
     if (!bestScenario) {
       const sc = extractLessonScenario(hwRaw);
       if (sc) bestScenario = sc;
+    }
+    if (!bestPresText) {
+      const pt = extractPresentationText(hwRaw);
+      if (pt) bestPresText = pt;
     }
     if (!bestPresentation) {
       const prMatch = hwRaw.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
@@ -1019,6 +1024,7 @@ async function getLatestLessonWithMaterials(studentId) {
 
   primary._mergedTopic = (primary.topic && primary.topic.trim()) || topicsList[0] || 'English';
   primary._mergedScenario = extractLessonScenario(primary.homework || '') || bestScenario;
+  primary._mergedPresText = extractPresentationText(primary.homework || '') || bestPresText;
   primary._mergedPresentation = bestPresentation;
   primary._mergedMaterials = bestMaterials;
   primary._mergedDebrief = bestDebrief;
@@ -1030,7 +1036,7 @@ function extractAllLessonMaterials(lesson, st) {
   const doss = st ? parseStudentDossierBot(st) : {};
   const topic = lesson?._mergedTopic || lesson?.topic || 'Практика английского по программе';
   const scenario = lesson?._mergedScenario || extractLessonScenario(lesson?.homework || '');
-  const presText = extractPresentationText(lesson?.homework || '');
+  const presText = lesson?._mergedPresText || extractPresentationText(lesson?.homework || '');
   const materials = lesson?._mergedMaterials || '';
   const debrief = lesson?._mergedDebrief || '';
   const cleanHw = lesson?._mergedCleanHw || '';
