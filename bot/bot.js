@@ -593,17 +593,21 @@ async function completeTask(taskId) {
 // ============================================
 function parseStudentDossierBot(st) {
   const raw = st?.schedule || '';
+  const TAG_PATTERN = /\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/;
   const getSec = (tag) => {
     const idx = raw.indexOf(tag);
     if (idx === -1) return '';
     const rest = raw.slice(idx + tag.length);
-    const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:/);
+    const nextIdx = rest.search(TAG_PATTERN);
     return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
   };
-  const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:/);
+  const firstTagIdx = raw.search(TAG_PATTERN);
+  const rawShields = getSec('[ЩИТЫ_СТРИКА]:');
+  const parsedShields = rawShields !== '' ? parseInt(rawShields, 10) : 1;
   return {
     schedule: (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim(),
     streak: parseInt(getSec('[СТРИК]:'), 10) || 0,
+    shields: Number.isNaN(parsedShields) ? 1 : Math.max(0, Math.min(3, parsedShields)),
     lastActiveDate: getSec('[LAST_ACTIVE]:'),
     tgId: getSec('[TG_ID]:'),
     tgUser: getSec('[TG_USER]:'),
@@ -625,6 +629,7 @@ function serializeStudentDossierBot(doss) {
   if (doss.parentTgId) out += `\\n[PARENT_TG_ID]:\\n${doss.parentTgId}`;
   if (doss.parentTgUser) out += `\\n[PARENT_TG_USER]:\\n${doss.parentTgUser}`;
   if (doss.streak) out += `\\n[СТРИК]:\\n${doss.streak}`;
+  if (doss.shields !== undefined && doss.shields !== null) out += `\\n[ЩИТЫ_СТРИКА]:\\n${doss.shields}`;
   if (doss.lastActiveDate) out += `\\n[LAST_ACTIVE]:\\n${doss.lastActiveDate}`;
   if (doss.perplexity) out += `\\n[PERPLEXITY]:\\n${doss.perplexity}`;
   if (doss.unit) out += `\\n[УЧЕБНИК]:\\n${doss.unit}`;
@@ -636,40 +641,68 @@ function serializeStudentDossierBot(doss) {
 }
 
 async function recordStudentDailyActivity(st, actor = null) {
-  if (!st || !st.id) return { streak: 1, isNewDay: false, alreadyActiveToday: true };
+  if (!st || !st.id) return { streak: 1, shields: 1, isNewDay: false, alreadyActiveToday: true };
   const doss = parseStudentDossierBot(st);
   const todayMinsk = getMinskDateString(0);
   const yesterdayMinsk = getMinskDateString(-1);
 
   const lastDate = doss.lastActiveDate || '';
   let curStreak = parseInt(doss.streak, 10) || 0;
+  let curShields = doss.shields !== undefined ? parseInt(doss.shields, 10) : 1;
+  if (Number.isNaN(curShields)) curShields = 1;
   let isNewDay = false;
   let alreadyActiveToday = false;
+  let shieldUsed = false;
+  let earnedNewShield = false;
 
   if (lastDate === todayMinsk) {
     alreadyActiveToday = true;
-    return { streak: Math.max(curStreak, 1), isNewDay: false, alreadyActiveToday: true };
+    return { streak: Math.max(curStreak, 1), shields: curShields, isNewDay: false, alreadyActiveToday: true, shieldUsed: false, earnedNewShield: false };
   }
 
   isNewDay = true;
-  if (lastDate === yesterdayMinsk) {
+  if (lastDate === yesterdayMinsk || !lastDate) {
     curStreak = (curStreak || 0) + 1;
+  } else if (curStreak > 1 && curShields > 0) {
+    // 🛡️ Щит заморозки спасает серию, если ребёнок пропустил день!
+    curShields -= 1;
+    shieldUsed = true;
+    curStreak = curStreak + 1;
   } else {
     curStreak = 1;
   }
 
+  // Каждые 5 ударных дней / выполненных ДЗ подряд ребёнок получает +1 🛡️ Щит заморозки (максимум 3 щита)
+  if (curStreak > 0 && curStreak % 5 === 0 && curShields < 3) {
+    curShields += 1;
+    earnedNewShield = true;
+  }
+
   doss.streak = curStreak;
+  doss.shields = curShields;
   doss.lastActiveDate = todayMinsk;
   const newSched = serializeStudentDossierBot(doss);
   await db.from('students').update({ schedule: newSched }).eq('id', st.id);
   st.schedule = newSched;
 
+  const actorLabel = actor?.displayLabel || actor?.name || st.name;
+  const studentChatId = (actor?.actorId && /^\d+$/.test(String(actor.actorId))) ? String(actor.actorId) : null;
+  if (studentChatId && isNewDay) {
+    if (shieldUsed) {
+      bot.sendMessage(studentChatId, `🛡️ *Сработал твой Щит заморозки стрика, ${actor?.name || st.name}!*\nТы пропустил(а) день, но щит защитил твой огонёк — серия *🔥 ${curStreak} дн. подряд* полностью сохранена!\nОсталось щитов в запасе: *${curShields}/3* 🛡️`, { parse_mode: 'Markdown' }).catch(() => {});
+    }
+    if (earnedNewShield) {
+      bot.sendMessage(studentChatId, `🎁 *НОВАЯ НАГРАДА, ${(actor?.name || st.name).toUpperCase()}!* 🎉\nЗа стабильную серию *🔥 ${curStreak} дней подряд* ты получаешь **+1 🛡️ Щит заморозки стрика**!\nТеперь у тебя в запасе: *${curShields}/3 🛡️*`, { parse_mode: 'Markdown' }).catch(() => {});
+    }
+  }
   if (ADMIN_CHAT_ID && isNewDay) {
-    const actorLabel = actor?.displayLabel || actor?.name || st.name;
-    bot.sendMessage(ADMIN_CHAT_ID, `🔥 *[Ударный режим Duolingo Streak]*: *${actorLabel}* позанимался(лась) сегодня в боте!\n🎯 Серия дней: *${curStreak} дн. подряд*! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+    let extraNote = '';
+    if (shieldUsed) extraNote += `\n🛡️ *Сработал Щит заморозки!* Серия спасена (осталось щитов: ${curShields}).`;
+    if (earnedNewShield) extraNote += `\n🎁 *Награда за ${curStreak} дней подряд:* ученик получил +1 🛡️ Щит заморозки (всего щитов: ${curShields})!`;
+    bot.sendMessage(ADMIN_CHAT_ID, `🔥 *[Ударный режим Duolingo Streak]*: *${actorLabel}* позанимался(лась) сегодня в боте!\n🎯 Серия дней: *${curStreak} дн. подряд* | 🛡️ Щитов: *${curShields}/3*! 🚀${extraNote}`, { parse_mode: 'Markdown' }).catch(() => {});
   }
 
-  return { streak: curStreak, isNewDay: true, alreadyActiveToday: false };
+  return { streak: curStreak, shields: curShields, isNewDay: true, alreadyActiveToday: false, shieldUsed, earnedNewShield };
 }
 
 async function getStudentVocabularyBank(st) {
@@ -1595,6 +1628,8 @@ async function buildStudentAnalyticsAndProgressReport(st, options = { forParent:
 
   const kb = [
     [{ text: `🔔 Напомнить ${st.name} про ДЗ (15 мин)`, callback_data: `teacher_nudge_hw:${st.id}` }],
+    [{ text: `🛡️ Рассказать ${st.name} про нововведения и Щит`, callback_data: `teacher_send_innovations:${st.id}` }],
+    [{ text: `🏆 Паспорт прогресса (${st.name})`, callback_data: `teacher_milestone_card:${st.id}` }],
     [{ text: `👨‍👩‍👧 Отправить этот отчёт родителю`, callback_data: `teacher_send_analytics_parent:${st.id}` }],
     [{ text: `🎤 Написать ученику в бот`, callback_data: `teacher_reply_st:${st.id}` }]
   ];
@@ -1626,8 +1661,9 @@ async function buildAllStudentsProgressOverview() {
   for (const st of students) {
     const rep = await buildStudentAnalyticsAndProgressReport(st, { forParent: false });
     const s = rep.stats;
+    const doss = parseStudentDossierBot(st);
     const statusIcon = s.canSubmit ? '✅' : (s.currentPct > 0 ? '⏳' : '🔒');
-    out += `👤 *${st.name}* (${st.grade || 'шк.'})\n`;
+    out += `👤 *${st.name}* (${st.grade || 'шк.'}) | 🔥 Стрик: ${doss.streak || 0} | 🛡️ Щитов: ${doss.shields}/3\n`;
     out += `   • Пройдено уроков: *${s.totalConducted}*\n`;
     out += `   • Сдано и зафиксировано ДЗ: *${s.fixedHwCount}* | Не сдано прошлых: *${s.missedHwCount}*\n`;
     out += `   • Текущее ДЗ сейчас: ${statusIcon} *${s.currentPct}%* (${s.hasNotebookPhoto ? '📸 фото тетрадки сдано ✅' : 'ждём 📸 фото тетрадки'})\n\n`;
@@ -1637,6 +1673,7 @@ async function buildAllStudentsProgressOverview() {
     ]);
   }
   kb.push([{ text: '🔔 Напомнить ВСЕМ, у кого ещё не сдано ДЗ', callback_data: 'teacher_nudge_all_hw' }]);
+  kb.push([{ text: '🛡️ Рассказать ВСЕМ детям про нововведения и Щит', callback_data: 'teacher_broadcast_innovations' }]);
   return { text: out.trim(), kb };
 }
 
@@ -1686,8 +1723,8 @@ async function nudgeStudentAboutHomework(st, isManual = false) {
       `✅ *Уже сделано:* ${actorSum.doneList.length ? actorSum.doneList.join(', ') : 'пока 0%'}\n\n` +
       `✍️ *Что осталось для зачёта:*\n` +
       `1️⃣ Запиши короткое письменное упражнение с карточки в свою тетрадку и пришли сюда *📸 ФОТО тетрадки*!\n` +
-      `2️⃣ Для быстрой разминки нажми кнопки со словами и мини-тестиком ниже 👇\n\n` +
-      `🔥 _Давай сделаем сегодня за 15 минут, чтобы твой огонёк ударного режима (${doss.streak || 1} дн.) горел стабильно! Жду фото твоей тетрадки!_ 💪🚀`;
+      `2️⃣ Для быстрой разминки нажми кнопки со словами, правилом урока и мини-тестиком ниже 👇\n\n` +
+      `🔥 _Давай сделаем сегодня за 15 минут, чтобы твой огонёк ударного режима (${doss.streak || 1} дн., защищён 🛡️ x${doss.shields} щитом) горел стабильно! Жду фото твоей тетрадки!_ 💪🚀`;
 
     await sendCleanMessage(tid, nudgeMsg, { reply_markup: kbMarkup }).catch(() => {});
   }
@@ -1706,6 +1743,148 @@ async function nudgeStudentAboutHomework(st, isManual = false) {
   } catch (e) {}
 
   return { sent: true, pct: hwStatus.pct, topic };
+}
+
+const activeVoiceChallenges = new Map(); // chatId -> { studentId, actorName, topic, phrases, createdAt }
+
+function buildStudentInnovationsAndShieldMessage(st, actor = null) {
+  const doss = parseStudentDossierBot(st);
+  const childName = actor?.shortName || actor?.name || st?.name || 'Друг';
+  const curStreak = doss.streak || 1;
+  const curShields = doss.shields !== undefined ? doss.shields : 1;
+  const shieldsVisual = '🛡️'.repeat(Math.max(0, curShields)) + '⚪'.repeat(Math.max(0, 3 - curShields));
+
+  return (
+    `🎉 *ПРИВЕТ, ${childName.toUpperCase()}! БОЛЬШОЕ ОБНОВЛЕНИЕ И НОВЫЕ ПРАВИЛА БОТА!* 🚀🇬🇧\n\n` +
+    `Игорь обновил твоего бота-помощника по английскому! Вот какие крутые нововведения теперь работают для тебя:\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `🛡️ *1. У ТЕБЯ ПОЯВИЛСЯ «ЩИТ ЗАМОРОЗКИ СТРИКА»!*\n` +
+    `• Твой запас щитов сейчас: *${shieldsVisual} (${curShields} из 3)*\n` +
+    `• Твой ударный режим (Streak): *🔥 ${curStreak} ДЗ подряд*\n` +
+    `• *Как работает Щит:* мы знаем, что иногда в школе бывает завал. Если ты случайно пропустишь день, твой накопленный огонёк 🔥 *НЕ СГОРИТ* — Щит автоматически примет удар на себя и спасёт твою серию!\n` +
+    `• *Как заработать новый Щит:* за каждые *5 сданных подряд домашних заданий* бот дарит тебе *+1 новый 🛡️ Щит заморозки* (в рюкзаке помещается до 3 щитов)!\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `⏱ *2. ДОМАШКА ВСЕГО НА 10–15 МИНУТ + 📸 ФОТО ТЕТРАДКИ*\n` +
+    `• Больше никаких огромных скучных заданий! Только *5 главных слов урока* и *4 коротких предложения* на красивой карточке.\n` +
+    `• ⚠️ *Главное правило сдачи ДЗ (75%):* кнопки в боте (слова, флеш-карточки, тестик) дают разминку до *60%*. А чтобы открылась кнопка *«✅ Я сделал(а) ДЗ!»*, обязательно перепиши упражнение с карточки от руки в тетрадь и пришли сюда *📸 ФОТО своей тетрадки*! Я сам проверю твой почерк и подскажу, если где-то закралась ошибка!\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `📖 *3. БОТ ВСЕГДА РАССКАЖЕТ ПРАВИЛО УРОКА (+ 🔊 ОЗВУЧКА)*\n` +
+    `• Если подзабыл(а) тему или правило с презентации — просто нажми кнопку *«📖 Правило урока»*! Я простыми словами за 1 минуту объясню секрет правила на примерах из твоих любимых игр и озвучу английские фразы голосом!\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `🎤 *4. ГОЛОСОВОЙ ЧЕЛЛЕНДЖ НА 15 СЕКУНД (+15 XP)*\n` +
+    `• Нажми кнопку *«🎤 Голосовой челлендж»*, послушай 3 короткие фразы урока и прочитай их вслух в микрофон Telegram — я оценю твоё произношение и начислю бонусные баллы!\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `🏆 *5. ТВОЙ «ПАСПОРТ ПРОГРЕССА»*\n` +
+    `• Нажми *«🏆 Паспорт прогресса»*, чтобы посмотреть свой ранг, сколько слов уже в твоей копилке и сколько наград ты собрал(а)!\n\n` +
+    `👇 *Попробуй новые кнопки прямо сейчас!*`
+  );
+}
+
+async function buildMilestonePassportReport(st, actor = null, forParent = false) {
+  if (!st) return 'Ученик не найден.';
+  const doss = parseStudentDossierBot(st);
+  const bank = await getStudentVocabularyBank(st);
+  const { data: allLs } = await db.from('lessons')
+    .select('*')
+    .eq('student_id', st.id)
+    .eq('status', 'Проведен')
+    .order('date', { ascending: false });
+
+  const conducted = allLs || [];
+  let fixedHwCount = 0;
+  let totalHw = 0;
+  const topicsMastered = [];
+
+  for (const l of conducted) {
+    const rawHw = l.homework || '';
+    const cleanHw = cleanHomeworkTextBot(rawHw);
+    if (l.topic && l.topic.trim() && !topicsMastered.includes(l.topic.trim())) {
+      topicsMastered.push(l.topic.trim());
+    }
+    const hasHw = cleanHw.length > 5 || rawHw.includes('[КАРТОЧКИ_ДЗ]') || rawHw.includes('[ФОТО_ДЗ_СДАНО') || rawHw.includes('[ДЗ_СДАНО') || rawHw.includes('[ДЗ_ПРОВЕРЕНО');
+    if (hasHw) {
+      totalHw++;
+      if (rawHw.includes('[ФОТО_ДЗ_СДАНО') || rawHw.includes('[ДЗ_СДАНО') || rawHw.includes('[ДЗ_ПРОВЕРЕНО')) {
+        fixedHwCount++;
+      }
+    }
+  }
+
+  const stabilityPct = totalHw > 0 ? Math.round((fixedHwCount / totalHw) * 100) : 100;
+  const curStreak = doss.streak || 1;
+  const curShields = doss.shields !== undefined ? doss.shields : 1;
+  const shieldsBar = '🛡️'.repeat(Math.max(0, curShields)) + '⚪'.repeat(Math.max(0, 3 - curShields));
+
+  let rankTitle = '🌱 Искатель английских слов (Уровень 1)';
+  if (conducted.length >= 15 || bank.length >= 60) rankTitle = '👑 Магистр английской лиги (Уровень 4)';
+  else if (conducted.length >= 8 || bank.length >= 35) rankTitle = '🚀 Покоритель грамматики (Уровень 3)';
+  else if (conducted.length >= 4 || bank.length >= 15) rankTitle = '⚡ Мастер правил и миссий (Уровень 2)';
+
+  const displayName = actor?.fullName || st.name;
+
+  let text = `🏆 *ПАСПОРТ ПРОГРЕССА И ДОСТИЖЕНИЙ*\n`;
+  text += `👤 *Ученик:* ${displayName} (${st.grade || 'школьник'})\n`;
+  text += `🎖 *Текущий ранг:* ${rankTitle}\n`;
+  text += `━━━━━━━━━━━━━━\n`;
+  text += `📊 *ГЛАВНЫЕ ПОКАЗАТЕЛИ:*\n`;
+  text += `• 📚 *Пройдено уроков с Игорем:* ${conducted.length}\n`;
+  text += `• ✅ *Выполнено ДЗ (с фото тетрадки):* ${fixedHwCount} из ${totalHw || conducted.length} (${stabilityPct}% стабильности)\n`;
+  text += `• 🔥 *Ударная серия (Streak):* ${curStreak} ДЗ подряд\n`;
+  text += `• 🛡️ *Щиты заморозки стрика:* ${shieldsBar} (${curShields}/3)\n`;
+  text += `• 🔤 *Активный словарный запас:* ${bank.length} слов и выражений\n\n`;
+
+  if (topicsMastered.length > 0) {
+    text += `🧠 *ОСВОЕННЫЕ ТЕМЫ И МИССИИ:*\n`;
+    topicsMastered.slice(0, 6).forEach((t, i) => {
+      text += `  ${i + 1}. 🌟 ${t}\n`;
+    });
+    text += `\n`;
+  }
+
+  const sampleWords = bank.slice(0, 8).map(w => w.word).join(', ');
+  if (sampleWords) {
+    text += `💎 *В копилке слов:* ${sampleWords}${bank.length > 8 ? ` и ещё +${bank.length - 8} слов` : ''}\n\n`;
+  }
+
+  const nextShieldIn = 5 - (curStreak % 5);
+  if (forParent) {
+    text += `👨‍👩‍👧 *Комментарий для родителей:* система построена по методике коротких регулярных шагов (10–15 минут на каждое ДЗ с обязательной рукописной фиксацией в тетради по фото). Это формирует у ребёнка прочную грамматическую базу и привычку заниматься без стресса! 🌟`;
+  } else {
+    text += `🎁 *Следующая награда:* сдай ещё *${nextShieldIn} ДЗ подряд*, чтобы получить новый *🛡️ Щит заморозки стрика*! Продолжай в том же духе! 🚀`;
+  }
+
+  return text;
+}
+
+async function broadcastInnovationsToStudents(targetStudent = null) {
+  const students = targetStudent
+    ? [targetStudent]
+    : ((await db.from('students').select('*').order('name')).data || []);
+
+  const sentTo = [];
+  for (const st of students) {
+    const doss = parseStudentDossierBot(st);
+    const targetIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (targetIds.length === 0) continue;
+
+    // Убедимся, что у каждого ученика записан стартовый Щит заморозки (если ещё не был сохранён)
+    if (!st.schedule || !st.schedule.includes('[ЩИТЫ_СТРИКА]:')) {
+      doss.shields = Math.max(1, doss.shields || 1);
+      const updatedSched = serializeStudentDossierBot(doss);
+      await db.from('students').update({ schedule: updatedSched }).eq('id', st.id);
+      st.schedule = updatedSched;
+    }
+
+    const lastLs = await getLatestLessonWithMaterials(st.id);
+    for (const tid of targetIds) {
+      const actor = resolveStudentActor(st, tid);
+      const msg = buildStudentInnovationsAndShieldMessage(st, actor);
+      const kbMarkup = buildStudentKeyboard(st, lastLs, tid);
+      await sendCleanMessage(tid, msg, { reply_markup: kbMarkup }).catch(() => {});
+      sentTo.push(`${actor.displayLabel}`);
+    }
+  }
+  return sentTo;
 }
 
 function addStudentXp(studentId, lessonId, userId, userName, amount) {
@@ -1944,10 +2123,11 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
   const bar = '▓'.repeat(filled) + '░'.repeat(10 - filled);
 
   msg += `\n📊 *Готовность ДЗ:* [${bar}] *${pct}%* (для сдачи нужно минимум 75% + 📸 фото тетради)\n`;
-  msg += `🔥 *Твоя серия (Streak):* ${doss.streak || 0} ДЗ подряд без пропусков!\n`;
+  msg += `🔥 *Твоя серия (Streak):* ${doss.streak || 0} ДЗ подряд | 🛡️ *Щиты заморозки:* ${doss.shields ?? 1}/3\n`;
   const lbText = getLeaderboardText(st.id, lesson?.id);
   if (lbText) msg += lbText;
-  msg += `\n📸 *ОБЯЗАТЕЛЬНО ДЛЯ СДАЧИ ДЗ:* Выполни письменное упражнение с карточки от руки в тетради и пришли сюда *фото своей тетрадки*! Только после проверки фото тетрадки откроется кнопка «✅ Я сделал(а) ДЗ!» 💪`;
+  msg += `\n📖 *Забыл(а) правило урока?* Нажми кнопку *«📖 Правило урока»* внизу — я объясню тему простыми словами с примерами и озвучкой!\n`;
+  msg += `📸 *ОБЯЗАТЕЛЬНО ДЛЯ СДАЧИ ДЗ:* Выполни письменное упражнение с карточки от руки в тетради и пришли сюда *фото своей тетрадки*! Только после проверки фото тетрадки откроется кнопка «✅ Я сделал(а) ДЗ!» 💪`;
 
   const kbMarkup = buildStudentKeyboard(st, lesson);
   try {
@@ -2710,6 +2890,8 @@ function matchStudent(allStudents, query) {
 
 function buildStudentKeyboard(st, lesson, chatIdOrUserId = null) {
   const actor = resolveStudentActor(st, chatIdOrUserId);
+  const doss = parseStudentDossierBot(st);
+  const shields = typeof doss.shields === 'number' ? doss.shields : 1;
   const topic = (lesson?.topic || lesson?._mergedTopic || '').toLowerCase();
   const scenario = (lesson?._mergedScenario || extractLessonScenario(lesson?.homework || '') || '').toLowerCase();
   const hwText = (lesson?.homework || '').toLowerCase();
@@ -2722,26 +2904,33 @@ function buildStudentKeyboard(st, lesson, chatIdOrUserId = null) {
         ? `🔒 Сдать ДЗ (${hwStatus.pct}% — пришли 📸 фото тетради!)`
         : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`);
 
-  let dynamicBtn = { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` };
-  if (allContent.includes('shopping') || allContent.includes('магазин') || allContent.includes('clothes') || allContent.includes('покупк') || allContent.includes('store') || allContent.includes('market')) {
-    dynamicBtn = { text: '🛒 В магазине (Shopping)', callback_data: `student_grammar_rule:${st.id}` };
-  } else if (allContent.includes('местоимен') || allContent.includes('pronoun') || allContent.includes('whose') || allContent.includes('owner') || allContent.includes('чей') || allContent.includes('притяжательн') || allContent.includes("'s")) {
-    dynamicBtn = { text: '🧩 Местоимения и \'s', callback_data: `student_grammar_rule:${st.id}` };
-  } else if (allContent.includes('сравнен') || allContent.includes('comparative') || allContent.includes('superlative') || allContent.includes('степен')) {
-    dynamicBtn = { text: '⚡ Степени сравнения', callback_data: `student_grammar_rule:${st.id}` };
+  let ruleBtnText = '📖 Правило урока';
+  if (allContent.includes('shopping') || allContent.includes('магазин') || allContent.includes('clothes') || allContent.includes('покупк')) {
+    ruleBtnText = '📖 Правило: В магазине';
+  } else if (allContent.includes('местоимен') || allContent.includes('pronoun') || allContent.includes('whose') || allContent.includes("'s")) {
+    ruleBtnText = '📖 Правило: Местоимения и \'s';
+  } else if (allContent.includes('сравнен') || allContent.includes('comparative') || allContent.includes('superlative')) {
+    ruleBtnText = '📖 Правило: Степени сравнения';
   } else if (allContent.includes('артикл') || allContent.includes('article') || allContent.includes(' the ')) {
-    dynamicBtn = { text: '⚡ Артикли (Правило)', callback_data: `student_grammar_rule:${st.id}` };
-  } else if (allContent.includes('verb') || allContent.includes('глагол') || allContent.includes('present perfect') || allContent.includes('past simple') || allContent.includes('irregular')) {
-    dynamicBtn = { text: '⚡ 5 глаголов урока', callback_data: `student_verbs:${st.id}` };
-  } else if (scenario.includes('грамматик') || scenario.includes('правил') || hwText.includes('правил') || topic.includes('present') || topic.includes('past') || topic.includes('future') || topic.includes('modal')) {
-    dynamicBtn = { text: '🧩 Правило урока', callback_data: `student_grammar_rule:${st.id}` };
+    ruleBtnText = '📖 Правило: Артикли';
+  } else if (allContent.includes('present perfect')) {
+    ruleBtnText = '📖 Правило: Present Perfect';
+  } else if (allContent.includes('past simple')) {
+    ruleBtnText = '📖 Правило: Past Simple';
+  }
+
+  let extraPracticeBtn = { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` };
+  if (allContent.includes('verb') || allContent.includes('глагол') || allContent.includes('present perfect') || allContent.includes('past simple') || allContent.includes('irregular')) {
+    extraPracticeBtn = { text: '⚡ 5 глаголов урока', callback_data: `student_verbs:${st.id}` };
   }
 
   return {
     inline_keyboard: [
       [{ text: submitBtnText, callback_data: `student_hw_done:${lesson?.id || ''}` }],
-      [{ text: '🔤 Слова урока', callback_data: `student_words:${st.id}` }, dynamicBtn],
-      [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` }]
+      [{ text: ruleBtnText, callback_data: `student_grammar_rule:${st.id}` }, { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }],
+      [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
+      [{ text: '🎤 Голосовой челлендж', callback_data: `student_voice_challenge:${st.id}` }, extraPracticeBtn],
+      [{ text: `🛡️ Нововведения и Щит (${shields}🛡️)`, callback_data: `student_innovations:${st.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `student_milestone_card:${st.id}` }]
     ]
   };
 }
@@ -4719,52 +4908,63 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
 
       const actor = resolveStudentActor(st, chatId, query.from);
-      await bot.answerCallbackQuery(query.id, { text: `🧩 Загружаю грамматику для ${actor.name}...` });
+      await bot.answerCallbackQuery(query.id, { text: `📖 Объясняю правило урока для ${actor.name}...` });
       const doss = parseStudentDossierBot(st);
       const lastLs = await getLatestLessonWithMaterials(st.id);
       const materialsText = extractAllLessonMaterials(lastLs, st);
       const topic = ((lastLs?.topic || '') + ' ' + (lastLs?._mergedTopic || '') + ' ' + (st.name || '')).toLowerCase();
       const textContent = (materialsText + ' ' + (doss.errors || '')).toLowerCase();
 
-      let ruleTitle = lastLs?.topic ? `🧩 Правило урока: ${lastLs.topic}` : '🧩 Грамматическое правило урока';
-      let ruleFocus = lastLs?.topic ? `тема урока "${lastLs.topic}"` : 'ключевое грамматическое правило прошедшего урока';
-      if (topic.includes('местоимен') || topic.includes('pronoun') || topic.includes('whose') || topic.includes('owner') || topic.includes("'s") || textContent.includes('притяжательн')) {
-        ruleTitle = '🧩 Чей это питомец? Притяжательные местоимения (my, your, his, her, its, our, their) и правило \'s';
+      let ruleTitle = lastLs?.topic ? `📖 Правило урока: ${lastLs.topic}` : '📖 Грамматическое правило урока';
+      let ruleFocus = lastLs?.topic ? `тема урока "${lastLs.topic}" и грамматические правила со слайдов презентации/сценария` : 'ключевое грамматическое правило прошедшего урока';
+      if (topic.includes('present perfect') || textContent.includes('present perfect')) {
+        ruleTitle = '📖 Правило урока: Present Perfect (have/has + V3) и слова-маячки';
+        ruleFocus = 'Present Perfect (have/has + 3-я форма глагола V3), разница have vs has, слова-спутники already, just, yet, ever, never';
+      } else if (topic.includes('past simple') || textContent.includes('past simple')) {
+        ruleTitle = '📖 Правило урока: Past Simple (прошедшее время: V2 / -ed и did)';
+        ruleFocus = 'Past Simple: правильные (-ed) и неправильные (2-я форма) глаголы, вопросы и отрицания с did/didn\'t + V1';
+      } else if (topic.includes('местоимен') || topic.includes('pronoun') || topic.includes('whose') || topic.includes('owner') || topic.includes("'s") || textContent.includes('притяжательн')) {
+        ruleTitle = '📖 Чей это предмет? Притяжательные местоимения (my, your, his, her, its, our, their) и \'s';
         ruleFocus = 'притяжательные местоимения (my, your, his, her, its, our, their), вопрос Whose is it? и притяжательный падеж \'s (например: Tom\'s dog, Emma\'s cat)';
       } else if (topic.includes('сравнен') || topic.includes('compar')) {
-        ruleTitle = '⚡ Степени сравнения прилагательных (Degrees of Comparison)';
-        ruleFocus = 'степени сравнения: fast - faster - the fastest, interesting - more interesting - the most interesting';
+        ruleTitle = '📖 Степени сравнения прилагательных (Degrees of Comparison)';
+        ruleFocus = 'степени сравнения: fast - faster - the fastest, interesting - more interesting - the most interesting, исключения good - better - the best';
       } else if (topic.includes('артикл') || topic.includes('article') || topic.includes(' the ')) {
-        ruleTitle = '⚡ Артикли (the vs a/an vs без артикля)';
-        ruleFocus = 'употребление the с морями, океанами, реками vs Lake без the';
+        ruleTitle = '📖 Артикли (the vs a/an vs без артикля)';
+        ruleFocus = 'употребление артиклей the и a/an по материалам урока';
       } else if (topic.includes('shopping') || topic.includes('магазин')) {
-        ruleTitle = '🛒 Разговорные фразы в магазине (Shopping phrases)';
-        ruleFocus = 'фразы в магазине: How much is...?, Can I have...?, I would like..., try it/them on';
+        ruleTitle = '📖 Правила и разговорные фразы в магазине (Shopping)';
+        ruleFocus = 'фразы и грамматика в магазине: How much is/are...?, Can I have...?, I would like..., try it/them on';
       }
 
-      const prompt = `Ты — добрый, увлекательный преподаватель английского для ${actor.name} (${st.grade || '4-6 класс'}).
+      const prompt = `Ты — добрый, харизматичный и супер-понятный детский преподаватель английского для ученика ${actor.name} (${st.grade || '4-6 класс'}).
 Тема урока: "${lastLs?.topic || 'English'}".
 Грамматический фокус: ${ruleFocus}.
-Материалы урока и сценарий:
-"${materialsText.slice(0, 900)}".
+Полные материалы урока (слайды презентации, конспект и типичные ошибки ученика):
+"""
+${materialsText.slice(0, 4800)}
+"""
 
-ТВОЯ ЗАДАЧА:
-1. Объясни это правило максимально просто, понятно и с юмором для школьника (не более 5-6 строк).
-2. Дай 3 наглядных примера с разбором:
-   1. Пример 1 (вопрос и ответ на английском + перевод на русский)
-   2. Пример 2
-   3. Пример 3
-3. В конце дай 1 мини-задание на самопроверку: "Напиши мне в ответ, как сказать по-английски: [...]"
+ТВОЯ ЗАДАЧА — рассказать и объяснить ребёнку правило этого урока «на пальцах», живо и увлекательно:
+1. 🧠 ГЛАВНЫЙ СЕКРЕТ ПРАВИЛА (3-4 предложения простыми детскими словами: зачем нужно это правило и какие слова-маячки сразу его выдают).
+2. 📐 ШПАРГАЛКА-ФОРМУЛА (наглядно покажи схему: как строятся утверждения (+), отрицания (-) и вопросы (?) по материалам презентации урока).
+3. ⚠️ ГЛАВНАЯ ЛОВУШКА (на чём чаще всего ловятся ребята по этой теме и как не ошибиться).
+4. 🇬🇧 3 ПРИМЕРА ИЗ НАШЕГО УРОКА (с переводом на русский и коротким пояснением, почему именно так):
+   1) [Английское предложение] — [Перевод] ([почему так])
+   2) [Английское предложение] — [Перевод] ([почему так])
+   3) [Английское предложение] — [Перевод] ([почему так])
+5. 🎯 МИНИ-ПРОВЕРКА НА 10 СЕКУНД: попроси ${actor.name} перевести или исправить 1 короткое предложение прямо в ответном сообщении в чате!
 
 ПРАВИЛА ОФОРМЛЕНИЯ (СТРОГО):
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)! Никаких звездочек!
-- Только чистый текст с эмодзи и отступами!`;
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)!
+- Пиши чистым, структурным текстом с эмодзи и удобными отступами!`;
 
       const genRes = await executeFunctionCall('generate_lesson_plan', { prompt });
       const rawText = genRes.generated_plan || `${ruleTitle}\n\nПовтори материалы урока и составь предложение!`;
 
       const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
       prog.completedSteps.grammar = true;
+      addStudentXp(st.id, lastLs?.id, query.from?.id || chatId, actor.name, 10);
       const hwStatus = getHwCompletionSummary(st, lastLs, chatId, query.from);
       await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
       const submitBtnLabel = hwStatus.canSubmit
@@ -4774,21 +4974,31 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
             : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`);
 
       const kb = [
-        [{ text: '📝 Пройти тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
-        [{ text: '🔤 Слова урока', callback_data: `student_words:${st.id}` }],
+        [{ text: '🎤 Голосовой челлендж (15 сек)', callback_data: `student_voice_challenge:${st.id}` }, { text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
+        [{ text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
         [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
       ];
 
       const fullGrammarMsg = `${ruleTitle}\n\n${rawText}`;
       await sendCleanMessage(chatId, fullGrammarMsg, { reply_markup: { inline_keyboard: kb } });
 
+      // Озвучиваем английские примеры из правила, чтобы ребёнок сразу услышал правильное произношение
+      const engExamples = [];
+      for (const line of rawText.split('\n')) {
+        const m = line.match(/^\s*[1-3][.)]\s*([A-Za-z][A-Za-z0-9\s',?!.’-]{4,90})/);
+        if (m && m[1]) engExamples.push(m[1].trim());
+      }
+      if (engExamples.length > 0) {
+        await sendTtsAudio(chatId, engExamples.join('. '), `Примеры: ${lastLs?.topic || 'Правило урока'}`, '🔊 Послушай, как звучат примеры из правила на английском');
+      }
+
       await sendCleanMessage(ADMIN_CHAT_ID,
-        `👀 [Копия для преподавателя — ${actor.displayLabel} открыл(а) разбор грамматики]:\n` +
-        `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% 🔒'})\n` +
+        `👀 [Копия для преподавателя — ${actor.displayLabel} изучил(а) «📖 Правило урока» (+10 XP)]:\n` +
+        `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% + 📸 фото 🔒'})\n` +
         `${hwStatus.groupBreakdownText ? `👥 В группе:\n${hwStatus.groupBreakdownText}\n` : ''}` +
         `✅ Что уже сделано:\n• ${hwStatus.doneText}\n` +
         `⏳ Что ещё осталось:\n• ${hwStatus.leftText}\n\n` +
-        `📩 Полный текст объяснения и задания, отправленный ученику:\n${fullGrammarMsg}`
+        `📩 Полный текст объяснения правила, отправленный ученику:\n${fullGrammarMsg}`
       ).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
@@ -5226,25 +5436,158 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
 
       const actor = resolveStudentActor(st, chatId, query.from);
       const streakInfo = await recordStudentDailyActivity(st, actor);
+      const shields = typeof streakInfo.shields === 'number' ? streakInfo.shields : 1;
 
-      await bot.answerCallbackQuery(query.id, { text: `🔥 Стрик: ${streakInfo.streak} дн.` });
+      await bot.answerCallbackQuery(query.id, { text: `🔥 Стрик: ${streakInfo.streak} дн. | 🛡️ Щиты: ${shields}/3` });
 
       let text = `🔥 *УДАРНЫЙ РЕЖИМ (STREAK): ${actor.name.toUpperCase()}* 🔥\n\n`;
       text += `🏆 Твоя серия активности: *${streakInfo.streak} дней подряд*!\n`;
+      text += `🛡️ *Щиты заморозки стрика:* *${shields} из 3* (${'🛡️'.repeat(shields)}${'⚪'.repeat(Math.max(0, 3 - shields))})\n`;
       text += `⚡ Статус на сегодня: *${streakInfo.alreadyActiveToday ? '✅ Огонёк уже горит и защищён!' : '🔥 Огонёк активен!'}*\n\n`;
-      text += `💡 *Как работает ударный режим Duolingo:*\n`;
-      text += `• Заходи в бот каждый день хотя бы на 1 минуту.\n`;
-      text += `• Повторяй слова, листай флеш-карточки или проходи тестик.\n`;
-      text += `• Если пропустить день — серия может сгореть в полночь 😱\n\n`;
+      text += `💡 *Как работают Стрик и Щит заморозки:*\n`;
+      text += `• Заходи в бот каждый день на пару минут — повторяй правило, слова или карточки.\n`;
+      text += `• Если случайно пропустишь день — твой *🛡️ Щит заморозки* автоматически спасёт серию от сгорания!\n`;
+      text += `• Каждые *5 дней стрика подряд* ты получаешь *+1 новый 🛡️ Щит* (максимум 3 щита в запасе).\n\n`;
       text += `👇 Закрепи свой результат на сегодня:`;
 
       const kb = [
-        [{ text: '📚 Открыть мой словарик', callback_data: `student_vocab_bank:${st.id}` }],
-        [{ text: '🃏 Флеш-карточки со словами', callback_data: `student_flashcards:${st.id}:0` }],
-        [{ text: '📝 Пройти мини-тестик', callback_data: `student_poll_quiz:${st.id}` }]
+        [{ text: '📖 Правило урока', callback_data: `student_grammar_rule:${st.id}` }, { text: '🎤 Голосовой челлендж', callback_data: `student_voice_challenge:${st.id}` }],
+        [{ text: '📚 Мой словарик', callback_data: `student_vocab_bank:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
+        [{ text: `🛡️ Все нововведения и Щит (${shields}🛡️)`, callback_data: `student_innovations:${st.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `student_milestone_card:${st.id}` }]
       ];
 
       await sendCleanMessage(chatId, text, { reply_markup: { inline_keyboard: kb } });
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('student_innovations:') || data === 'student_innovations')) {
+    const studentId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      const actor = resolveStudentActor(st, chatId, query.from);
+      await bot.answerCallbackQuery(query.id, { text: '🛡️ Открываю гид по нововведениям и Щиту!' });
+      const lastLs = await getLatestLessonWithMaterials(st.id);
+      const msgText = buildStudentInnovationsAndShieldMessage(st, actor);
+      await sendCleanMessage(chatId, msgText, { reply_markup: buildStudentKeyboard(st, lastLs, chatId) });
+      await bot.sendMessage(ADMIN_CHAT_ID, `👀 *${actor.displayLabel}* открыл(а) раздел *«🛡️ Нововведения и Щит заморозки»*!`, { parse_mode: 'Markdown' }).catch(() => {});
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('student_milestone_card:') || data.startsWith('parent_milestone_card:') || data.startsWith('teacher_milestone_card:'))) {
+    const studentId = data.split(':')[1];
+    const isParent = data.startsWith('parent_milestone_card:');
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) {
+        const pFound = await findParentByTgChatId(chatId);
+        st = pFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+
+      const actor = resolveStudentActor(st, chatId, query.from);
+      await bot.answerCallbackQuery(query.id, { text: '🏆 Формирую Паспорт прогресса и достижений...' });
+      const passportText = await buildMilestonePassportReport(st, actor, isParent);
+      const kb = isParent
+        ? [[{ text: '📊 Полный отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }]]
+        : [
+            [{ text: '📖 Правило урока', callback_data: `student_grammar_rule:${st.id}` }, { text: '🎤 Голосовой челлендж', callback_data: `student_voice_challenge:${st.id}` }],
+            [{ text: '🛡️ Про Щит и нововведения', callback_data: `student_innovations:${st.id}` }]
+          ];
+      await sendCleanMessage(chatId, passportText, { reply_markup: { inline_keyboard: kb } });
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data === 'teacher_broadcast_innovations' || (data && data.startsWith('teacher_send_innovations:'))) {
+    const targetStId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      await bot.answerCallbackQuery(query.id, { text: '🛡️ Отправляю рассказ про нововведения и Щит...' });
+      const sentList = await broadcastInnovationsToStudents(targetStId);
+      if (sentList.length > 0) {
+        await bot.sendMessage(chatId, `✅ *Сообщение про нововведения, правила и 🛡️ Щит заморозки успешно отправлено:*\n• ${sentList.join('\n• ')}`, { parse_mode: 'Markdown' });
+      } else {
+        await bot.sendMessage(chatId, '⚠️ Не найдено привязанных Telegram ID учеников для отправки.');
+      }
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('student_voice_challenge:') || data === 'student_voice_challenge')) {
+    const studentId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      const actor = resolveStudentActor(st, chatId, query.from);
+      await bot.answerCallbackQuery(query.id, { text: `🎤 Готовлю голосовой челлендж для ${actor.name}...` });
+      const lastLs = await getLatestLessonWithMaterials(st.id);
+      const materialsText = extractAllLessonMaterials(lastLs, st);
+
+      const vcPrompt = `Ты — весёлый преподаватель английского для ${actor.name} (${st.grade || '4-6 класс'}).
+Тема урока: "${lastLs?.topic || 'English'}".
+Материалы урока:
+"""
+${materialsText.slice(0, 3000)}
+"""
+Составь ровно 3 коротких, простых и живых английских предложения по теме урока, которые ребёнок сможет легко прочитать вслух за 15 секунд в голосовом сообщении.
+Формат ответа (СТРОГО без звёздочек **):
+🎤 ГОЛОСОВОЙ ЧЕЛЛЕНДЖ НА 15 СЕКУНД (+15 XP)
+Прочитай вслух эти 3 предложения и пришли мне голосовое сообщение:
+
+1. [Английское предложение 1] — [Перевод на русский]
+2. [Английское предложение 2] — [Перевод на русский]
+3. [Английское предложение 3] — [Перевод на русский]
+
+💡 Подсказка по произношению: [1 короткая дружелюбная подсказка, как прочитать сложные слова]
+👇 Зажми микрофон в Telegram, прочитай эти 3 фразы и отправь мне!`;
+
+      const vcRes = await executeFunctionCall('generate_lesson_plan', { prompt: vcPrompt });
+      const vcText = vcRes.generated_plan || `🎤 ГОЛОСОВОЙ ЧЕЛЛЕНДЖ НА 15 СЕКУНД (+15 XP)\n\nПрочитай вслух и пришли голосовое сообщение:\n1. I have already done my homework. — Я уже сделал домашнее задание.\n2. She has just found a new clue. — Она только что нашла новую улику.\n3. Have you ever seen a dragon? — Ты когда-нибудь видел дракона?`;
+
+      const engLines = [];
+      for (const line of vcText.split('\n')) {
+        const m = line.match(/^\s*[1-3][.)]\s*([A-Za-z][A-Za-z0-9\s',?!.’-]{3,90})/);
+        if (m && m[1]) engLines.push(m[1].trim());
+      }
+
+      activeVoiceChallenges.set(String(chatId), {
+        studentId: st.id,
+        lessonId: lastLs?.id || null,
+        topic: lastLs?.topic || 'English',
+        challengeText: vcText,
+        sentences: engLines,
+        createdAt: Date.now()
+      });
+
+      await sendCleanMessage(chatId, vcText);
+      if (engLines.length > 0) {
+        await sendTtsAudio(chatId, engLines.join('. '), `Speaking Challenge: ${actor.name}`, '🔊 Сначала послушай, как звучат эти 3 фразы, а затем запиши своё голосовое!');
+      }
+      await sendCleanMessage(ADMIN_CHAT_ID, `🎤 [Копия для преподавателя]: ${actor.displayLabel} запустил(а) Голосовой челлендж на 15 секунд:\n\n${vcText}`).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -6319,28 +6662,43 @@ bot.onText(/\/(words|dictionary|vocab|слова|словарик)/i, async (msg
   await sendCleanMessage(chatId, text, { reply_markup: { inline_keyboard: kb } });
 });
 
-// /streak, /fire, /стрик — Ударный режим Duolingo
-bot.onText(/\/(streak|fire|стрик|огон)/i, async (msg) => {
+// /streak, /fire, /стрик, /shield, /щит, /novelties — Ударный режим Duolingo и Щит заморозки
+bot.onText(/\/(streak|fire|стрик|огон|shield|щит|innovations|новинки)/i, async (msg) => {
   const chatId = msg.chat.id;
+  if (String(chatId) === ADMIN_CHAT_ID && /shield|щит|innovations|новинки/i.test(msg.text || '')) {
+    const sentList = await broadcastInnovationsToStudents(null);
+    return bot.sendMessage(chatId, sentList.length > 0
+      ? `✅ *Рассказ про нововведения, правила и 🛡️ Щит заморозки отправлен ученикам:*\n• ${sentList.join('\n• ')}`
+      : '⚠️ Нет привязанных Telegram ID учеников.', { parse_mode: 'Markdown' });
+  }
   const sFound = await findStudentByTgChatId(chatId);
   if (!sFound) {
-    return bot.sendMessage(chatId, '🔥 Ударный режим доступен подключенным ученикам английского языка!');
+    return bot.sendMessage(chatId, '🔥 Ударный режим и Щит заморозки доступны подключенным ученикам английского языка!');
   }
   const st = sFound.student;
   const actor = resolveStudentActor(st, chatId, msg.from);
+  if (/shield|щит|innovations|новинки/i.test(msg.text || '')) {
+    const lastLs = await getLatestLessonWithMaterials(st.id);
+    const infoMsg = buildStudentInnovationsAndShieldMessage(st, actor);
+    return sendCleanMessage(chatId, infoMsg, { reply_markup: buildStudentKeyboard(st, lastLs, chatId) });
+  }
   const streakInfo = await recordStudentDailyActivity(st, actor);
+  const shields = typeof streakInfo.shields === 'number' ? streakInfo.shields : 1;
 
   let text = `🔥 *УДАРНЫЙ РЕЖИМ (STREAK): ${actor.name.toUpperCase()}* 🔥\n\n`;
   text += `🏆 Твоя серия активности: *${streakInfo.streak} дней подряд*!\n`;
+  text += `🛡️ *Щиты заморозки стрика:* *${shields} из 3* (${'🛡️'.repeat(shields)}${'⚪'.repeat(Math.max(0, 3 - shields))})\n`;
   text += `⚡ Статус на сегодня: *${streakInfo.alreadyActiveToday ? '✅ Огонёк уже горит и защищён!' : '🔥 Огонёк активен!'}*\n\n`;
-  text += `💡 *Как сохранить огонёк:*\n`;
-  text += `Заходи каждый день хотя бы на 1 минуту — повторяй слова, проходи мини-квизы или выполняй ДЗ. Огонёк растёт каждый день! 🚀\n\n`;
+  text += `💡 *Как сохранить огонёк и заработать Щит:*\n`;
+  text += `• Заходи каждый день хотя бы на 1 минуту — открывай «📖 Правило урока», слова или тестик.\n`;
+  text += `• Если случайно пропустишь день — твой *🛡️ Щит заморозки* автоматически спасёт серию!\n`;
+  text += `• Каждые *5 дней стрика подряд* ты получаешь *+1 новый 🛡️ Щит*!\n\n`;
   text += `👇 Потренируйся прямо сейчас:`;
 
   const kb = [
-    [{ text: '📚 Мой словарик', callback_data: `student_vocab_bank:${st.id}` }],
-    [{ text: '🃏 Флеш-карточки со словами', callback_data: `student_flashcards:${st.id}:0` }],
-    [{ text: '📝 Пройти мини-тестик', callback_data: `student_poll_quiz:${st.id}` }]
+    [{ text: '📖 Правило урока', callback_data: `student_grammar_rule:${st.id}` }, { text: '🎤 Голосовой челлендж', callback_data: `student_voice_challenge:${st.id}` }],
+    [{ text: '📚 Мой словарик', callback_data: `student_vocab_bank:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
+    [{ text: `🛡️ Нововведения и Щит (${shields}🛡️)`, callback_data: `student_innovations:${st.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `student_milestone_card:${st.id}` }]
   ];
   await sendCleanMessage(chatId, text, { reply_markup: { inline_keyboard: kb } });
 });
@@ -6589,6 +6947,43 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
       }
     }
 
+    if (isVoiceSubmission && activeVoiceChallenges.has(String(chatId))) {
+      const vcObj = activeVoiceChallenges.get(String(chatId));
+      activeVoiceChallenges.delete(String(chatId));
+      const newStreak = await incrementStudentStreakBot(st, actor);
+      const lastLs = await getLatestLessonWithMaterials(st.id);
+      const rawProg = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
+      rawProg.completedSteps.grammar = true;
+      const totalXp = addStudentXp(st.id, lastLs?.id, msg.from?.id || chatId, actor.name, 15);
+      const updatedProg = getHwCompletionSummary(st, lastLs, chatId, msg.from);
+      if (lastLs) await persistHwProgressPercent(lastLs, updatedProg.pct, actor, st);
+
+      const vcEvalPrompt = `Ты — добрый, вдохновляющий детский преподаватель английского для ${actor.name} (${st.grade || 'школьник'}).
+Ученик проходил 15-секундный Голосовой челлендж (Speaking Challenge) по теме "${vcObj.topic}":
+ЗАДАННЫЕ ФРАЗЫ:
+${vcObj.challengeText}
+
+РАСПОЗНАННАЯ РЕЧЬ УЧЕНИКА (Whisper):
+"${studentText || '[ученик прочитал фразы вслух]'}"
+
+Похвали ${actor.name} за смелость и произношение (до 600 символов, без символов **), отметь, какие фразы прозвучали здорово, мягко подскажи, если какое-то слово можно произнести ещё чётче, и поздравь с получением +15 XP и серией 🔥 ${newStreak}!`;
+      const vcEvalRes = await executeFunctionCall('generate_lesson_plan', { prompt: vcEvalPrompt });
+      const vcFeedback = vcEvalRes.generated_plan || `Отличное произношение, ${actor.name}! Ты супер-смело прочитал(а) предложения вслух! 🎤🌟`;
+
+      const vcStudentReply = `🎤 *Голосовой челлендж выполнен, ${actor.name}! (+15 XP)* 🌟\n\n${vcFeedback}\n\n📊 *Готовность ДЗ: ${updatedProg.pct}%* | 🏆 *Твой опыт: ${totalXp} XP*\n🔥 *Ударный режим: ${newStreak} дн. подряд!*`;
+      await sendCleanMessage(chatId, vcStudentReply, { reply_markup: buildStudentKeyboard(st, lastLs, chatId) });
+
+      await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+      await sendCleanMessage(ADMIN_CHAT_ID,
+        `🎤 [Голосовой челлендж выполнен — ${actor.displayLabel} (+15 XP)]:\n` +
+        `📊 Готовность ДЗ: ${updatedProg.pct}%\n` +
+        `🗣 Распознано Whisper: «${studentText || 'голосовое'}»\n\n` +
+        `🤖 ОС бота ученику:\n${vcFeedback}`,
+        { reply_markup: { inline_keyboard: [[{ text: '🎤 Ответить ученику', callback_data: `teacher_reply_st:${st.id}` }]] } }
+      ).catch(() => {});
+      return;
+    }
+
     if (activeStudentQuizzes.has(String(chatId)) && studentText) {
       const quizObj = activeStudentQuizzes.get(String(chatId));
       activeStudentQuizzes.delete(String(chatId));
@@ -6634,7 +7029,47 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
       .trim();
     const scenario = lastLs?._mergedScenario || extractLessonScenario(lastLs?.homework || '');
 
-    // 1. Быстрый перехват: Ученик прямо просит прислать само ДЗ («а какое дз», «скинь дз», «где дз»)
+    // 1. Быстрый перехват: Ученик спрашивает про нововведения / Щит заморозки / правила работы бота
+    const isAskingAboutInnovationsOrShield = /что\s*за\s*щит|какие\s*нововведен|нововведен|обновлен|правила\s*бота|заморозк|как\s*работает\s*щит|про\s*щит/i.test(lower);
+    if (isAskingAboutInnovationsOrShield && !isVoiceSubmission) {
+      const infoMsg = buildStudentInnovationsAndShieldMessage(st, actor);
+      await sendCleanMessage(chatId, infoMsg, { reply_markup: buildStudentKeyboard(st, lastLs, chatId) });
+      await bot.sendMessage(ADMIN_CHAT_ID, `🛡️ *${actor.displayLabel}* спросил(а) в чате про нововведения/Щит («${studentText}») — бот подробно рассказал все правила!`, { parse_mode: 'Markdown' }).catch(() => {});
+      return;
+    }
+
+    // 1б. Быстрый перехват: Ученик просит объяснить правило урока («объясни правило», «расскажи правило», «какое правило»)
+    const isAskingForGrammarRule = /(?:объясни|расскажи|напомни|покажи|какое)\s*(?:мне\s*)?(?:правил[оа]|грамматик[уи])|не\s*понял[а]?\s*(?:правил|тему)|правило\s*урока/i.test(lower);
+    if (isAskingForGrammarRule && !isVoiceSubmission) {
+      const materialsText = extractAllLessonMaterials(lastLs, st);
+      const rulePrompt = `Ты — добрый, понятный детский преподаватель английского для ${actor.name} (${st.grade || '4-6 класс'}).
+Тема урока: "${lastLs?.topic || 'English'}".
+Материалы урока (презентация и конспект):
+"""
+${materialsText.slice(0, 4800)}
+"""
+Ученик написал: "${studentText}".
+Объясни правило этого урока максимально просто «на пальцах»:
+1. 🧠 Главный секрет правила и слова-маячки.
+2. 📐 Короткая шпаргалка-формула (+ / - / ?).
+3. ⚠️ Главная ловушка (где чаще всего путаются).
+4. 🇬🇧 3 примера из урока с переводом на русский.
+5. 🎯 1 короткий вопрос на проверку.
+Пиши БЕЗ символов звездочек **!`;
+      const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: rulePrompt });
+      const ruleExplanation = genRes.generated_plan || `📖 Давай разберём правило урока «${lastLs?.topic || 'English'}»!`;
+      const rawProg = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
+      rawProg.completedSteps.grammar = true;
+      const updatedProg = getHwCompletionSummary(st, lastLs, chatId, msg.from);
+      if (lastLs) await persistHwProgressPercent(lastLs, updatedProg.pct, actor, st);
+      await sendCleanMessage(chatId, `📖 Правило урока: ${lastLs?.topic || 'English'}\n\n${ruleExplanation}`, {
+        reply_markup: buildStudentKeyboard(st, lastLs, chatId)
+      });
+      await sendCleanMessage(ADMIN_CHAT_ID, `📖 [Копия для преподавателя]: ${actor.displayLabel} попросил(а) объяснить правило («${studentText}»):\n\n${ruleExplanation}`).catch(() => {});
+      return;
+    }
+
+    // 1в. Быстрый перехват: Ученик прямо просит прислать само ДЗ («а какое дз», «скинь дз», «где дз»)
     const isAskingForHw = /какое\s*(?:то)?\s*дз|скинь\s*(?:мне)?\s*дз|где\s*дз|что\s*задано|какое\s*задание|дай\s*дз|мое\s*дз|напомни\s*дз/i.test(lower);
     if (isAskingForHw && !isVoiceSubmission) {
       if (cards && cards.length > 0) {
@@ -6910,9 +7345,20 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
         }
       });
     }
-    // --- БЫСТРЫЙ ПЕРЕХВАТ ЗАПРОСОВ ИГОРЯ ОБ УСПЕХАХ И ДЗ УЧЕНИКОВ ---
+    // --- БЫСТРЫЙ ПЕРЕХВАТ ЗАПРОСОВ ИГОРЯ ОБ УСПЕХАХ, ДЗ И НОВОВВЕДЕНИЯХ/ЩИТЕ УЧЕНИКОВ ---
     const progressQueryRegex = /(?:как\s+(?:там\s+)?(?:успехи|дела|дз|домашка|прогресс)|отч[её]т\s+по|статистика\s+по|сводка\s+по|сколько\s+(?:прош[её]л|сделал|уроков)|кто\s+сделал\s+дз|успеваемость)/i;
     const nudgeQueryRegex = /^(?:напомни|пни|напиши)\s+(?:про\s+дз|детям\s+про\s+дз|ученикам\s+про\s+дз|насч[её]т\s+дз)/i;
+    const innovationsBroadcastRegex = /(?:расскажи|отправь|напиши|разошли|скинь|объясни)\s+(?:вс[её]м\s+)?(?:детям|ученикам|ребятам|[а-яё]+)?\s*(?:про\s+|о\s+)?(?:нововведен|обновлен|щит|правил[ао]\s+бота|новые\s+правила)/i;
+
+    if (innovationsBroadcastRegex.test(textToProcess.trim())) {
+      const { data: allSt } = await db.from('students').select('*').order('name');
+      const matchedSt = matchStudent(allSt || [], textToProcess);
+      const sentList = await broadcastInnovationsToStudents(matchedSt ? matchedSt.id : null);
+      if (sentList.length > 0) {
+        return bot.sendMessage(chatId, `🛡️ *Бот рассказал про все нововведения, правила и Щит заморозки стрика:*\n• ${sentList.join('\n• ')}`, { parse_mode: 'Markdown' });
+      }
+      return bot.sendMessage(chatId, '⚠️ Не найдено привязанных Telegram ID учеников для отправки.');
+    }
 
     if (nudgeQueryRegex.test(textToProcess.trim())) {
       const { data: allSt } = await db.from('students').select('*').order('name');

@@ -1003,7 +1003,7 @@ const TutoringPage = {
                   ${st.name.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <div style="font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:6px;">${this.escapeHtml(st.name)}<span title="Ударный режим (выполненных ДЗ подряд без пропусков)" style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(249,115,22,0.15);color:#f97316;font-weight:800;border:1px solid rgba(249,115,22,0.3);display:inline-flex;align-items:center;gap:3px;">🔥 ${dossier.streak || 0} ДЗ</span></div>
+                  <div style="font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">${this.escapeHtml(st.name)}<span title="Ударный режим (выполненных ДЗ подряд без пропусков)" style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(249,115,22,0.15);color:#f97316;font-weight:800;border:1px solid rgba(249,115,22,0.3);display:inline-flex;align-items:center;gap:3px;">🔥 ${dossier.streak || 0} ДЗ</span><span title="Щиты заморозки стрика (защищают серию при пропуске дня, макс. 3)" style="font-size:11px;padding:2px 7px;border-radius:10px;background:rgba(59,130,246,0.15);color:#3b82f6;font-weight:800;border:1px solid rgba(59,130,246,0.3);display:inline-flex;align-items:center;gap:3px;">🛡️ ${dossier.shields ?? 1}/3</span></div>
                   <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${this.escapeHtml(st.grade || 'Уровень не указан')}</div>
                 </div>
               </div>
@@ -1261,7 +1261,8 @@ const TutoringPage = {
       freshDoss.streak || (id ? this.parseStudentDossier(this.students.find(s => s.id === id)).streak : 0),
       document.getElementById('st-parent-tg-id')?.value?.trim() || freshDoss.parentTgId || '',
       document.getElementById('st-parent-tg-user')?.value?.trim() || freshDoss.parentTgUser || '',
-      freshDoss.lastActive || (id ? this.parseStudentDossier(this.students.find(s => s.id === id)).lastActive : '')
+      freshDoss.lastActive || (id ? this.parseStudentDossier(this.students.find(s => s.id === id)).lastActive : ''),
+      typeof freshDoss.shields === 'number' ? freshDoss.shields : 1
     );
     if (false) {
     const notes = document.getElementById('st-notes').value.trim();
@@ -2039,7 +2040,8 @@ const TutoringPage = {
               dossier.streak,
               dossier.parentTgId,
               dossier.parentTgUser,
-              dossier.lastActive
+              dossier.lastActive,
+              dossier.shields
             );
             await DB.updateStudent(stObj.id, { schedule: newSched });
             stObj.schedule = newSched;
@@ -2181,11 +2183,13 @@ const TutoringPage = {
       const idx = raw.indexOf(tag);
       if (idx === -1) return '';
       const rest = raw.slice(idx + tag.length);
-      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:/);
+      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/);
       return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
     };
-    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:/);
+    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/);
     const schedule = (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim();
+    const rawShields = getSec('[ЩИТЫ_СТРИКА]:');
+    const parsedShields = rawShields !== '' ? parseInt(rawShields, 10) : 1;
     return {
       schedule,
       tgId: getSec('[TG_ID]:'),
@@ -2193,6 +2197,7 @@ const TutoringPage = {
       parentTgId: getSec('[PARENT_TG_ID]:'),
       parentTgUser: getSec('[PARENT_TG_USER]:'),
       streak: parseInt(getSec('[СТРИК]:') || '0', 10) || 0,
+      shields: Number.isNaN(parsedShields) ? 1 : Math.max(0, Math.min(3, parsedShields)),
       lastActive: getSec('[LAST_ACTIVE]:'),
       perplexity: getSec('[PERPLEXITY]:'),
       unit: getSec('[УЧЕБНИК]:'),
@@ -2203,13 +2208,14 @@ const TutoringPage = {
     };
   },
 
-  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '', streak = 0, parentTgId = '', parentTgUser = '', lastActive = '') {
+  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '', streak = 0, parentTgId = '', parentTgUser = '', lastActive = '', shields = 1) {
     let out = schedule || '';
     if (tgId) out += `\\n[TG_ID]:\\n${tgId}`;
     if (tgUser) out += `\\n[TG_USER]:\\n${tgUser}`;
     if (parentTgId) out += `\\n[PARENT_TG_ID]:\\n${parentTgId}`;
     if (parentTgUser) out += `\\n[PARENT_TG_USER]:\\n${parentTgUser}`;
     if (streak) out += `\\n[СТРИК]:\\n${streak}`;
+    if (typeof shields === 'number') out += `\\n[ЩИТЫ_СТРИКА]:\\n${shields}`;
     if (lastActive) out += `\\n[LAST_ACTIVE]:\\n${lastActive}`;
     if (perplexity) out += `\\n[PERPLEXITY]:\\n${perplexity}`;
     if (unit) out += `\\n[УЧЕБНИК]:\\n${unit}`;
@@ -2505,17 +2511,23 @@ const TutoringPage = {
 
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:5px;">
           <div style="background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;font-weight:600;color:#fff;cursor:default;">
-            ✅ Я сделал(а) ДЗ!
+            🔒 Сдать ДЗ (0% — пришли 📸 фото тетради!)
           </div>
           <div style="display:flex;gap:5px;">
-            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">🔤 Слова урока</div>
-            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">
-              ${(recipientName.includes('Курочкина') || (topic && (topic.toLowerCase().includes('местоимен') || topic.toLowerCase().includes('pronoun') || topic.toLowerCase().includes('whose') || topic.toLowerCase().includes('owner')))) ? '🧩 Чей питомец? (Местоимения)' : (recipientName.includes('Воронины') || (topic && topic.toLowerCase().includes('shop')) ? '🛒 В магазине (Shopping)' : (topic && (topic.toLowerCase().includes('verb') || topic.toLowerCase().includes('глагол')) ? '⚡ 5 глаголов' : '🃏 Флеш-карточки'))}
-            </div>
+            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">📖 Правило урока</div>
+            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">🔤 5 слов урока</div>
           </div>
           <div style="display:flex;gap:5px;">
             <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">📝 Тестик по уроку</div>
+            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">🃏 Флеш-карточки</div>
+          </div>
+          <div style="display:flex;gap:5px;">
+            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">🎤 Голосовой челлендж</div>
             <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">🎮 Мини-игра</div>
+          </div>
+          <div style="display:flex;gap:5px;">
+            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">🛡️ Нововведения и Щит</div>
+            <div style="flex:1;background:#2e3c4d;border-radius:8px;padding:7px;text-align:center;font-size:11px;color:#93c5fd;cursor:default;">🏆 Паспорт прогресса</div>
           </div>
         </div>
 
@@ -2727,7 +2739,9 @@ const TutoringPage = {
       dossier.tgUser,
       dossier.streak,
       dossier.parentTgId,
-      dossier.parentTgUser
+      dossier.parentTgUser,
+      dossier.lastActive,
+      dossier.shields
     );
     await DB.updateStudent(st.id, { schedule: newSched });
     st.schedule = newSched;
@@ -3032,7 +3046,7 @@ const TutoringPage = {
       if (parsed.new_vocab) {
         const dossier = this.parseStudentDossier(st);
         const existingVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
-        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser);
+        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser, dossier.lastActive, dossier.shields);
         await DB.updateStudent(st.id, { schedule: newSchedule });
         st.schedule = newSchedule;
       }
@@ -3538,7 +3552,7 @@ const TutoringPage = {
             const parsed = await Gemini.parsePerplexityLesson(scenarioText, st.name);
             if (parsed.new_vocab) {
               const updatedVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
-              const newSched = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, updatedVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser, dossier.lastActive);
+              const newSched = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, updatedVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser, dossier.lastActive, dossier.shields);
               await DB.updateStudent(st.id, { schedule: newSched });
             }
           } catch(e) {}
