@@ -283,10 +283,13 @@ const TutoringPage = {
                   </div>
                 </div>
 
+                <!-- 2.5. Live Telegram HW Completion & Photo Feedback Banner -->
+                <div id="ls-bot-hw-telemetry-box" class="hidden" style="margin-bottom:12px;padding:10px 12px;border-radius:10px;background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.25);font-size:12px;line-height:1.45;"></div>
+
                 <!-- 3. Homework Text section -->
                 <div style="margin-bottom:12px;">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <label class="form-label" style="margin-bottom:0;font-weight:700;">Домашнее задание (15–25 минут)</label>
+                    <label class="form-label" style="margin-bottom:0;font-weight:700;">Домашнее задание (10–15 минут + 📸 фото тетради)</label>
                     <button id="ls-generate-ai" class="btn btn-ghost" style="font-size:12px;color:var(--accent);display:flex;align-items:center;gap:4px;padding:2px 8px;min-height:auto;">
                       <i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ
                     </button>
@@ -963,15 +966,18 @@ const TutoringPage = {
         let hwStatusBadge = '';
         if (lastHwLesson) {
           const rawHw = lastHwLesson.homework || '';
-          const isDone = rawHw.includes('[ДЗ_СДАНО]');
-          const isChecked = rawHw.includes('[ДЗ_ПРОВЕРЕНО]');
+          const tel = this.parseHomeworkBotTelemetry(rawHw, st.name);
           const cleanHwText = this.cleanHomeworkText(rawHw);
-          if (isDone && !isChecked) {
-            hwStatusBadge = `<div style="margin-top:8px;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:6px;min-width:0;overflow:hidden;"><span style="color:#2563eb;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">📬 Сдано в ТГ: ${this.escapeHtml(cleanHwText || 'Домашка')}</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${lastHwLesson.id}')">✅ Проверено</button></div>`;
-          } else if (isChecked) {
-            hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);font-size:11px;color:var(--success);display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;"><i data-lucide="check-circle" style="width:12px;height:12px;flex-shrink:0;"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">✅ ДЗ проверено: ${this.escapeHtml(cleanHwText || 'Задание')}</span></div>`;
-          } else if (cleanHwText) {
-            hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;"><i data-lucide="edit-3" style="width:12px;height:12px;color:var(--accent);flex-shrink:0;"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">ДЗ: ${this.escapeHtml(cleanHwText)}</span></div>`;
+          const groupChip = tel.isGroup
+            ? `<div style="margin-top:4px;font-size:10px;color:var(--text-secondary);display:flex;gap:8px;flex-wrap:wrap;"><span>👧 Арина: <b>${tel.arinaDone ? '📸 сдано ✅' : `${tel.arinaPct}%`}</b></span><span>👦 Матвей: <b>${tel.matveyDone ? '📸 сдано ✅' : `${tel.matveyPct}%`}</b></span></div>`
+            : '';
+          if ((tel.isDone || tel.hasPhoto) && !tel.isChecked) {
+            hwStatusBadge = `<div style="margin-top:8px;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);font-size:11px;min-width:0;overflow:hidden;"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px;"><span style="color:#2563eb;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">${tel.hasPhoto ? '📸 Фото тетрадки проверено' : '📬 Сдано в ТГ'} (${tel.pct}%): ${this.escapeHtml(cleanHwText || 'Домашка')}</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);flex-shrink:0;" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${lastHwLesson.id}')">✅ Проверено</button></div>${groupChip}</div>`;
+          } else if (tel.isChecked) {
+            hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);font-size:11px;color:var(--success);min-width:0;overflow:hidden;"><div style="display:flex;align-items:center;gap:6px;"><i data-lucide="check-circle" style="width:12px;height:12px;flex-shrink:0;"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">✅ ДЗ проверено${tel.hasPhoto ? ' (📸 с фото)' : ''}: ${this.escapeHtml(cleanHwText || 'Задание')}</span></div>${groupChip}</div>`;
+          } else if (cleanHwText || tel.pct > 0) {
+            const progChip = tel.pct > 0 ? `<span style="background:rgba(245,158,11,0.15);color:#d97706;font-weight:700;padding:1px 6px;border-radius:6px;font-size:10px;flex-shrink:0;">⏳ В ТГ: ${tel.pct}%</span>` : '';
+            hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary);min-width:0;overflow:hidden;"><div style="display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;color:var(--accent);flex-shrink:0;"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">ДЗ: ${this.escapeHtml(cleanHwText || 'Письменное задание')}</span>${progChip}</div>${groupChip}</div>`;
           }
         }
         const displaySchedule = dossier.schedule || 'Нет расписания';
@@ -1111,13 +1117,19 @@ const TutoringPage = {
           const hasLinks = displayMaterials.includes('http');
 
           let hwRow = '';
-          const isDone = (ls.homework || '').includes('[ДЗ_СДАНО]');
-          const isChecked = (ls.homework || '').includes('[ДЗ_ПРОВЕРЕНО]');
-          if (displayHomework || isDone || isChecked) {
+          const lsTel = this.parseHomeworkBotTelemetry(ls.homework || '', studentName);
+          const isDone = lsTel.isDone || lsTel.hasPhoto;
+          const isChecked = lsTel.isChecked;
+          if (displayHomework || isDone || isChecked || lsTel.pct > 0) {
+            const photoOrProgBadge = isDone && !isChecked
+              ? `<span style="font-size:10px;background:rgba(59,130,246,0.15);color:#3b82f6;font-weight:700;padding:2px 6px;border-radius:6px;display:inline-flex;align-items:center;gap:2px;">${lsTel.hasPhoto ? '📸 Фото тетрадки проверено' : '📬 Сдано в ТГ'} (${lsTel.pct}%)</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${ls.id}')">✅ Проверено</button>`
+              : (isChecked
+                  ? `<span style="font-size:10px;background:rgba(16,185,129,0.12);color:var(--success);font-weight:700;padding:2px 6px;border-radius:6px;">✅ Проверено${lsTel.hasPhoto ? ' 📸' : ''}</span>`
+                  : (lsTel.pct > 0 ? `<span style="font-size:10px;background:rgba(245,158,11,0.15);color:#d97706;font-weight:700;padding:2px 6px;border-radius:6px;">⏳ В ТГ: ${lsTel.pct}%</span>` : ''));
             hwRow = `
               <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
                 ${displayHomework ? `<i data-lucide="edit-3" style="width:12px;height:12px;"></i> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(displayHomework)}</span>` : ''}
-                ${isDone && !isChecked ? `<span style="font-size:10px;background:rgba(59,130,246,0.15);color:#3b82f6;font-weight:700;padding:2px 6px;border-radius:6px;display:inline-flex;align-items:center;gap:2px;">📬 Сдано в ТГ!</span><button class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 6px;color:var(--success);border-color:rgba(16,185,129,0.3);" onclick="event.stopPropagation(); TutoringPage.markPrevHwChecked('${ls.id}')">✅ Проверено</button>` : (isChecked ? `<span style="font-size:10px;background:rgba(16,185,129,0.12);color:var(--success);font-weight:700;padding:2px 6px;border-radius:6px;">✅ Проверено</span>` : '')}
+                ${photoOrProgBadge}
               </div>
             `;
           }
@@ -1248,7 +1260,8 @@ const TutoringPage = {
       document.getElementById('st-tg-user').value.trim() || freshDoss.tgUser || '',
       freshDoss.streak || (id ? this.parseStudentDossier(this.students.find(s => s.id === id)).streak : 0),
       document.getElementById('st-parent-tg-id')?.value?.trim() || freshDoss.parentTgId || '',
-      document.getElementById('st-parent-tg-user')?.value?.trim() || freshDoss.parentTgUser || ''
+      document.getElementById('st-parent-tg-user')?.value?.trim() || freshDoss.parentTgUser || '',
+      freshDoss.lastActive || (id ? this.parseStudentDossier(this.students.find(s => s.id === id)).lastActive : '')
     );
     if (false) {
     const notes = document.getElementById('st-notes').value.trim();
@@ -1458,6 +1471,41 @@ const TutoringPage = {
     displayHomework = this.cleanHomeworkText(displayHomework);
 
     document.getElementById('ls-homework').value = displayHomework;
+
+    // 5.5 Render live Telegram HW progress, photo verification & AI feedback inside Lesson Modal
+    const telBox = document.getElementById('ls-bot-hw-telemetry-box');
+    if (telBox) {
+      const curStObj = this.students.find(s => s.id === document.getElementById('ls-student').value);
+      const tel = ls?.homework ? this.parseHomeworkBotTelemetry(ls.homework, curStObj?.name || '') : null;
+      if (tel && (tel.pct > 0 || tel.hasPhoto || tel.isDone || tel.isChecked || tel.feedbackBlocks.length > 0)) {
+        const groupHtml = tel.isGroup
+          ? `<div style="margin-top:6px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.6);display:flex;gap:12px;flex-wrap:wrap;font-size:11px;">
+               <span>👧 <b>Арина:</b> ${tel.arinaDone ? '📸 фото тетрадки проверено ✅' : `⏳ готовность ${tel.arinaPct}%`}</span>
+               <span>👦 <b>Матвей:</b> ${tel.matveyDone ? '📸 фото тетрадки проверено ✅' : `⏳ готовность ${tel.matveyPct}%`}</span>
+             </div>`
+          : '';
+        const fbHtml = tel.feedbackBlocks.length > 0
+          ? `<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--bg-surface);border:1px solid var(--border-light);font-size:11px;white-space:pre-wrap;max-height:160px;overflow-y:auto;">
+               <div style="font-weight:700;color:var(--accent);margin-bottom:4px;">🤖 Обратная связь (ОС) бота по фото тетрадки ученика:</div>
+               ${tel.feedbackBlocks.map(b => `<div style="margin-bottom:4px;">${b.label ? `<b>${this.escapeHtml(b.label)}:</b> ` : ''}${this.escapeHtml(b.text)}</div>`).join('')}
+             </div>`
+          : '';
+        telBox.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-weight:700;color:${tel.hasPhoto || tel.isDone || tel.isChecked ? '#10b981' : '#2563eb'};">
+              ${tel.isChecked ? '✅ ДЗ проверено преподавателем' : (tel.hasPhoto ? '📸 Письменное ДЗ по фото тетрадки проверено и зачтено ботом!' : `📊 Прогресс выполнения ДЗ в Telegram: ${tel.pct}%`)}
+            </span>
+            <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(59,130,246,0.15);color:#2563eb;">Готовность: ${tel.pct}%</span>
+          </div>
+          ${groupHtml}
+          ${fbHtml}
+        `;
+        telBox.classList.remove('hidden');
+      } else {
+        telBox.innerHTML = '';
+        telBox.classList.add('hidden');
+      }
+    }
     const scenEl = document.getElementById('ls-scenario');
     if (scenEl) {
       // Окно сценария предназначено строго для плана урока из Perplexity, не перезаписываем его презентацией
@@ -1855,7 +1903,22 @@ const TutoringPage = {
     if (id) {
       const oldLs = this.lessons.find(l => l.id === id);
       if (oldLs?.homework) {
-        // Не перезаписывать ожидающие отправки теги очереди в ТГ-бот
+        // 1. Сохраняем ВСЕ теги выполнения ДЗ, фото тетрадки, прогресса (%) и ОС бота из Telegram, чтобы сохранение урока в приложении их НИКОГДА не стирало!
+        const preservedBotMeta = this.extractPreservedBotTags(oldLs.homework);
+        if (preservedBotMeta.prefixTags.length > 0) {
+          const missingPrefix = preservedBotMeta.prefixTags.filter(t => !homework.includes(t));
+          if (missingPrefix.length > 0) {
+            homework = `${missingPrefix.join(' ')} ${homework}`.trim();
+          }
+        }
+        if (preservedBotMeta.suffixBlocks.length > 0) {
+          const missingSuffix = preservedBotMeta.suffixBlocks.filter(b => !homework.includes(b));
+          if (missingSuffix.length > 0) {
+            homework = `${homework}\n${missingSuffix.join('\n')}`.trim();
+          }
+        }
+
+        // 2. Не перезаписывать ожидающие отправки теги очереди в ТГ-бот
         const pendingTags = [
           '[АНОНС_УРОКА_В_ТГ]',
           '[ОТПРАВИТЬ_АНОНС_УРОКА_В_ТГ]',
@@ -1975,7 +2038,8 @@ const TutoringPage = {
               dossier.tgUser,
               dossier.streak,
               dossier.parentTgId,
-              dossier.parentTgUser
+              dossier.parentTgUser,
+              dossier.lastActive
             );
             await DB.updateStudent(stObj.id, { schedule: newSched });
             stObj.schedule = newSched;
@@ -2139,13 +2203,14 @@ const TutoringPage = {
     };
   },
 
-  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '', streak = 0, parentTgId = '', parentTgUser = '') {
+  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '', streak = 0, parentTgId = '', parentTgUser = '', lastActive = '') {
     let out = schedule || '';
     if (tgId) out += `\\n[TG_ID]:\\n${tgId}`;
     if (tgUser) out += `\\n[TG_USER]:\\n${tgUser}`;
     if (parentTgId) out += `\\n[PARENT_TG_ID]:\\n${parentTgId}`;
     if (parentTgUser) out += `\\n[PARENT_TG_USER]:\\n${parentTgUser}`;
     if (streak) out += `\\n[СТРИК]:\\n${streak}`;
+    if (lastActive) out += `\\n[LAST_ACTIVE]:\\n${lastActive}`;
     if (perplexity) out += `\\n[PERPLEXITY]:\\n${perplexity}`;
     if (unit) out += `\\n[УЧЕБНИК]:\\n${unit}`;
     if (interests) out += `\\n[ИНТЕРЕСЫ]:\\n${interests}`;
@@ -2153,6 +2218,66 @@ const TutoringPage = {
     if (vocab) out += `\\n[СЛОВАРЬ]:\\n${vocab}`;
     if (notes) out += `\\n[ЗАМЕТКИ]:\\n${notes}`;
     return out;
+  },
+
+  extractPreservedBotTags(rawHw) {
+    if (!rawHw) return { prefixTags: [], suffixBlocks: [] };
+    const prefixTags = [];
+    const singleRegex = /\[(ДЗ_ПРОВЕРЕНО[A-ZА-Я0-9_]*|ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ФАЙЛ[A-ZА-Я0-9_]*:[^\]]+|ПРОГРЕСС[A-ZА-Я0-9_]*:[^\]]+|НАПОМИНАНИЕ_ДЗ_ДАТА:[^\]]+)\]/gi;
+    let m;
+    while ((m = singleRegex.exec(rawHw)) !== null) {
+      if (!prefixTags.includes(m[0])) prefixTags.push(m[0]);
+    }
+    const suffixBlocks = [];
+    const blockRegex = /\[(ОС_ПО_ФОТО_[A-ZА-Я0-9_]+)\]:[\s\S]*?\[\/\1\]/gi;
+    let bm;
+    while ((bm = blockRegex.exec(rawHw)) !== null) {
+      if (!suffixBlocks.includes(bm[0])) suffixBlocks.push(bm[0]);
+    }
+    return { prefixTags, suffixBlocks };
+  },
+
+  parseHomeworkBotTelemetry(rawHw, studentName = '') {
+    const hw = rawHw || '';
+    const isGroup = (studentName || '').toLowerCase().includes('арина') && (studentName || '').toLowerCase().includes('матвей');
+    const isChecked = hw.includes('[ДЗ_ПРОВЕРЕНО]');
+    const arinaDone = hw.includes('[ФОТО_ДЗ_СДАНО_АРИНА]') || hw.includes('[ДЗ_СДАНО_АРИНА]') || hw.includes('[ДЗ_ПРОВЕРЕНО_АРИНА]') || isChecked;
+    const matveyDone = hw.includes('[ФОТО_ДЗ_СДАНО_МАТВЕЙ]') || hw.includes('[ДЗ_СДАНО_МАТВЕЙ]') || hw.includes('[ДЗ_ПРОВЕРЕНО_МАТВЕЙ]') || isChecked;
+    const hasPhoto = isGroup ? (arinaDone && matveyDone) : hw.includes('[ФОТО_ДЗ_СДАНО]');
+    const isDone = isGroup ? (arinaDone && matveyDone) : hw.includes('[ДЗ_СДАНО]');
+
+    const arinaM = hw.match(/\[ПРОГРЕСС_АРИНА:(\d+)%\]/);
+    const matveyM = hw.match(/\[ПРОГРЕСС_МАТВЕЙ:(\d+)%\]/);
+    const arinaPct = arinaM ? parseInt(arinaM[1], 10) : (arinaDone ? 100 : 0);
+    const matveyPct = matveyM ? parseInt(matveyM[1], 10) : (matveyDone ? 100 : 0);
+
+    const pctMatch = hw.match(/\[ПРОГРЕСС_ДЗ:(\d+)%\]/);
+    const pct = pctMatch
+      ? parseInt(pctMatch[1], 10)
+      : (isChecked || isDone || hasPhoto ? 100 : (isGroup ? Math.round((arinaPct + matveyPct) / 2) : 0));
+
+    const feedbackBlocks = [];
+    const fbRegex = /\[ОС_ПО_ФОТО_([A-ZА-Я0-9_]+)\]:\s*([\s\S]*?)\[\/ОС_ПО_ФОТО_\1\]/gi;
+    let fm;
+    while ((fm = fbRegex.exec(hw)) !== null) {
+      const key = (fm[1] || '').toUpperCase();
+      const label = key === 'АРИНА' ? '👧 Арина' : (key === 'МАТВЕЙ' ? '👦 Матвей' : '');
+      const text = (fm[2] || '').trim();
+      if (text) feedbackBlocks.push({ label, text });
+    }
+
+    return {
+      isGroup,
+      isChecked,
+      isDone,
+      hasPhoto,
+      pct,
+      arinaDone,
+      matveyDone,
+      arinaPct,
+      matveyPct,
+      feedbackBlocks
+    };
   },
 
   getStudentLessonHistory(studentId, beforeDate = null, excludeLessonId = null, limit = null) {
@@ -3381,6 +3506,15 @@ const TutoringPage = {
           if (oldPresText) compositeHw += `\n\n${oldPresText[0]}`;
           const oldPres = lessonTarget.homework.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/);
           if (oldPres) compositeHw += `\n\n${oldPres[0]}`;
+          const oldMat = lessonTarget.homework.match(/\[МАТЕРИАЛЫ\]:[^\n]*/i);
+          if (oldMat) compositeHw += `\n\n${oldMat[0]}`;
+          const preservedBotMeta = this.extractPreservedBotTags(lessonTarget.homework);
+          if (preservedBotMeta.prefixTags.length > 0) {
+            compositeHw = `${preservedBotMeta.prefixTags.join(' ')} ${compositeHw}`.trim();
+          }
+          if (preservedBotMeta.suffixBlocks.length > 0) {
+            compositeHw += `\n${preservedBotMeta.suffixBlocks.join('\n')}`;
+          }
         }
 
         compositeHw = `[ОТПРАВИТЬ_В_ТГ] ${compositeHw}`;
@@ -3404,7 +3538,7 @@ const TutoringPage = {
             const parsed = await Gemini.parsePerplexityLesson(scenarioText, st.name);
             if (parsed.new_vocab) {
               const updatedVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
-              const newSched = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, updatedVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser);
+              const newSched = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, updatedVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser, dossier.lastActive);
               await DB.updateStudent(st.id, { schedule: newSched });
             }
           } catch(e) {}

@@ -793,14 +793,10 @@ function extractHwWarmupErrorsFromDossier(doss) {
   return m ? m[1].trim() : '';
 }
 
-async function incrementStudentStreakBot(st) {
+async function incrementStudentStreakBot(st, actor = null) {
   if (!st || !st.id) return 1;
-  const doss = parseStudentDossierBot(st);
-  doss.streak = (parseInt(doss.streak, 10) || 0) + 1;
-  const newSched = serializeStudentDossierBot(doss);
-  await db.from('students').update({ schedule: newSched }).eq('id', st.id);
-  st.schedule = newSched;
-  return doss.streak;
+  const res = await recordStudentDailyActivity(st, actor);
+  return res.streak || 1;
 }
 
 async function findStudentByTgChatId(chatIdStr) {
@@ -1308,13 +1304,19 @@ async function markHwTagForActor(lesson, kind, actor = null) {
       const personal = `[ДЗ_${kind}_${tagKey}]`;
       if (kind === 'ПРОВЕРЕНО') hw = hw.replace(`[ДЗ_СДАНО_${tagKey}]`, '');
       if (!hw.includes(personal)) hw = `${personal} ${hw}`;
-      if (!hw.includes('[ДЗ_СДАНО]') && !hw.includes('[ДЗ_ПРОВЕРЕНО]')) hw = `[ДЗ_СДАНО] ${hw}`;
+      // Общий тег [ДЗ_СДАНО] для пары Арина и Матвей ставим только тогда, когда ОБА сдали!
+      const aDone = hw.includes('[ДЗ_СДАНО_АРИНА]') || hw.includes('[ДЗ_ПРОВЕРЕНО_АРИНА]') || hw.includes('[ФОТО_ДЗ_СДАНО_АРИНА]');
+      const mDone = hw.includes('[ДЗ_СДАНО_МАТВЕЙ]') || hw.includes('[ДЗ_ПРОВЕРЕНО_МАТВЕЙ]') || hw.includes('[ФОТО_ДЗ_СДАНО_МАТВЕЙ]');
+      if (aDone && mDone && !hw.includes('[ДЗ_СДАНО]') && !hw.includes('[ДЗ_ПРОВЕРЕНО]')) {
+        hw = `[ДЗ_СДАНО] ${hw}`;
+      }
     } else if (kind === 'ПРОВЕРЕНО') {
       if (!hw.includes('[ДЗ_ПРОВЕРЕНО]')) hw = `[ДЗ_ПРОВЕРЕНО] ${hw.replace('[ДЗ_СДАНО]', '')}`;
     } else {
       if (!hw.includes('[ДЗ_СДАНО]') && !hw.includes('[ДЗ_ПРОВЕРЕНО]')) hw = `[ДЗ_СДАНО] ${hw}`;
     }
-    hw = hw.replace(/\s{2,}/g, ' ').trim();
+    // ВАЖНО: схлопываем только повторные пробелы/табы, НЕ трогая переносы строк (\n) внутри [ПРЕЗЕНТАЦИЯ_ТЕКСТ], [СЦЕНАРИЙ_УРОКА] и т.д.!
+    hw = hw.replace(/[ \t]{2,}/g, ' ').trim();
     if (hw !== (lesson.homework || '')) {
       lesson.homework = hw;
       await db.from('lessons').update({ homework: hw }).eq('id', lesson.id);
@@ -1366,7 +1368,12 @@ async function persistPhotoHwData(lesson, actor = null, fileId = null, feedback 
     if (!hw.includes(photoTag)) {
       hw = `${photoTag} ${hw}`.trim();
     }
-    if (!hw.includes('[ФОТО_ДЗ_СДАНО]')) {
+    if (tagKey) {
+      // Для группы общий тег [ФОТО_ДЗ_СДАНО] ставим только когда ОБА ребёнка прислали фото тетрадки
+      if (hw.includes('[ФОТО_ДЗ_СДАНО_АРИНА]') && hw.includes('[ФОТО_ДЗ_СДАНО_МАТВЕЙ]') && !hw.includes('[ФОТО_ДЗ_СДАНО]')) {
+        hw = `[ФОТО_ДЗ_СДАНО] ${hw}`.trim();
+      }
+    } else if (!hw.includes('[ФОТО_ДЗ_СДАНО]')) {
       hw = `[ФОТО_ДЗ_СДАНО] ${hw}`.trim();
     }
     if (fileId) {
@@ -1421,15 +1428,19 @@ async function buildStudentAnalyticsAndProgressReport(st, options = { forParent:
     const rawHw = l.homework || '';
     const cleanHw = cleanHomeworkTextBot(rawHw);
     const topicName = (l.topic && l.topic.trim()) || 'Практика по программе';
-    const hasHw = cleanHw.length > 5 || rawHw.includes('[КАРТОЧКИ_ДЗ]') || rawHw.includes('[ФОТО_ДЗ_СДАНО]') || rawHw.includes('[ДЗ_СДАНО]') || rawHw.includes('[ДЗ_ПРОВЕРЕНО]');
+    const hasHw = cleanHw.length > 5 || rawHw.includes('[КАРТОЧКИ_ДЗ]') || rawHw.includes('[ФОТО_ДЗ_СДАНО') || rawHw.includes('[ДЗ_СДАНО') || rawHw.includes('[ДЗ_ПРОВЕРЕНО');
 
-    const hasPhoto = rawHw.includes('[ФОТО_ДЗ_СДАНО]');
     const isChecked = rawHw.includes('[ДЗ_ПРОВЕРЕНО]');
-    const isSubmitted = rawHw.includes('[ДЗ_СДАНО]');
+    const aDone = rawHw.includes('[ФОТО_ДЗ_СДАНО_АРИНА]') || rawHw.includes('[ДЗ_СДАНО_АРИНА]') || rawHw.includes('[ДЗ_ПРОВЕРЕНО_АРИНА]') || isChecked;
+    const mDone = rawHw.includes('[ФОТО_ДЗ_СДАНО_МАТВЕЙ]') || rawHw.includes('[ДЗ_СДАНО_МАТВЕЙ]') || rawHw.includes('[ДЗ_ПРОВЕРЕНО_МАТВЕЙ]') || isChecked;
+
+    const hasPhoto = isVoroniny ? (aDone && mDone) : rawHw.includes('[ФОТО_ДЗ_СДАНО]');
+    const isSubmitted = isVoroniny ? (aDone && mDone) : rawHw.includes('[ДЗ_СДАНО]');
     const isFixed = hasPhoto || isChecked || isSubmitted;
+    const isPartiallyDoneGroup = isVoroniny && (aDone || mDone) && !(aDone && mDone);
 
     const pctMatch = rawHw.match(/\[ПРОГРЕСС_ДЗ:(\d+)%\]/);
-    let savedPct = pctMatch ? parseInt(pctMatch[1], 10) : (isFixed ? 100 : 0);
+    let savedPct = pctMatch ? parseInt(pctMatch[1], 10) : (isFixed ? 100 : (isPartiallyDoneGroup ? 50 : 0));
     if (i === 0 && latestLesson) {
       const liveSum = getHwCompletionSummary(st, latestLesson);
       if (liveSum.pct > savedPct) savedPct = liveSum.pct;
@@ -1437,8 +1448,6 @@ async function buildStudentAnalyticsAndProgressReport(st, options = { forParent:
 
     let groupDetail = '';
     if (isVoroniny) {
-      const aDone = rawHw.includes('[ФОТО_ДЗ_СДАНО_АРИНА]') || rawHw.includes('[ДЗ_СДАНО_АРИНА]') || rawHw.includes('[ДЗ_ПРОВЕРЕНО_АРИНА]') || isChecked;
-      const mDone = rawHw.includes('[ФОТО_ДЗ_СДАНО_МАТВЕЙ]') || rawHw.includes('[ДЗ_СДАНО_МАТВЕЙ]') || rawHw.includes('[ДЗ_ПРОВЕРЕНО_МАТВЕЙ]') || isChecked;
       const aPctM = rawHw.match(/\[ПРОГРЕСС_АРИНА:(\d+)%\]/);
       const mPctM = rawHw.match(/\[ПРОГРЕСС_МАТВЕЙ:(\d+)%\]/);
       const aPct = aPctM ? aPctM[1] + '%' : (aDone ? '100%' : '0%');
@@ -1455,7 +1464,15 @@ async function buildStudentAnalyticsAndProgressReport(st, options = { forParent:
         lessonHistoryLines.push(`• ${dStr} — «${topicName}»\n   └ ✅ ДЗ выполнено и зафиксировано (${photoBadge}, ${savedPct || 100}%)${groupDetail}`);
       } else if (i === 0) {
         inProgressCount++;
-        lessonHistoryLines.push(`• ${dStr} — «${topicName}»\n   └ ⏳ Текущее ДЗ в работе (сейчас выполнено: ${savedPct}%, ждём 📸 фото тетрадки)${groupDetail}`);
+        lessonHistoryLines.push(`• ${dStr} — «${topicName}»\n   └ ⏳ Текущее ДЗ в работе (${isPartiallyDoneGroup ? 'сдал 1 из 2 учеников, ' : ''}готовность: ${savedPct}%, ждём 📸 фото тетрадки)${groupDetail}`);
+      } else if (isPartiallyDoneGroup) {
+        fixedHwCount += 0.5;
+        missedHwCount += 0.5;
+        const whoDone = aDone ? 'Арина сдала ✅' : 'Матвей сдал ✅';
+        const whoMissed = aDone ? 'Матвей не сдал ❌' : 'Арина не сдала ❌';
+        fixedDates.push(`${dStr} («${topicName.slice(0, 30)}» — ${whoDone})`);
+        missedDates.push(`${dStr} («${topicName.slice(0, 30)}» — ${whoMissed})`);
+        lessonHistoryLines.push(`• ${dStr} — «${topicName}»\n   └ ⚠️ Частичная сдача в паре (${whoDone}, ${whoMissed})${groupDetail}`);
       } else {
         missedHwCount++;
         missedDates.push(`${dStr} («${topicName.slice(0, 35)}»)`);
@@ -3101,31 +3118,17 @@ async function executeFunctionCall(name, args) {
         }
         if (args.student_errors || args.new_vocab) {
           const doss = parseStudentDossierBot(st);
-          const newErr = args.student_errors ? (doss.errors ? `${doss.errors}; ${args.student_errors}` : args.student_errors) : doss.errors;
-          const newVoc = args.new_vocab ? (doss.vocab ? `${doss.vocab}, ${args.new_vocab}` : args.new_vocab) : doss.vocab;
-          let updatedSched = doss.schedule || '';
-          if (doss.tgId) updatedSched += `\\n[TG_ID]:\\n${doss.tgId}`;
-          if (doss.tgUser) updatedSched += `\\n[TG_USER]:\\n${doss.tgUser}`;
-          if (doss.perplexity) updatedSched += `\\n[PERPLEXITY]:\\n${doss.perplexity}`;
-          if (doss.unit) updatedSched += `\\n[УЧЕБНИК]:\\n${doss.unit}`;
-          if (doss.interests) updatedSched += `\\n[ИНТЕРЕСЫ]:\\n${doss.interests}`;
-          if (newErr) updatedSched += `\\n[ОШИБКИ]:\\n${newErr}`;
-          if (newVoc) updatedSched += `\\n[СЛОВАРЬ]:\\n${newVoc}`;
-          if (doss.notes) updatedSched += `\\n[ЗАМЕТКИ]:\\n${doss.notes}`;
+          if (args.student_errors) {
+            doss.errors = doss.errors ? `${doss.errors}; ${args.student_errors}` : args.student_errors;
+          }
+          if (args.new_vocab) {
+            doss.vocab = doss.vocab ? `${doss.vocab}, ${args.new_vocab}` : args.new_vocab;
+          }
+          const updatedSched = serializeStudentDossierBot(doss);
           await db.from('students').update({ schedule: updatedSched }).eq('id', st.id);
+          st.schedule = updatedSched;
         }
         const followUpMsg = `📲 *Готовое сообщение для ученика (${st.name}):*\n"Привет! Сегодня отлично поработали над темой «${args.topic || 'Английский язык'}» 🌟${args.new_vocab ? `\nНовые слова урока: ${args.new_vocab}` : ''}\n📌 Домашнее задание на следующий раз: ${args.homework || 'Повторить материал урока'}."`;
-        if (false) { db.from('lessons')
-        const user = await getUser();
-        // 1. Найти или создать ученика
-        let { data: st } = await db.from('students').select('*').eq('user_id', user.id).ilike('name', `%${args.student_name}%`).limit(1).single();
-        if (!st) {
-          const { data: newSt } = await db.from('students').insert({ user_id: user.id, name: args.student_name, price: 0 }).select().single();
-          st = newSt;
-        }
-        
-        // 2. Создать урок
-        }
         const dateStr = new Date().toISOString();
         const todayPrefix = getMinskDateString(0);
         let homeworkToSave = args.homework || '';
@@ -3137,9 +3140,21 @@ async function executeFunctionCall(name, args) {
         const { data: existingSched } = await db.from('lessons').select('*').eq('student_id', st.id).gte('date', todayPrefix + 'T00:00:00Z').order('date', { ascending: false }).limit(1).maybeSingle();
         let lesson = null;
         if (existingSched) {
+          // Сохраняем все прикреплённые в приложении блоки ([ПРЕЗЕНТАЦИЯ_ТЕКСТ], [СЦЕНАРИЙ_УРОКА], [КАРТОЧКИ_ДЗ], [ПРЕЗЕНТАЦИЯ_ФАЙЛ], [МАТЕРИАЛЫ])!
+          const oldHw = existingSched.homework || '';
+          const preservedBlocks = [];
+          const blockRegex = /\[(ПРЕЗЕНТАЦИЯ_?ТЕКСТ|СЦЕНАРИЙ_?УРОКА|КАРТОЧКИ_?ДЗ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|ОС_ПО_ФОТО_[А-ЯA-Z_]+)\]:?[\s\S]*?\[\/\s*\1\s*\]/gi;
+          let mBlock;
+          while ((mBlock = blockRegex.exec(oldHw)) !== null) {
+            if (!homeworkToSave.includes(mBlock[0])) preservedBlocks.push(mBlock[0]);
+          }
+          const matMatch = oldHw.match(/\[МАТЕРИАЛЫ\]:[^\n]*/i);
+          if (matMatch && !homeworkToSave.includes(matMatch[0])) preservedBlocks.push(matMatch[0]);
+          const mergedHw = [homeworkToSave || cleanHomeworkTextBot(oldHw), ...preservedBlocks].filter(Boolean).join('\n\n').trim();
+
           const { data: upLs } = await db.from('lessons').update({
             topic: args.topic || existingSched.topic || '',
-            homework: homeworkToSave || existingSched.homework || '',
+            homework: mergedHw || oldHw,
             status: 'Проведен',
             paid: !!args.paid
           }).eq('id', existingSched.id).select().maybeSingle();
@@ -4565,8 +4580,10 @@ ${materialsText || `Активный словарь: "${doss.vocab || ''}"\nТе
       const hwStatus = getHwCompletionSummary(st, lastLs, chatId, query.from);
       await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
       const submitBtnLabel = hwStatus.canSubmit
-        ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}%)`
-        : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`;
+        ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}% + 📸 фото)`
+        : (!hwStatus.hasNotebookPhoto
+            ? `🔒 Сдать ДЗ — пришли 📸 фото тетрадки! (${hwStatus.pct}%)`
+            : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`);
 
       const kb = [
         [{ text: '📝 Пройти тестик (3 вопроса)', callback_data: `student_poll_quiz:${st.id}` }],
@@ -4658,8 +4675,10 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
       const hwStatus = getHwCompletionSummary(st, lastLs, chatId, query.from);
       await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
       const submitBtnLabel = hwStatus.canSubmit
-        ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}%)`
-        : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`;
+        ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}% + 📸 фото)`
+        : (!hwStatus.hasNotebookPhoto
+            ? `🔒 Сдать ДЗ — пришли 📸 фото тетрадки! (${hwStatus.pct}%)`
+            : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`);
 
       const kb = [
         [{ text: '📝 Пройти тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
@@ -4749,8 +4768,10 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
       const hwStatus = getHwCompletionSummary(st, lastLs, chatId, query.from);
       await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
       const submitBtnLabel = hwStatus.canSubmit
-        ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}%)`
-        : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`;
+        ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}% + 📸 фото)`
+        : (!hwStatus.hasNotebookPhoto
+            ? `🔒 Сдать ДЗ — пришли 📸 фото тетрадки! (${hwStatus.pct}%)`
+            : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`);
 
       const kb = [
         [{ text: '📝 Пройти тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }],
@@ -5432,7 +5453,7 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
           `⏳ *Что обязательно нужно сделать сейчас:*\n• ${hwStatus.leftText}\n\n` +
           `📸 *Сфотографируй свою тетрадку с выполненным письменным упражнением и отправь фото прямо сюда в чат* — я проверю его, дам обратную связь, и кнопка сдачи ДЗ сразу откроется! 🚀`;
 
-        const kbMarkup = st ? buildStudentKeyboard(st, ls, chatId) : undefined;
+        const kbMarkup = st ? buildStudentKeyboard(st, ls, chatId, query.from) : undefined;
         await bot.sendMessage(chatId, gateMsg, { parse_mode: 'Markdown', reply_markup: kbMarkup }).catch(() => bot.sendMessage(chatId, gateMsg));
 
         const groupExtra = hwStatus.groupBreakdownText ? `\n\n${hwStatus.groupBreakdownText}` : '';
@@ -5446,15 +5467,9 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
       }
 
       // Ученик прислал фото тетрадки (проверено ботом) И набрал >= 75% -> официально засчитываем сдачу ДЗ!
-      const newStreak = st ? await incrementStudentStreakBot(st) : 1;
+      const newStreak = st ? await incrementStudentStreakBot(st, actor) : 1;
       if (ls) {
-        let updatedHw = ls.homework || '';
-        const tag = actor.tagKey ? `[ДЗ_СДАНО_${actor.tagKey}]` : '[ДЗ_СДАНО]';
-        if (!updatedHw.includes(tag) && !updatedHw.includes('[ДЗ_ПРОВЕРЕНО]')) {
-          updatedHw = `${tag} ${updatedHw}`.trim();
-          ls.homework = updatedHw;
-          await db.from('lessons').update({ homework: updatedHw }).eq('id', ls.id);
-        }
+        await markHwTagForActor(ls, 'СДАНО', actor);
       }
 
       await bot.answerCallbackQuery(query.id, { text: `🎉 Ура! Фото тетрадки проверено, ДЗ (${hwStatus.pct}%) официально сдано!` });
@@ -5787,9 +5802,9 @@ bot.on('poll_answer', async (answer) => {
 
     // Когда ученик ответил на все 3 вопроса раунда — присылаем обновлённый статус готовности ДЗ и клавиатуру
     if (prog.pollsAnswered % 3 === 0 && pollInfo.chatId && st) {
-      const roundMsg = `🏁 Мини-тест пройден! Верных ответов: ${prog.pollsCorrect} из ${prog.pollsAnswered}.\n📊 Твоя готовность ДЗ сейчас: ${hwStatus.pct}% ${hwStatus.canSubmit ? '— кнопка «✅ Я сделал(а) ДЗ!» разблокирована! 🎉' : '(для сдачи нужно минимум 75%)'}`;
+      const roundMsg = `🏁 Мини-тест пройден! Верных ответов: ${prog.pollsCorrect} из ${prog.pollsAnswered}.\n📊 Твоя готовность ДЗ сейчас: ${hwStatus.pct}% ${hwStatus.canSubmit ? '— кнопка «✅ Я сделал(а) ДЗ!» разблокирована! 🎉' : '(для сдачи нужно минимум 75% + 📸 фото тетрадки)'}`;
       await sendCleanMessage(pollInfo.chatId, roundMsg, {
-        reply_markup: buildStudentKeyboard(st, lastLs, pollInfo.chatId)
+        reply_markup: buildStudentKeyboard(st, lastLs, pollInfo.chatId, answer.user)
       }).catch(() => {});
     }
 
@@ -6638,13 +6653,15 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
 
     // 2. УМНЫЙ ИИ-МАРШРУТИЗАТОР СООБЩЕНИЙ УЧЕНИКА (понимает: сдача ДЗ / вопрос по теме урока / не по теме или орг. вопрос)
     const { data: nextPlannedLs } = await db.from('lessons')
-      .select('date, time, topic')
+      .select('date, topic')
       .eq('student_id', st.id)
       .eq('status', 'Запланирован')
       .order('date', { ascending: true })
       .limit(1)
       .maybeSingle();
-    const nextLessonInfo = nextPlannedLs ? `${nextPlannedLs.date} в ${nextPlannedLs.time || 'по договорённости'}` : 'пока не назначен в календаре (Игорь уточнит время)';
+    const nextLessonInfo = nextPlannedLs
+      ? new Date(nextPlannedLs.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+      : 'пока не назначен в календаре (Игорь уточнит время)';
     const currentProg = getHwCompletionSummary(st, lastLs, chatId, msg.from);
 
     let aiAnalysis = null;
@@ -7505,9 +7522,21 @@ cron.schedule('* * * * *', async () => {
           const { data: prev } = await db.from('lessons').select('*').eq('student_id', ls3.student_id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
           if (prev && prev.homework && !prev.homework.includes('[ДЗ_ПРОВЕРЕНО]') && !prev.homework.includes('[ДЗ_СДАНО]')) {
             const curStreak = parseInt(doss.streak, 10) || 1;
-            const streakAlert = `🔥⚠️ *ВНИМАНИЕ, ${ls3.students.name.toUpperCase()}! ТВОЙ СТРИК ПОД УГРОЗОЙ!* ⚠️🔥\n\nДо нашего урока осталось меньше 3 часов (*начало сегодня в ${timeStr}*), а домашнее задание ещё не сдано!\n\n🔥 Твой ударный режим: *${curStreak} ДЗ подряд!*\n⏳ Если не прислать ответ или фото тетради до *${timeStr}*, твой огонёк сгорит! 😱\n\n👇 Скорее выполняй задание ниже и присылай фото тетрадки или ответ прямо сюда в чат, чтобы спасти свой стрик и получить +15 XP! 💪🚀`;
             for (const tid of targetIds) {
-              await bot.sendMessage(tid, streakAlert, { parse_mode: 'Markdown' }).catch(() => {});
+              const actor = resolveStudentActor(ls3.students, tid);
+              const actorHwSum = getHwCompletionSummary(ls3.students, prev, tid);
+              const actorAlreadyDone = actorHwSum.hasNotebookPhoto || (actor.tagKey && (prev.homework.includes(`[ДЗ_СДАНО_${actor.tagKey}]`) || prev.homework.includes(`[ДЗ_ПРОВЕРЕНО_${actor.tagKey}]`)));
+              if (actorAlreadyDone) {
+                const warmMsg = `⏰ *Привет, ${actor.shortName || ls3.students.name}!*\nСегодня в *${timeStr}* у нас урок английского с Игорем! Твоё ДЗ по фото уже принято ✅ — повтори 5 слов перед занятием для разминки:`;
+                const warmKb = [
+                  [{ text: '🔤 5 слов урока', callback_data: `student_words:${ls3.students.id}` }],
+                  [{ text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${ls3.students.id}:0` }]
+                ];
+                await bot.sendMessage(tid, warmMsg, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: warmKb } }).catch(() => {});
+              } else {
+                const streakAlert = `🔥⚠️ *ВНИМАНИЕ, ${(actor.shortName || ls3.students.name).toUpperCase()}! ТВОЙ СТРИК ПОД УГРОЗОЙ!* ⚠️🔥\n\nДо нашего урока осталось меньше 3 часов (*начало сегодня в ${timeStr}*), а домашнее задание ещё не сдано (сейчас выполнено ${actorHwSum.pct}%)!\n\n🔥 Твой ударный режим: *${curStreak} ДЗ подряд!*\n⏳ Задание рассчитано всего на *10–15 минут* — перепиши упражнение с карточки в тетрадь и пришли 📸 фото тетрадки до *${timeStr}*, чтобы спасти свой стрик! 💪🚀`;
+                await bot.sendMessage(tid, streakAlert, { parse_mode: 'Markdown' }).catch(() => {});
+              }
             }
             await sendHomeworkToStudentBot(ls3.students, prev, true, `сегодня в ${timeStr}`);
             if (CHAT_ID) {
