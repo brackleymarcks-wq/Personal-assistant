@@ -898,14 +898,20 @@ const Gemini = {
     const model = Config.aiModel || settings?.model || DEFAULT_MODEL;
     if (!apiKey) throw new Error('API ключ не настроен.');
 
+    const cleanPrevHw = prevLesson?.homework
+      ? String(prevLesson.homework).replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\s*\1\s*\]/gi, '').replace(/\[[^\]]+\]/g, '').trim().slice(0, 400)
+      : '';
+
     const dossierText = [
       `Ученик: ${studentCtx.name || 'Ученик'}`,
       `Уровень/Класс: ${studentCtx.grade || 'Не указан'}`,
-      studentCtx.interests ? `Интересы и хобби ученика: ${studentCtx.interests}` : '',
-      studentCtx.errors ? `Типичные ошибки / слабые места: ${studentCtx.errors}` : '',
+      studentCtx.unit ? `Учебник / Программа: ${studentCtx.unit}` : '',
+      studentCtx.interests ? `Интересы, персонажи и хобби ученика: ${studentCtx.interests}` : '',
+      studentCtx.errors ? `Типичные ошибки / слабые места и выводы по прошлым урокам: ${studentCtx.errors}` : '',
       studentCtx.vocab ? `Активный словарь (Vocabulary Bank): ${studentCtx.vocab}` : '',
       studentCtx.notes ? `Заметки учителя: ${studentCtx.notes}` : '',
-      prevLesson ? `Предыдущий урок (${new Date(prevLesson.date).toLocaleDateString('ru-RU')}): Тема "${prevLesson.topic || 'не указана'}", Заданное ДЗ: "${prevLesson.homework || 'не было'}"` : ''
+      prevLesson ? `Предыдущий проведённый урок (${new Date(prevLesson.date).toLocaleDateString('ru-RU')}): Тема "${prevLesson.topic || 'не указана'}", Заданное ДЗ: "${cleanPrevHw || 'не было'}"` : '',
+      studentCtx.historySummary ? `История прошлых уроков ученика (хронология тем и прогресса):\n${studentCtx.historySummary}` : ''
     ].filter(Boolean).join('\n');
 
     let prompt = '';
@@ -936,8 +942,8 @@ const Gemini = {
       }
 
       let materialsBlock = '';
-      if (hasScenario) materialsBlock += `\n📋 СЦЕНАРИЙ И КОНСПЕКТ УРОКА (ИЗ PERPLEXITY):\n"""\n${currentLesson.scenario.slice(0, 5000)}\n"""\n`;
-      if (presSummary) materialsBlock += `\n📑 МАТЕРИАЛЫ И СЛАЙДЫ ПРЕЗЕНТАЦИИ УРОКА:\n"""\n${presSummary.slice(0, 6000)}\n"""\n`;
+      if (hasScenario) materialsBlock += `\n📋 СЦЕНАРИЙ И КОНСПЕКТ УРОКА (ИЗ PERPLEXITY):\n"""\n${currentLesson.scenario.slice(0, 8000)}\n"""\n`;
+      if (presSummary) materialsBlock += `\n📑 МАТЕРИАЛЫ И СЛАЙДЫ ПРЕЗЕНТАЦИИ УРОКА:\n"""\n${presSummary.slice(0, 10000)}\n"""\n`;
       if (hasMaterials) materialsBlock += `\nДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ / ССЫЛКИ УРОКА:\n"""\n${currentLesson.materials}\n"""\n`;
       if (hasDebrief) materialsBlock += `\nИТОГИ УРОКА И ЗАМЕЧАНИЯ ПРЕПОДАВАТЕЛЯ (ДЕБРИФИНГ):\n"""\n${currentLesson.debrief}\n"""\n`;
       if (hasCards) materialsBlock += `\nПРИКРЕПЛЁННЫЕ PNG-КАРТОЧКИ / СКРИНШОТЫ УПРАЖНЕНИЙ: Преподаватель прикрепил ${currentLesson.cards.length} карточек (переданы во вложении). Обязательно считай слова и упражнения с этих карточек и построй ДЗ вокруг них!\n`;

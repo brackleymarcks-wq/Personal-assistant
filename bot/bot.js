@@ -699,6 +699,7 @@ async function getStudentVocabularyBank(st) {
 
     for (const ls of (recentLs || [])) {
       const hw = ls.homework || '';
+      // 1. Нумерованные списки слов: 1. word [ipa] — перевод
       const matches = hw.matchAll(/^\s*\d+\.\s+([A-Za-z\s-]+)(?:\[(.*?)\])?\s*(?:—|-|:)\s*([^\n\r(]+)/gm);
       for (const m of matches) {
         const w = m[1].trim();
@@ -706,6 +707,26 @@ async function getStudentVocabularyBank(st) {
         const tr = m[3] ? m[3].trim() : '';
         if (w.length > 1 && !wordsSet.has(w.toLowerCase())) {
           wordsSet.set(w.toLowerCase(), { word: w, ipa, translation: tr, source: ls.topic || 'Урок' });
+        }
+      }
+      // 2. Слайды презентации: word /ipa/ перевод
+      const ipaMatches = hw.matchAll(/\b([a-zA-Z][a-zA-Z'-]*(?:\s+[a-zA-Z][a-zA-Z'-]*)?)\s+\/([^\/\n]{1,28})\/\s+([а-яА-ЯёЁ][а-яА-ЯёЁ\s,;\-—–()]{1,40}?)(?=\s+[a-zA-Z]{2,}(?:\s+[a-zA-Z]+)?\s+\/|\s+(?:Примеры|Угадай|Полезно|Не путай|Важно|Слова|Слайд|Этап|ВЫРАЖЕНИЕ|СЛОВО)|·|\n|$)/g);
+      for (const im of ipaMatches) {
+        const w = im[1].trim();
+        const ipa = im[2].trim();
+        const tr = im[3].replace(/^[—–\-:\s·•]+|[—–\-:\s·•]+$/g, '').trim();
+        if (w.length > 1 && w.split(/\s+/).length <= 3 && !wordsSet.has(w.toLowerCase())) {
+          wordsSet.set(w.toLowerCase(), { word: w, ipa, translation: tr, source: ls.topic || 'Презентация урока' });
+        }
+      }
+      // 3. Таблицы из сценария Perplexity: | word | /ipa/ | перевод |
+      const tblMatches = hw.matchAll(/\|\s*\*\*?([a-zA-Z][a-zA-Z\s'-]{1,25}?)\*\*?\s*\|\s*(?:[\/\[]([^\/\]|\n]+)[\/\]])?\s*\|\s*([а-яА-ЯёЁ][^|\n]{1,42}?)\s*\|/g);
+      for (const tm of tblMatches) {
+        const w = tm[1].trim();
+        const ipa = (tm[2] || '').trim();
+        const tr = tm[3].trim();
+        if (w.length > 1 && w.split(/\s+/).length <= 3 && !wordsSet.has(w.toLowerCase())) {
+          wordsSet.set(w.toLowerCase(), { word: w, ipa, translation: tr, source: ls.topic || 'Конспект урока' });
         }
       }
     }
@@ -1010,17 +1031,16 @@ async function getLatestLessonWithMaterials(studentId) {
       if (dbMatch && dbMatch[1].trim()) bestDebrief = dbMatch[1].trim();
     }
     if (!bestCleanHw) {
-      const stripped = hwRaw.split(/\\?n?\[МАТЕРИАЛЫ\]:/)[0]
-        .replace(/\[(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ|КАРТОЧКИ_ДЗ)\]:[\s\S]*?\[\/(?:ДЕБРИФИНГ|КАСТОМНЫЙ_ОТЧЕТ|ОТЧЕТ_РОДИТЕЛЮ|СЦЕНАРИЙ_УРОКА|ПРЕЗЕНТАЦИЯ|КАРТОЧКИ_ДЗ)\]/g, '')
-        .replace(/\[ПРОГРЕСС[^\]]*\]/g, '')
-        .replace(/\[ДЗ_[^\]]*\]/g, '')
-        .replace(/\[ОТПРАВИТЬ[^\]]*\]/g, '')
-        .replace(/\[ПЕРЕНЕСЕН_В_ТГ\]/g, '')
-        .replace(/⏰\s*Напоминание:[^\n]*/gi, '')
-        .trim();
+      const stripped = cleanHomeworkTextBot(hwRaw);
       if (stripped.length > 10) bestCleanHw = stripped;
     }
   }
+
+  // Собираем краткую историю прошлых проведённых уроков для контекста ИИ бота
+  const historyLines = conducted.slice(0, 5).map(l => {
+    const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' });
+    return `- ${dStr}: ${l.topic || 'Практика'}`;
+  }).join('\n');
 
   primary._mergedTopic = (primary.topic && primary.topic.trim()) || topicsList[0] || 'English';
   primary._mergedScenario = extractLessonScenario(primary.homework || '') || bestScenario;
@@ -1029,6 +1049,7 @@ async function getLatestLessonWithMaterials(studentId) {
   primary._mergedMaterials = bestMaterials;
   primary._mergedDebrief = bestDebrief;
   primary._mergedCleanHw = bestCleanHw;
+  primary._historySummary = historyLines;
   return primary;
 }
 
@@ -1040,18 +1061,22 @@ function extractAllLessonMaterials(lesson, st) {
   const materials = lesson?._mergedMaterials || '';
   const debrief = lesson?._mergedDebrief || '';
   const cleanHw = lesson?._mergedCleanHw || '';
+  const historySummary = lesson?._historySummary || '';
+  const warmupErrors = extractHwWarmupErrorsFromDossier(doss);
 
-  let block = `📚 ТЕМА УРОКА: "${topic}"\n`;
+  let block = `📚 ТЕМА ТЕКУЩЕГО УРОКА: "${topic}"\n`;
   if (doss.unit) block += `📖 УЧЕБНИК / ПРОГРАММА: ${doss.unit}\n`;
-  if (cleanHw) block += `📌 ЗАДАННОЕ ДЗ ПО УРОКУ:\n${cleanHw.slice(0, 1500)}\n`;
-  if (scenario) block += `📋 КОНСПЕКТ / СЦЕНАРИЙ И ТЕКСТ ПРЕЗЕНТАЦИИ УРОКА:\n${scenario.slice(0, 2500)}\n`;
+  if (doss.interests) block += `🎯 ИНТЕРЕСЫ И ПЕРСОНАЖИ УЧЕНИКА: ${doss.interests}\n`;
+  if (historySummary) block += `⏪ ИСТОРИЯ ПРОШЛЫХ УРОКОВ УЧЕНИКА (ЧТО УЖЕ ПРОХОДИЛИ):\n${historySummary}\n`;
+  if (cleanHw) block += `📌 ЗАДАННОЕ ДЗ ПО УРОКУ:\n${cleanHw.slice(0, 1800)}\n`;
+  if (scenario) block += `📋 КОНСПЕКТ И СЦЕНАРИЙ УРОКА (ИЗ PERPLEXITY):\n${scenario.slice(0, 4000)}\n`;
   if (presText && (!scenario || !scenario.includes(presText.slice(0, 100)))) {
-    block += `📑 СЛАЙДЫ И ПРАВИЛА ИЗ ПРЕЗЕНТАЦИИ:\n${presText.slice(0, 3500)}\n`;
+    block += `📑 СЛАЙДЫ, ЛЕКСИКА И ПРАВИЛА ИЗ ПРЕЗЕНТАЦИИ УРОКА:\n${presText.slice(0, 5500)}\n`;
   }
   if (materials) block += `📎 ДОП. МАТЕРИАЛЫ УРОКА:\n${materials.slice(0, 1000)}\n`;
   if (debrief) block += `📝 ЗАМЕТКИ ПРЕПОДАВАТЕЛЯ ПО УРОКУ:\n${debrief.slice(0, 800)}\n`;
   if (doss.vocab) block += `🔤 АКТИВНЫЙ СЛОВАРЬ УЧЕНИКА:\n${doss.vocab}\n`;
-  if (doss.errors) block += `⚠️ СЛАБЫЕ МЕСТА И ОШИБКИ УЧЕНИКА (на отработку):\n${doss.errors}\n`;
+  if (doss.errors || warmupErrors) block += `⚠️ СЛАБЫЕ МЕСТА И ОШИБКИ УЧЕНИКА (на отработку):\n${[doss.errors, warmupErrors].filter(Boolean).join(' | ')}\n`;
   return block.trim();
 }
 
@@ -1341,31 +1366,45 @@ async function sendTtsAudio(chatId, phrase, title = 'Произношение с
 function getLessonFlashcards(scenarioText, hwText = '', topicText = '', dossVocab = '') {
   const cards = [];
   const text = (hwText || '') + '\n' + (scenarioText || '') + '\n' + (dossVocab || '');
+
+  const addCard = (enRaw, ipaRaw, ruRaw, exRaw = '') => {
+    const en = (enRaw || '').replace(/\*\*/g, '').trim();
+    const ipa = ipaRaw ? ('[' + ipaRaw.replace(/^[\[\/]|[\]\/]$/g, '').trim() + ']') : '';
+    let ru = (ruRaw || '').replace(/\*\*/g, '').replace(/\s*[—–-]\s*.*$/, '').trim();
+    const ex = (exRaw || '').trim();
+    if (!/[а-яА-ЯёЁ]/.test(ru)) return;
+    if (!/^[A-Za-z][A-Za-z\s'\/-]{1,28}$/.test(en)) return;
+    if (en.split(/\s+/).length > 4) return;
+    const lowerEn = en.toLowerCase();
+    if (['mistakes', 'words', 'prepositions', 'checklist', 'places', 'trees', 'animals', 'birds', 'grammar', 'practice', 'step', 'shag', 'slide', 'unit', 'lesson', 'mission', 'rule', 'trap', 'skyrim', 'spore'].includes(lowerEn)) return;
+    if (!cards.find(c => c.en.toLowerCase() === lowerEn)) {
+      cards.push({ en, ipa, ru, ex });
+    }
+  };
+
+  // 1. Extract from presentation slides & text: word /ipa/ russian translation
+  const ipaRegex = /\b([A-Za-z][A-Za-z\s'-]{1,24}?)\s+\/([^\/\n]{1,28})\/\s+([а-яА-ЯёЁ][а-яА-ЯёЁ\s,()\/-]{1,35}?)(?=\s+[A-ZА-ЯЁ0-9•|]|\n|$)/g;
+  let im;
+  while ((im = ipaRegex.exec(text)) !== null) {
+    addCard(im[1], im[2], im[3]);
+  }
+
+  // 2. Extract from Perplexity markdown tables: | word | /ipa/ | перевод | пример |
+  const mdRegex = /\|\s*\*\*?([A-Za-z][A-Za-z\s'\/-]{1,24}?)\*\*?\s*\|\s*(?:\/([^\/|]+)\/\s*\|)?\s*([а-яА-ЯёЁ][^|\n]{1,40}?)\s*\|(?:\s*([^|\n]{0,60}?)\s*\|)?/g;
+  let mm;
+  while ((mm = mdRegex.exec(text)) !== null) {
+    addCard(mm[1], mm[2] || '', mm[3], mm[4] || '');
+  }
+
+  // 3. Extract from bulleted / dashed lines (including inside slides)
   const lines = text.split(/[\n,;]+/);
   for (const l of lines) {
-    const trimmed = l.trim();
-    if (!trimmed || trimmed.startsWith('Слайд') || trimmed.startsWith('Unit') || trimmed.startsWith('Today') || trimmed.startsWith('Mission') || trimmed.startsWith('Checklist')) continue;
+    const trimmed = l.replace(/^Слайд\s*\d+\s*:\s*/i, '').trim();
+    if (!trimmed || trimmed.startsWith('Unit') || trimmed.startsWith('Today') || trimmed.startsWith('Mission') || trimmed.startsWith('Checklist')) continue;
 
-    // Pattern: [bullet/num]? [English word] [transcription]? [dash with spaces] [Russian translation] (example)?
     const m = trimmed.match(/^[•\d\s\-\*.]*([A-Za-z][A-Za-z\s'-]*?)\s*(?:[\[\/]([^\/\]]+)[\]\/])?\s+[—–-]\s+([^(\n]+)(?:\((.*?)\))?/);
     if (m && m[1] && m[3]) {
-      const en = m[1].trim();
-      const ipa = m[2] ? ('[' + m[2].trim() + ']') : '';
-      let ru = m[3].trim();
-      const ex = m[4] ? m[4].trim() : '';
-
-      if (!/[а-яА-ЯёЁ]/.test(ru)) continue;
-      if (!/^[A-Za-z\s'-]{2,30}$/.test(en)) continue;
-      if (en.split(/\s+/).length > 3) continue;
-
-      ru = ru.replace(/\s*[—–-]\s*.*$/, '').trim();
-
-      const lowerEn = en.toLowerCase();
-      if (['mistakes', 'words', 'prepositions', 'checklist', 'places', 'trees', 'animals', 'birds', 'grammar', 'practice', 'step', 'shag'].includes(lowerEn)) continue;
-
-      if (!cards.find(c => c.en.toLowerCase() === lowerEn)) {
-        cards.push({ en, ipa, ru, ex });
-      }
+      addCard(m[1], m[2] || '', m[3], m[4] || '');
     }
   }
 

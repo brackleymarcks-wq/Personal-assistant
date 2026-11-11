@@ -1465,13 +1465,18 @@ const TutoringPage = {
     }
     document.getElementById('ls-materials').value = materials;
 
-    // Авто-определение темы урока, если тема пуста, но есть прикреплённая презентация
+    // Авто-определение темы урока по СУТИ презентации/сценария (если тема пуста или была записана просто из имени файла)
     const topicInput = document.getElementById('ls-topic');
-    if (topicInput && !topicInput.value.trim() && (this.attachedPresentationName || this.attachedPresentationText)) {
-      const currentSt = this.students.find(s => s.id === document.getElementById('ls-student').value);
-      const autoTopic = this.detectTopicFromPresentation(this.attachedPresentationName, this.attachedPresentationText, currentSt?.name);
-      if (autoTopic && autoTopic !== 'Практика английского языка') {
-        topicInput.value = autoTopic;
+    if (topicInput && (this.attachedPresentationName || this.attachedPresentationText || scenario)) {
+      const curTop = topicInput.value.trim();
+      const rawFileClean = (this.attachedPresentationName || '').replace(/\.[^/.]+$/, '').replace(/20\d{6,12}/g, '').replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+      const looksLikeRawFilename = !curTop || curTop === 'Практика английского языка' || curTop === 'Present Perfect Mission' || /\b\d\s+\d\b/.test(curTop) || (rawFileClean && curTop.toLowerCase() === rawFileClean.toLowerCase());
+      if (looksLikeRawFilename) {
+        const currentSt = this.students.find(s => s.id === document.getElementById('ls-student').value);
+        const autoTopic = this.detectTopicFromPresentation(this.attachedPresentationName, this.attachedPresentationText, currentSt?.name, scenario);
+        if (autoTopic && autoTopic !== 'Практика английского языка') {
+          topicInput.value = autoTopic;
+        }
       }
     }
 
@@ -1503,8 +1508,8 @@ const TutoringPage = {
     this.renderCardsPreview();
     this.bindLessonModalMediaAndDebrief(ls, sSelect.value);
 
-    this.renderLessonMemoryBanner(sSelect.value, ls?.date);
-    sSelect.onchange = () => this.renderLessonMemoryBanner(sSelect.value, ls?.date);
+    this.renderLessonMemoryBanner(sSelect.value, ls?.date, ls?.id);
+    sSelect.onchange = () => this.renderLessonMemoryBanner(sSelect.value, ls?.date, ls?.id);
     const outBox = document.getElementById('ls-ai-output-box');
     if (outBox) { outBox.classList.add('hidden'); outBox.innerHTML = ''; }
     const runTweeMode = async (mode, btnEl, label) => {
@@ -1513,8 +1518,8 @@ const TutoringPage = {
       if (!st) return UI.toast('Выберите ученика', 'warning');
       const topic = document.getElementById('ls-topic').value.trim();
       const hw = document.getElementById('ls-homework').value.trim();
-      const dossier = this.parseStudentDossier(st);
-      const prevLs = this.getPrevConductedLesson(st.id, ls?.date);
+      const mem = this.compileStudentMemory(st.id, ls?.date, ls?.id);
+      const prevLs = mem.prevLesson;
       btnEl.disabled = true;
       btnEl.textContent = '⏳ Генерирую...';
       try {
@@ -1522,7 +1527,12 @@ const TutoringPage = {
         const debrief = document.getElementById('ls-debrief-notes')?.value?.trim() || '';
         const materials = document.getElementById('ls-materials')?.value?.trim() || '';
         const res = await Gemini.generateTutoringAI(mode, 
-          { name: st.name, grade: st.grade, ...dossier }, 
+          {
+            name: st.name,
+            grade: st.grade,
+            ...mem.enrichedDossier,
+            historySummary: mem.aiHistorySummary
+          }, 
           { 
             topic, 
             homework: hw, 
@@ -1533,7 +1543,8 @@ const TutoringPage = {
             presentation: this.attachedPresentation || '',
             presentationText: this.attachedPresentationText || ''
           }, 
-          prevLs
+          prevLs,
+          mem.historyLessons
         );
         if (mode === 'homework') {
           document.getElementById('ls-homework').value = res;
@@ -1617,8 +1628,14 @@ const TutoringPage = {
         const scenario = document.getElementById('ls-scenario')?.value?.trim() || '';
         const debrief = document.getElementById('ls-debrief-notes')?.value?.trim() || '';
         const materials = document.getElementById('ls-materials')?.value?.trim() || '';
+        const mem = this.compileStudentMemory(st.id, ls?.date, ls?.id);
         const homework = await Gemini.generateTutoringAI('homework', 
-          { name: st.name, grade: st.grade, ...this.parseStudentDossier(st) }, 
+          {
+            name: st.name,
+            grade: st.grade,
+            ...mem.enrichedDossier,
+            historySummary: mem.aiHistorySummary
+          }, 
           {
             topic,
             scenario,
@@ -1628,7 +1645,8 @@ const TutoringPage = {
             presentation: this.attachedPresentation,
             presentationText: this.attachedPresentationText || ''
           }, 
-          this.getPrevConductedLesson(st.id, ls?.date)
+          mem.prevLesson,
+          mem.historyLessons
         );
         document.getElementById('ls-homework').value = homework;
 
@@ -1881,6 +1899,55 @@ const TutoringPage = {
           console.warn('saveLocalFile error after lesson save:', fErr);
         }
       }
+
+      // Автоматическое обогащение памяти ученика (словарь, интересы, ошибки) по материалам сохранённого урока
+      try {
+        const stObj = this.students.find(s => s.id === student_id);
+        if (stObj && (this.attachedPresentationText || scenarioVal || debriefVal)) {
+          const dossier = this.parseStudentDossier(stObj);
+          const essence = this.analyzePresentationEssence(this.attachedPresentationText || '', scenarioVal || '', this.attachedPresentationName || '', stObj.name);
+          const vocabMap = new Map();
+          if (dossier.vocab) {
+            for (const item of dossier.vocab.split(/[,;\n]+/)) {
+              const t = item.trim();
+              if (!t) continue;
+              const k = t.split(/[—–\-:]/)[0].trim().toLowerCase();
+              if (k) vocabMap.set(k, t);
+            }
+          }
+          for (const v of essence.vocabList) {
+            if (!vocabMap.has(v.en.toLowerCase())) {
+              vocabMap.set(v.en.toLowerCase(), v.formatted);
+            }
+          }
+          const updatedVocab = Array.from(vocabMap.values()).slice(0, 40).join(', ');
+          const updatedInterests = dossier.interests || essence.worlds.join('; ');
+          const updatedErrors = debriefVal && !dossier.errors.includes(debriefVal.slice(0, 30))
+            ? (dossier.errors ? `${dossier.errors} | ${debriefVal}` : debriefVal)
+            : dossier.errors;
+
+          if (updatedVocab !== (dossier.vocab || '') || updatedInterests !== (dossier.interests || '') || updatedErrors !== (dossier.errors || '')) {
+            const newSched = this.serializeStudentDossier(
+              dossier.schedule,
+              updatedInterests,
+              updatedErrors,
+              updatedVocab,
+              dossier.notes,
+              dossier.perplexity,
+              dossier.unit,
+              dossier.tgId,
+              dossier.tgUser,
+              dossier.streak,
+              dossier.parentTgId,
+              dossier.parentTgUser
+            );
+            await DB.updateStudent(stObj.id, { schedule: newSched });
+            stObj.schedule = newSched;
+          }
+        }
+      } catch (memErr) {
+        console.warn('Auto student memory sync error:', memErr);
+      }
       
       // Execute Finance Transaction if confirmed
       if (createTx) {
@@ -2014,10 +2081,10 @@ const TutoringPage = {
       const idx = raw.indexOf(tag);
       if (idx === -1) return '';
       const rest = raw.slice(idx + tag.length);
-      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:/);
+      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:/);
       return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
     };
-    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК)\]:/);
+    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|LAST_ACTIVE)\]:/);
     const schedule = (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim();
     return {
       schedule,
@@ -2026,6 +2093,7 @@ const TutoringPage = {
       parentTgId: getSec('[PARENT_TG_ID]:'),
       parentTgUser: getSec('[PARENT_TG_USER]:'),
       streak: parseInt(getSec('[СТРИК]:') || '0', 10) || 0,
+      lastActive: getSec('[LAST_ACTIVE]:'),
       perplexity: getSec('[PERPLEXITY]:'),
       unit: getSec('[УЧЕБНИК]:'),
       interests: getSec('[ИНТЕРЕСЫ]:'),
@@ -2051,12 +2119,34 @@ const TutoringPage = {
     return out;
   },
 
-  getPrevConductedLesson(studentId, beforeDate = null) {
-    const cutoff = beforeDate ? new Date(beforeDate).getTime() : Infinity;
-    const conducted = this.lessons
-      .filter(l => l.student_id === studentId && l.status === 'Проведен' && new Date(l.date).getTime() <= cutoff)
+  getStudentLessonHistory(studentId, beforeDate = null, excludeLessonId = null, limit = 6) {
+    const exclId = excludeLessonId || this.currentLessonId || null;
+    const cutoff = beforeDate ? new Date(beforeDate).getTime() : null;
+    const refDayStr = beforeDate ? new Date(beforeDate).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' }) : null;
+
+    const conducted = (this.lessons || [])
+      .filter(l => {
+        if (l.student_id !== studentId || l.status !== 'Проведен') return false;
+        if (exclId && String(l.id) === String(exclId)) return false;
+        if (cutoff !== null) {
+          const lTime = new Date(l.date).getTime();
+          // Строго раньше текущего урока (минимум на 1 минуту раньше, и не тот же самый день, если открыт урок этого дня)
+          if (lTime >= cutoff - 60000) return false;
+          if (exclId && refDayStr) {
+            const lDayStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' });
+            if (lDayStr === refDayStr) return false;
+          }
+        }
+        return true;
+      })
       .sort((a, b) => new Date(b.date) - new Date(a.date));
-    return conducted[0] || null;
+
+    return conducted.slice(0, limit);
+  },
+
+  getPrevConductedLesson(studentId, beforeDate = null, excludeLessonId = null) {
+    const history = this.getStudentLessonHistory(studentId, beforeDate, excludeLessonId, 1);
+    return history[0] || null;
   },
 
   async markPrevHwChecked(lessonId) {
@@ -2294,35 +2384,275 @@ const TutoringPage = {
     });
   },
 
-  renderLessonMemoryBanner(studentId, lessonDate = null) {
+  compileStudentMemory(studentId, lessonDate = null, excludeLessonId = null) {
+    const st = this.students.find(s => s.id === studentId);
+    const dossier = st ? this.parseStudentDossier(st) : {};
+    const history = this.getStudentLessonHistory(studentId, lessonDate, excludeLessonId, 8);
+    const prevLesson = history[0] || null;
+
+    // 1. Все проведённые уроки ученика (включая текущий для общей копилки знаний, но история строго до текущего)
+    const allStudentConducted = (this.lessons || [])
+      .filter(l => l.student_id === studentId && l.status === 'Проведен')
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 10);
+
+    const vocabSet = new Map();
+    if (dossier.vocab) {
+      for (const item of dossier.vocab.split(/[,;\n]+/)) {
+        const t = item.trim();
+        if (!t) continue;
+        const k = t.split(/[—–\-:]/)[0].trim().toLowerCase();
+        if (k && k.length > 1) vocabSet.set(k, t);
+      }
+    }
+
+    const detectedWorlds = new Set();
+    if (dossier.interests) detectedWorlds.add(dossier.interests.trim());
+
+    const detectedUnits = new Set();
+    if (dossier.unit) detectedUnits.add(dossier.unit.trim());
+
+    const errorNotesList = [];
+    if (dossier.errors) errorNotesList.push(dossier.errors.trim());
+
+    // Вытаскиваем [РАЗМИНКА_ПО_ОШИБКАМ_ДЗ] из заметок досье (куда бот пишет разбор ошибок ДЗ)
+    if (dossier.notes) {
+      const warmupMatch = dossier.notes.match(/\[РАЗМИНКА_ПО_ОШИБКАМ_ДЗ\]:\s*([\s\S]*)/i);
+      if (warmupMatch && warmupMatch[1].trim()) {
+        const wText = warmupMatch[1].trim();
+        // Не дублируем отбивку про фото условия
+        if (!wText.includes('вижу только условие задачи')) {
+          errorNotesList.push(`По прошлому ДЗ в боте: ${wText.slice(0, 260)}`);
+        }
+      } else if (dossier.notes.trim() && !dossier.notes.includes('вижу только условие задачи')) {
+        errorNotesList.push(dossier.notes.trim().slice(0, 220));
+      }
+    }
+
+    const formatLessonDetails = (ls) => {
+      if (!ls) return null;
+      const hwRaw = ls.homework || '';
+      const presMatch = hwRaw.match(/\[ПРЕЗЕНТАЦИЯ_?ТЕКСТ\]:([\s\S]*?)(?:\[\/?\s*ПРЕЗЕНТАЦИЯ_?ТЕКСТ\s*\]|(?=\n\[|$))/i);
+      const presText = presMatch ? presMatch[1].trim() : '';
+      const scenMatch = hwRaw.match(/\[СЦЕНАРИЙ_?УРОКА\]:([\s\S]*?)\[\/?\s*СЦЕНАРИЙ_?УРОКА\s*\]/i);
+      const scenText = scenMatch ? scenMatch[1].trim() : '';
+      const debriefMatch = hwRaw.match(/\[ДЕБРИФИНГ\]:([\s\S]*?)\[\/ДЕБРИФИНГ\]/i);
+      const debriefText = debriefMatch ? debriefMatch[1].trim() : '';
+      const fileMatch = hwRaw.match(/\[ПРЕЗЕНТАЦИЯ_?ФАЙЛ\]:([^\n\[]+)/i);
+      const fileName = fileMatch ? fileMatch[1].trim() : '';
+
+      const essence = this.analyzePresentationEssence(presText, scenText, fileName, st?.name);
+
+      // Если тема урока в базе была сырым именем файла или пустой, берём умную тему из сути слайдов/конспекта
+      let smartTopic = (ls.topic || '').trim();
+      const looksRaw = !smartTopic || smartTopic === 'Present Perfect Mission' || /\b\d\s+\d\b/.test(smartTopic) || smartTopic.toLowerCase().includes('арина матвей');
+      if (looksRaw && (presText || scenText) && essence.topic && essence.topic !== 'Практика английского языка') {
+        smartTopic = essence.topic;
+      }
+      if (!smartTopic) smartTopic = essence.topic || 'Практика английского языка';
+
+      // Статус и прогресс ДЗ (включая раздельный для Арины и Матвея)
+      const isChecked = hwRaw.includes('[ДЗ_ПРОВЕРЕНО]');
+      const isSubmitted = hwRaw.includes('[ДЗ_СДАНО]');
+      const arinaChecked = hwRaw.includes('[ДЗ_ПРОВЕРЕНО_АРИНА]');
+      const matveyChecked = hwRaw.includes('[ДЗ_ПРОВЕРЕНО_МАТВЕЙ]');
+      const arinaSubmitted = hwRaw.includes('[ДЗ_СДАНО_АРИНА]');
+      const matveySubmitted = hwRaw.includes('[ДЗ_СДАНО_МАТВЕЙ]');
+      const arinaPct = hwRaw.match(/\[ПРОГРЕСС_АРИНА:(\d+)%\]/)?.[1];
+      const matveyPct = hwRaw.match(/\[ПРОГРЕСС_МАТВЕЙ:(\d+)%\]/)?.[1];
+      const totalPct = hwRaw.match(/\[ПРОГРЕСС_ДЗ:(\d+)%\]/)?.[1];
+
+      let hwStatusLabel = '';
+      const isVoroniny = (st?.name || '').toLowerCase().includes('арина');
+      if (isVoroniny && (arinaPct || matveyPct || arinaSubmitted || matveySubmitted || arinaChecked || matveyChecked)) {
+        const aStat = arinaChecked ? '✅ проверено' : (arinaSubmitted ? `📬 сдано (${arinaPct || 100}%)` : `${arinaPct || 0}%`);
+        const mStat = matveyChecked ? '✅ проверено' : (matveySubmitted ? `📬 сдано (${matveyPct || 100}%)` : `${matveyPct || 0}%`);
+        hwStatusLabel = `👧 Арина: ${aStat} • 👦 Матвей: ${mStat}`;
+      } else if (isChecked) {
+        hwStatusLabel = '✅ ДЗ проверено';
+      } else if (isSubmitted) {
+        hwStatusLabel = `📬 Сдано в ТГ${totalPct ? ` (${totalPct}%)` : ''}`;
+      } else if (totalPct) {
+        hwStatusLabel = `⏳ Прогресс в боте: ${totalPct}%`;
+      }
+
+      return {
+        id: ls.id,
+        date: ls.date,
+        dateStr: new Date(ls.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' }),
+        rawTopic: ls.topic || '',
+        smartTopic,
+        grammarPoints: essence.grammarPoints,
+        lexThemes: essence.lexThemes,
+        vocabList: essence.vocabList,
+        worlds: essence.worlds,
+        cleanHw: this.cleanHomeworkText(hwRaw),
+        debrief: debriefText,
+        hasPres: Boolean(presText || fileName || hwRaw.includes('[ПРЕЗЕНТАЦИЯ]')),
+        hasScenario: Boolean(scenText),
+        isChecked,
+        isSubmitted,
+        hwStatusLabel
+      };
+    };
+
+    // Обогащаем общую память по всем урокам ученика
+    for (const ls of allStudentConducted) {
+      const info = formatLessonDetails(ls);
+      if (!info) continue;
+      for (const w of info.worlds) detectedWorlds.add(w);
+      for (const v of info.vocabList) {
+        if (!vocabSet.has(v.en.toLowerCase())) {
+          vocabSet.set(v.en.toLowerCase(), v.formatted);
+        }
+      }
+      const uMatch = info.smartTopic.match(/Unit\s*\d+/i);
+      if (uMatch && detectedUnits.size === 0) {
+        detectedUnits.add(`${uMatch[0]} (${st?.grade || 'программа РБ'})`);
+      }
+      if (info.debrief && !errorNotesList.includes(info.debrief)) {
+        errorNotesList.push(`Итоги (${info.dateStr}): ${info.debrief}`);
+      }
+      // Если в самой теме урока была записана заметка "На будущее: ..."
+      if (info.rawTopic && info.rawTopic.toLowerCase().includes('на будущее:')) {
+        const notePart = info.rawTopic.split(/на будущее:/i)[1]?.trim();
+        if (notePart) errorNotesList.push(`Заметка с урока ${info.dateStr}: ${notePart}`);
+      }
+    }
+
+    const detailedHistory = history.map(formatLessonDetails).filter(Boolean);
+    const prevDetailed = detailedHistory[0] || null;
+
+    const mergedInterests = Array.from(detectedWorlds).filter(Boolean).join('; ');
+    const mergedUnit = Array.from(detectedUnits).filter(Boolean).join('; ');
+    const mergedErrors = errorNotesList.filter(Boolean).join(' | ');
+    const mergedVocab = Array.from(vocabSet.values()).slice(0, 35).join(', ');
+
+    const aiHistorySummary = detailedHistory.slice(0, 5).map(h => {
+      return `- ${h.dateStr}: Тема "${h.smartTopic}"${h.hwStatusLabel ? ` [${h.hwStatusLabel}]` : ''}${h.debrief ? ` | Заметки: ${h.debrief}` : ''}`;
+    }).join('\n');
+
+    return {
+      prevLesson,
+      prevDetailed,
+      historyLessons: history,
+      detailedHistory,
+      enrichedDossier: {
+        ...dossier,
+        unit: mergedUnit || dossier.unit || '',
+        interests: mergedInterests || dossier.interests || '',
+        errors: mergedErrors || dossier.errors || '',
+        vocab: mergedVocab || dossier.vocab || ''
+      },
+      aiHistorySummary
+    };
+  },
+
+  async syncStudentMemoryToDossier(studentId) {
+    const st = this.students.find(s => s.id === studentId);
+    if (!st) return;
+    const dossier = this.parseStudentDossier(st);
+    const mem = this.compileStudentMemory(studentId);
+    const enr = mem.enrichedDossier;
+
+    const newSched = this.serializeStudentDossier(
+      dossier.schedule,
+      enr.interests || dossier.interests,
+      enr.errors || dossier.errors,
+      enr.vocab || dossier.vocab,
+      dossier.notes,
+      dossier.perplexity,
+      enr.unit || dossier.unit,
+      dossier.tgId,
+      dossier.tgUser,
+      dossier.streak,
+      dossier.parentTgId,
+      dossier.parentTgUser
+    );
+    await DB.updateStudent(st.id, { schedule: newSched });
+    st.schedule = newSched;
+
+    // Также автоматически обновим темы уроков, где стояли сырые имена файлов
+    for (const h of mem.detailedHistory) {
+      const orig = this.lessons.find(l => l.id === h.id);
+      if (orig && h.smartTopic && orig.topic !== h.smartTopic && (orig.topic === 'Present Perfect Mission' || /\b\d\s+\d\b/.test(orig.topic || '') || !(orig.topic || '').trim())) {
+        await DB.updateLesson(orig.id, { topic: h.smartTopic }).catch(() => {});
+        orig.topic = h.smartTopic;
+      }
+    }
+
+    UI.toast(`🧠 Память по ученику (${st.name}) синхронизирована и сохранена в досье!`, 'success');
+    const curDate = document.getElementById('ls-date')?.value;
+    this.renderLessonMemoryBanner(studentId, curDate, this.currentLessonId);
+  },
+
+  renderLessonMemoryBanner(studentId, lessonDate = null, excludeLessonId = null) {
     const banner = document.getElementById('ls-memory-banner');
     if (!banner) return;
     const st = this.students.find(s => s.id === studentId);
     if (!st) { banner.innerHTML = ''; return; }
-    const dossier = this.parseStudentDossier(st);
-    const prev = this.getPrevConductedLesson(studentId, lessonDate);
-    const ebb = this.getEbbinghausLesson(studentId, lessonDate);
-    const prevHwRaw = prev ? (prev.homework || '').trim() : '';
-    const isChecked = prevHwRaw.includes('[ДЗ_ПРОВЕРЕНО]');
-    const isSubmitted = prevHwRaw.includes('[ДЗ_СДАНО]');
-    const hasPres = prevHwRaw.includes('[ПРЕЗЕНТАЦИЯ]');
-    const hasScenario = prevHwRaw.includes('[СЦЕНАРИЙ_УРОКА]');
-    const cleanHw = this.cleanHomeworkText(prevHwRaw);
+
+    const exclId = excludeLessonId || this.currentLessonId || null;
+    const refDate = lessonDate || document.getElementById('ls-date')?.value || null;
+    const mem = this.compileStudentMemory(studentId, refDate, exclId);
+    const prev = mem.prevDetailed;
+    const enr = mem.enrichedDossier;
+    const ebb = this.getEbbinghausLesson(studentId, refDate);
+
+    // Цепочка прошлых уроков (до 5 штук)
+    const historyRows = mem.detailedHistory.slice(0, 5).map((h, idx) => {
+      const isPrev = idx === 0;
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:4px 6px;border-radius:6px;background:${isPrev ? 'rgba(13,148,136,0.08)' : 'transparent'};border-left:2px solid ${isPrev ? '#0d9488' : 'var(--border-light)'};">
+          <div style="flex:1;min-width:0;">
+            <span style="font-weight:700;color:${isPrev ? '#0d9488' : 'var(--text-secondary)'};">${h.dateStr}:</span>
+            <span style="color:var(--text-primary);font-weight:${isPrev ? '600' : '400'};margin-left:4px;">${this.escapeHtml(h.smartTopic)}</span>
+          </div>
+          ${h.hwStatusLabel ? `<span style="font-size:10px;white-space:nowrap;padding:1px 6px;border-radius:4px;background:var(--bg-surface);border:1px solid var(--border-light);color:var(--text-secondary);">${this.escapeHtml(h.hwStatusLabel)}</span>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    const cleanHwShort = prev?.cleanHw ? (prev.cleanHw.length > 170 ? prev.cleanHw.slice(0, 170) + '...' : prev.cleanHw) : '';
+    const vocabShort = enr.vocab ? (enr.vocab.length > 200 ? enr.vocab.slice(0, 200) + '...' : enr.vocab) : '';
 
     banner.innerHTML = `
-      <div style="padding:10px 12px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:12px;display:flex;flex-direction:column;gap:4px;">
-        <div style="font-weight:700;color:var(--accent);display:flex;justify-content:space-between;align-items:center;">
-          <span>🧠 Память по ученику: ${this.escapeHtml(st.name)}</span>
-          ${prev ? `<span style="font-size:11px;color:var(--text-muted);">Прошлый урок: ${new Date(prev.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' })}</span>` : ''}
+      <div style="padding:12px;border-radius:10px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:12px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--border-light);padding-bottom:6px;">
+          <div style="font-weight:700;color:var(--accent);display:flex;align-items:center;gap:6px;font-size:13px;">
+            <span>🧠 Память и база знаний по ученику: ${this.escapeHtml(st.name)}</span>
+            ${enr.streak ? `<span style="font-size:11px;padding:1px 6px;border-radius:6px;background:rgba(249,115,22,0.12);color:#f97316;">🔥 Стрик: ${enr.streak}</span>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${prev ? `<span style="font-size:11px;color:var(--text-muted);font-weight:600;">Предыдущий урок: ${prev.dateStr}</span>` : ''}
+            <button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:2px 7px;color:#0d9488;border-color:rgba(13,148,136,0.35);" onclick="TutoringPage.syncStudentMemoryToDossier('${studentId}')" title="Автоматически сохранить все распознанные слова, темы и ошибки из прошлых уроков в карточку ученика">
+              💾 Запомнить всё в досье
+            </button>
+          </div>
         </div>
-        ${prev ? `<div>⏪ <b>Прошлая тема:</b> ${this.escapeHtml(prev.topic || 'Не указана')}</div>` : '<div style="color:var(--text-muted);">Проведённых уроков пока нет</div>'}
-        ${cleanHw ? `<div style="color:${isChecked ? 'var(--success)' : 'var(--warning)'};">📌 <b>Заданное ДЗ:</b> ${this.escapeHtml(cleanHw)} ${isSubmitted && !isChecked ? '<span style="color:var(--accent);font-weight:700;">📬 (Сдано учеником в ТГ!)</span>' : ''} ${isChecked ? '✅ (Проверено)' : `<button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:1px 6px;margin-left:6px;" onclick="TutoringPage.markPrevHwChecked('${prev.id}').then(()=>TutoringPage.renderLessonMemoryBanner('${studentId}'))">✅ Отметить проверенным</button>`}</div>` : ''}
-        ${hasPres ? `<div style="font-size:11px;color:#0d9488;">📎 <b>Материалы:</b> К прошлому уроку прикреплена презентация (PDF/PPTX)</div>` : ''}
-        ${hasScenario ? `<div style="font-size:11px;color:#0d9488;">📋 <b>Сценарий:</b> В базе сохранён полный конспект урока</div>` : ''}
-        ${ebb ? `<div style="color:#0d9488;font-weight:600;">🔄 <b>Кривая Эббингауза (повторить тему ~2 нед. назад, ${new Date(ebb.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' })}):</b> ${this.escapeHtml(ebb.topic)}</div>` : ''}
-        ${dossier.unit ? `<div>📖 <b>Учебник / Unit:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}
-        ${dossier.errors ? `<div>⚠️ <b>Слабые места:</b> ${this.escapeHtml(dossier.errors)}</div>` : ''}
-        ${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}
+
+        ${prev ? `
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div>⏪ <b>Прошлая тема (${prev.dateStr}):</b> <span style="color:var(--text-primary);font-weight:600;">${this.escapeHtml(prev.smartTopic)}</span></div>
+            ${prev.hwStatusLabel ? `<div>📊 <b>Статус прошлого ДЗ:</b> <span style="font-weight:600;color:#0d9488;">${this.escapeHtml(prev.hwStatusLabel)}</span> ${!prev.isChecked ? `<button type="button" class="btn btn-secondary btn-xs" style="font-size:10px;padding:1px 6px;margin-left:6px;" onclick="TutoringPage.markPrevHwChecked('${prev.id}').then(()=>TutoringPage.renderLessonMemoryBanner('${studentId}', '${refDate || ''}', '${exclId || ''}'))">✅ Отметить проверенным</button>` : ''}</div>` : ''}
+            ${cleanHwShort ? `<div style="color:var(--text-secondary);font-size:11px;">📌 <b>Задавали на дом:</b> ${this.escapeHtml(cleanHwShort)}</div>` : ''}
+          </div>
+        ` : '<div style="color:var(--text-muted);">Предыдущих проведённых уроков до этой даты пока нет</div>'}
+
+        ${mem.detailedHistory.length > 1 ? `
+          <div style="margin-top:2px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:4px;">📚 История последних проведённых уроков (хронология тем и ДЗ):</div>
+            <div style="display:flex;flex-direction:column;gap:3px;">${historyRows}</div>
+          </div>
+        ` : ''}
+
+        <div style="display:flex;flex-direction:column;gap:4px;padding-top:4px;border-top:1px dashed var(--border-light);">
+          ${enr.errors ? `<div style="color:#d97706;">⚠️ <b>Выводы, ошибки и фокус внимания:</b> <span style="color:var(--text-primary);">${this.escapeHtml(enr.errors)}</span></div>` : ''}
+          ${ebb ? `<div style="color:#0d9488;font-weight:600;">🔄 <b>Кривая Эббингауза (повторить тему ~2 нед. назад, ${new Date(ebb.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' })}):</b> ${this.escapeHtml(ebb.topic)}</div>` : ''}
+          ${enr.interests ? `<div>🎯 <b>Контекст и интересы:</b> ${this.escapeHtml(enr.interests)}</div>` : ''}
+          ${enr.unit ? `<div>📖 <b>Учебник / Программа:</b> ${this.escapeHtml(enr.unit)}</div>` : ''}
+          ${vocabShort ? `<div style="font-size:11px;color:var(--text-secondary);">🔤 <b>Активный словарь (из уроков и презентаций):</b> ${this.escapeHtml(vocabShort)}</div>` : ''}
+        </div>
       </div>
     `;
   },
@@ -2484,21 +2814,22 @@ const TutoringPage = {
     const st = this.students.find(s => s.id === studentId);
     if (!st) return '';
     const ls = lessonId ? this.lessons.find(l => l.id === lessonId) : null;
-    const dossier = this.parseStudentDossier(st);
-    const prev = this.getPrevConductedLesson(studentId, ls?.date);
+    const mem = this.compileStudentMemory(studentId, ls?.date, ls?.id);
+    const enr = mem.enrichedDossier;
+    const prev = mem.prevDetailed;
     const ebb = this.getEbbinghausLesson(studentId, ls?.date);
-    const prevHwClean = prev ? ((prev.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').trim()) : '';
     const modalTopic = (!document.getElementById('lesson-modal')?.classList.contains('hidden')) ? (document.getElementById('ls-topic')?.value?.trim() || '') : '';
     const todayTopic = customTopic || modalTopic || ls?.topic || 'Продолжение по программе + отработка лексики и говорения';
 
     return [
       `Привет! Готовим и проводим интерактивный урок английского языка.`,
       `👤 Ученик: ${st.name} (${st.grade || 'уровень не указан'})`,
-      dossier.unit ? `📖 Учебник / Программа: ${dossier.unit}` : '',
-      dossier.interests ? `🎯 Интересы и хобби ученика (используй их во всех примерах и текстах!): ${dossier.interests}` : '',
-      dossier.errors ? `⚠️ Типичные ошибки ученика (включи ловушки на эти правила!): ${dossier.errors}` : '',
-      dossier.vocab ? `📚 Активный словарь на отработку: ${dossier.vocab}` : '',
-      prev ? `⏪ Прошлый урок (${new Date(prev.date).toLocaleDateString('ru-RU')}): Тема "${prev.topic || 'Практика'}"${prevHwClean ? `, Заданное ДЗ: "${prevHwClean}"` : ''}` : '',
+      enr.unit ? `📖 Учебник / Программа: ${enr.unit}` : '',
+      enr.interests ? `🎯 Интересы и хобби ученика (используй их во всех примерах и текстах!): ${enr.interests}` : '',
+      enr.errors ? `⚠️ Типичные ошибки ученика и выводы по прошлым урокам (включи ловушки на эти правила!): ${enr.errors}` : '',
+      enr.vocab ? `📚 Активный словарь на отработку: ${enr.vocab}` : '',
+      prev ? `⏪ Прошлый урок (${prev.dateStr}): Тема "${prev.smartTopic}"${prev.cleanHw ? `, Заданное ДЗ: "${prev.cleanHw.slice(0, 300)}"` : ''}${prev.hwStatusLabel ? ` (${prev.hwStatusLabel})` : ''}` : '',
+      mem.aiHistorySummary ? `📚 История последних проведённых уроков:\n${mem.aiHistorySummary}` : '',
       ebb ? `🔄 Интервальное повторение по Эббингаузу (проходили ~2 недели назад, ${new Date(ebb.date).toLocaleDateString('ru-RU')}): "${ebb.topic}" — обязательно вплети 2 вопроса на повторение этой темы!` : '',
       `\n🎯 ТЕМА СЕГОДНЯШНЕГО УРОКА: ${todayTopic}`,
       `\nПожалуйста, сгенерируй структурированный материал для урока:`,
@@ -3297,11 +3628,11 @@ const TutoringPage = {
             const pageText = content.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
             if (pageText) fullText += `Слайд ${p}: ${pageText}\n`;
           }
-          if (fullText.trim().length > 15) return fullText.trim().slice(0, 8000);
+          if (fullText.trim().length > 15) return fullText.trim().slice(0, 15000);
         }
       }
 
-      // PPTX extraction via JSZip (unpacking XML slides cleanly)
+      // PPTX extraction via JSZip (unpacking XML slides cleanly by paragraphs)
       if (name.endsWith('.pptx') || file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
         if (!window.JSZip) {
           await new Promise((resolve) => {
@@ -3325,34 +3656,57 @@ const TutoringPage = {
           const slideLines = [];
           for (let i = 0; i < slideKeys.length; i++) {
             const xml = await zip.file(slideKeys[i]).async('text');
-            // 1. Human descriptions from Gamma / AI exports (filter image files, gen-dedup hashes, raw xml, urls)
-            const descrs = (xml.match(/descr="([^"]+)"/g) || [])
-              .map(m => m.slice(7, -1).trim())
-              .filter(d => d && !/\.(?:png|jpe?g|gif|svg|webp|mp[34])$/i.test(d) && !/^gen-dedup/i.test(d) && !d.includes('<') && !d.startsWith('http') && !/^[a-f0-9_\-]{16,}$/i.test(d) && d.length > 2);
-            // 2. Standard PowerPoint text nodes <a:t>
-            const texts = [];
-            const tRegex = /<a:t(?:\s+[^>]*)?>([\s\S]*?)<\/a:t>/gi;
-            let tm;
-            while ((tm = tRegex.exec(xml)) !== null) {
-              let t = tm[1]
-                .replace(/<[^>]+>/g, '')
-                .replace(/&amp;/g, '&')
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&quot;/g, '"')
-                .replace(/&apos;/g, "'")
-                .trim();
-              if (t && !t.startsWith('http://') && !t.startsWith('https://') && !/^gen-dedup/i.test(t)) {
-                texts.push(t);
+            // 1. Parse paragraphs <a:p> so sentences and table cells don't glue together
+            const paragraphs = [];
+            const pRegex = /<a:p(?:\s+[^>]*)?>([\s\S]*?)<\/a:p>/gi;
+            let pm;
+            while ((pm = pRegex.exec(xml)) !== null) {
+              const pXml = pm[1];
+              const runTexts = [];
+              const tRegex = /<a:t(?:\s+[^>]*)?>([\s\S]*?)<\/a:t>/gi;
+              let tm;
+              while ((tm = tRegex.exec(pXml)) !== null) {
+                const t = tm[1]
+                  .replace(/<[^>]+>/g, '')
+                  .replace(/&amp;/g, '&')
+                  .replace(/&lt;/g, '<')
+                  .replace(/&gt;/g, '>')
+                  .replace(/&quot;/g, '"')
+                  .replace(/&apos;/g, "'");
+                if (t && !t.trim().startsWith('http://') && !t.trim().startsWith('https://') && !/^gen-dedup/i.test(t.trim())) {
+                  runTexts.push(t);
+                }
+              }
+              const pText = runTexts.join('').replace(/\s+/g, ' ').trim();
+              if (pText && !/^preencoded\.png$/i.test(pText)) {
+                paragraphs.push(pText);
               }
             }
-            const combined = [...descrs, ...texts].join(' ').replace(/\s+/g, ' ').trim();
+
+            // Fallback if no <a:p> matched
+            if (paragraphs.length === 0) {
+              const tRegex = /<a:t(?:\s+[^>]*)?>([\s\S]*?)<\/a:t>/gi;
+              let tm;
+              while ((tm = tRegex.exec(xml)) !== null) {
+                const t = tm[1].replace(/<[^>]+>/g, '').trim();
+                if (t && !t.startsWith('http') && !/^gen-dedup/i.test(t)) paragraphs.push(t);
+              }
+            }
+
+            const bodyText = paragraphs.join(' · ').replace(/\s+/g, ' ').trim();
+
+            // 2. Human descriptions from Gamma exports (only if not already duplicated in bodyText and not a cover-image tag)
+            const descrs = (xml.match(/descr="([^"]+)"/g) || [])
+              .map(m => m.slice(7, -1).replace(/\s*—\s*cover\b/gi, '').trim())
+              .filter(d => d && !/\.(?:png|jpe?g|gif|svg|webp|mp[34])$/i.test(d) && !/^gen-dedup/i.test(d) && !d.includes('<') && !d.startsWith('http') && !/^[a-f0-9_\-]{16,}$/i.test(d) && d.length > 3 && !bodyText.toLowerCase().includes(d.slice(0, 25).toLowerCase()));
+
+            const combined = [...descrs, bodyText].filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim();
             if (combined && !combined.startsWith('preencoded.png')) {
               slideLines.push(`Слайд ${i + 1}: ${combined}`);
             }
           }
           if (slideLines.length > 0) {
-            return slideLines.join('\n').slice(0, 10000);
+            return slideLines.join('\n').slice(0, 15000);
           }
         }
       }
@@ -3362,71 +3716,304 @@ const TutoringPage = {
     return '';
   },
 
-  detectTopicFromPresentation(filename = '', presentationText = '', studentName = '') {
-    let raw = (filename || '').replace(/\.[^/.]+$/, '').trim();
-    // 1. Очистка имени ученика из названия файла
+  extractVocabFromPresentationAndScenario(presentationText = '', scenarioText = '') {
+    const wordsMap = new Map();
+    const stopWords = new Set(['word', 'words', 'expression', 'ipa', 'translation', 'example', 'examples', 'model', 'rule', 'step', 'stage', 'slide', 'today', 'mission', 'check', 'stars', 'arina', 'matvey', 'skyrim', 'spore', 'academy', 'library', 'sound', 'police', 'grammar', 'tracker', 'vocabulary', 'unit', 'lesson']);
+
+    const addWord = (en, ipa, ru) => {
+      const cleanEn = (en || '').replace(/^[^a-zA-Z]+|[^a-zA-Z\s'-]+$/g, '').replace(/\s+/g, ' ').trim();
+      const cleanRu = (ru || '').replace(/^[—–\-:\s·•]+|[—–\-:\s·•]+$/g, '').split(/\s*(?:Примеры|Угадай|Полезно|Не путай|Важно|Слова|Слайд|Этап|·)\b/i)[0].trim();
+      if (!cleanEn || cleanEn.length < 2 || cleanEn.length > 28) return;
+      if (cleanEn.split(/\s+/).length > 3) return;
+      if (stopWords.has(cleanEn.toLowerCase())) return;
+      if (!cleanRu || !/[а-яА-ЯёЁ]/.test(cleanRu) || cleanRu.length > 50) return;
+      const key = cleanEn.toLowerCase();
+      if (!wordsMap.has(key)) {
+        wordsMap.set(key, {
+          en: cleanEn,
+          ipa: (ipa || '').trim(),
+          ru: cleanRu,
+          formatted: `${cleanEn} — ${cleanRu}`
+        });
+      }
+    };
+
+    const fullSource = `${presentationText || ''}\n${scenarioText || ''}`;
+
+    // 1. Формат слайдов Gamma/PPTX: word /ipa/ перевод (например: ever /ˈevə/ когда-либо)
+    const ipaRegex = /\b([a-zA-Z][a-zA-Z'-]*(?:\s+[a-zA-Z][a-zA-Z'-]*)?)\s+\/([^\/\n]{1,28})\/\s+([а-яА-ЯёЁ][а-яА-ЯёЁ\s,;\-—–()]{1,42}?)(?=\s+[a-zA-Z]{2,}(?:\s+[a-zA-Z]+)?\s+\/|\s+(?:Примеры|Угадай|Полезно|Не путай|Важно|Слова|Слайд|Этап|ВЫРАЖЕНИЕ|СЛОВО)|·|\n|$)/g;
+    let m;
+    while ((m = ipaRegex.exec(fullSource)) !== null) {
+      addWord(m[1], m[2], m[3]);
+    }
+
+    // 2. Формат таблиц Markdown из Perplexity: | word | /ipa/ | перевод |
+    const tableRegex = /\|\s*\*\*?([a-zA-Z][a-zA-Z\s'-]{1,25}?)\*\*?\s*\|\s*(?:[\/\[]([^\/\]|\n]+)[\/\]])?\s*\|\s*([а-яА-ЯёЁ][^|\n]{1,45}?)\s*\|/g;
+    while ((m = tableRegex.exec(fullSource)) !== null) {
+      addWord(m[1], m[2] || '', m[3]);
+    }
+
+    // 3. Списки через тире: word [ipa] — перевод
+    const dashRegex = /(?:^|\n|·)\s*(?:\d+\.\s*|[•\-]\s*)?([a-zA-Z][a-zA-Z\s'-]{1,22}?)\s*(?:[\[\/]([^\]\/\n]{1,25})[\]\/])?\s+[—–-]\s+([а-яА-ЯёЁ][^\n·(]{1,40})/g;
+    while ((m = dashRegex.exec(fullSource)) !== null) {
+      // Отсекаем длинные примеры предложений (если больше 3 английских слов)
+      if (m[1].trim().split(/\s+/).length <= 3 && !/^(The|He|She|We|They|It|Has|Have|Did|Do|Does)\b/.test(m[1].trim())) {
+        addWord(m[1], m[2] || '', m[3]);
+      }
+    }
+
+    return Array.from(wordsMap.values());
+  },
+
+  analyzePresentationEssence(presentationText = '', scenarioText = '', filename = '', studentName = '') {
+    const combined = `${presentationText || ''}\n${scenarioText || ''}`;
+    const lower = combined.toLowerCase();
+
+    // 1. Очищаем базовое имя файла только для поиска Unit / Lesson
+    let cleanFile = (filename || '').replace(/\.[^/.]+$/, '').trim();
     if (studentName) {
       for (const p of studentName.split(/\s+/)) {
-        if (p.length > 2) raw = raw.replace(new RegExp(`\\b${p}\\b`, 'gi'), '');
+        if (p.length > 2) cleanFile = cleanFile.replace(new RegExp(`\\b${p}\\b`, 'gi'), '');
       }
     }
     if (this.students && Array.isArray(this.students)) {
       for (const s of this.students) {
         if (s?.name) {
           for (const p of s.name.split(/\s+/)) {
-            if (p.length > 2) raw = raw.replace(new RegExp(`\\b${p}\\b`, 'gi'), '');
+            if (p.length > 2) cleanFile = cleanFile.replace(new RegExp(`\\b${p}\\b`, 'gi'), '');
           }
         }
       }
     }
+    cleanFile = cleanFile
+      .replace(/\b20\d{6,12}\b/g, '')
+      .replace(/\b\d{1,2}[._]\d{1,2}(?:[._]\d{2,4})?\b/g, '')
+      .replace(/\b\d{6,14}\b/g, '')
+      .replace(/\b\d+\s*(?:класс|кл)\b/gi, '')
+      .replace(/[_\-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-    // 2. Очистка служебных штампов дат, классов и мусора
-    raw = raw.replace(/\b\d{1,2}[._]\d{1,2}(?:[._]\d{2,4})?\b/g, '');
-    raw = raw.replace(/\b\d{6,8}\b/g, '');
-    raw = raw.replace(/\b\d+\s*(?:класс|кл)\b/gi, '');
-    raw = raw.replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const unitMatch = combined.match(/Unit\s*\d+(?:\s*[·.,:]?\s*Lesson\s*[\d\-–]+)?/i) || cleanFile.match(/Unit\s*\d+(?:\s*Lesson\s*[\d\-–]+)?/i);
+    const unitTag = unitMatch ? unitMatch[0].replace(/\s+/g, ' ').trim() : '';
 
-    // Удаляем висячие союзы и предлоги по краям (например, "The Academy Shop и" -> "The Academy Shop")
-    const noiseWords = ['и', 'с', 'со', 'для', 'от', 'к', 'по', 'в', 'на', 'and', 'with', 'for', 'to', 'lesson', 'урок', 'класс'];
-    let changed = true;
-    while (changed) {
-      changed = false;
-      raw = raw.replace(/^[\s\-_:–—,.]+|[\s\-_:–—,.]+$/g, '').trim();
-      const parts = raw.split(/\s+/);
-      if (parts.length > 1 && noiseWords.includes(parts[parts.length - 1].toLowerCase())) {
-        parts.pop();
-        raw = parts.join(' ').trim();
-        changed = true;
+    // 2. Распознаём ключевые грамматические темы по сути контента
+    const grammarPoints = [];
+    if (lower.includes('present perfect continuous') || lower.includes('have been ') || lower.includes('has been ') && lower.includes('ing')) {
+      if (lower.includes('процесс или результат') || lower.includes('has chosen') || lower.includes('present perfect')) {
+        grammarPoints.push('Present Perfect Continuous vs Present Perfect (процесс и результат)');
+      } else {
+        grammarPoints.push('Present Perfect Continuous (длительность: have/has been + V-ing)');
       }
-      if (parts.length > 1 && noiseWords.includes(parts[0].toLowerCase())) {
-        parts.shift();
-        raw = parts.join(' ').trim();
-        changed = true;
+    } else if (lower.includes('present perfect')) {
+      const markers = [];
+      if (lower.includes('already') && lower.includes('yet')) markers.push('already/just/yet');
+      if (lower.includes('ever') && lower.includes('never')) markers.push('ever/never');
+      if (lower.includes('for') && lower.includes('since') && (lower.includes('период') || lower.includes('начальная точка') || lower.includes('for two years'))) markers.push('for/since');
+      if (lower.includes('been') && lower.includes('gone') && (lower.includes('вернулся') || lower.includes('been to') || lower.includes('gone to'))) markers.push('been/gone');
+      const markerSuffix = markers.length > 0 ? `: ${markers.join(', ')}` : ' (результат и опыт)';
+      grammarPoints.push(`Present Perfect${markerSuffix}`);
+    }
+
+    if (lower.includes('past continuous') || (lower.includes('was') && lower.includes('were') && lower.includes('v-ing'))) {
+      if (lower.includes('past simple')) {
+        grammarPoints.push('Past Continuous vs Past Simple');
+      } else {
+        grammarPoints.push('Past Continuous (длительное действие в прошлом)');
       }
     }
 
-    // 3. Анализ заголовка 1-го слайда
-    if (presentationText) {
-      const firstSlideMatch = presentationText.match(/(?:Слайд 1:[^\n]*|\[Слайд 1\]:[^\n]*)/i) || [presentationText.split('\n')[0]];
-      let firstSlide = (firstSlideMatch ? firstSlideMatch[0] : presentationText.split('\n')[0])
-        .replace(/^(?:Слайд 1:|\[Слайд 1\]:)/i, '')
-        .replace(/preencoded\.png/gi, '')
-        .replace(/Image \d+/gi, '')
-        .trim();
-      const firstLine = firstSlide.split('\n')[0].split(/[—–-]/)[0].trim();
-      if (firstLine.length > 3 && firstLine.length < 50 && !firstLine.toLowerCase().includes('today i can do it')) {
-        const unitMatch = raw.match(/Unit\s*\d+(?:\s*Lesson\s*[\d\-]+)?/i);
-        if (unitMatch && !firstLine.toLowerCase().includes('unit')) {
-          return `${unitMatch[0]}: ${firstLine}`;
-        }
-        if (raw.length > 3 && raw.length < 40 && !raw.toLowerCase().includes('презентация') && !raw.toLowerCase().includes('slajdy')) {
-          return raw;
-        }
-        return firstLine;
+    if (lower.includes('притяжательн') || (lower.includes('whose') && lower.includes('his') && lower.includes('their'))) {
+      grammarPoints.push("Притяжательные местоимения (my, his, her, their) и падеж 's");
+    }
+
+    if (lower.includes('too') && lower.includes('enough') && (lower.includes('warm enough') || lower.includes('too heavy') || lower.includes('слишком') || lower.includes('достаточно'))) {
+      grammarPoints.push('Конструкции too / enough');
+    }
+
+    if (lower.includes('степен') && lower.includes('сравнен') || lower.includes('comparative') || lower.includes('superlative')) {
+      grammarPoints.push('Степени сравнения прилагательных');
+    }
+
+    if (lower.includes('артикл') && (lower.includes('географ') || lower.includes('озер') || lower.includes('рек') || lower.includes('стран'))) {
+      grammarPoints.push('Артикль the с географическими названиями');
+    }
+
+    // 3. Распознаём лексические блоки со слайдов ("Лексика: ...", "Слова 1-5: ...")
+    const lexThemes = [];
+    const lexMatches = combined.matchAll(/Лексика\s*[·:]?\s*([а-яА-ЯёЁa-zA-Z\s,]{3,35}?)(?=\s+Слова|\s+ВЫРАЖЕНИЕ|\s+СЛОВО|·|\n|$)/gi);
+    for (const lm of lexMatches) {
+      const theme = lm[1].replace(/\bПродолжение\b/gi, '').replace(/\bИгра\b/gi, '').trim();
+      if (theme && theme.length > 2 && !lexThemes.includes(theme.toLowerCase())) {
+        lexThemes.push(theme);
+      }
+    }
+    if (lexThemes.length === 0) {
+      if (lower.includes('fitting room') || lower.includes('try on') || lower.includes('discount') || lower.includes('customer')) {
+        lexThemes.push('покупки и магазин (sale, customer, try on, fitting room)');
+      } else if (lower.includes('complete') && lower.includes('achieve') && lower.includes('experience')) {
+        lexThemes.push('достижения и опыт (complete, achieve, find, lose)');
+      } else if (lower.includes('endangered') || lower.includes('wildlife') || lower.includes('bison')) {
+        lexThemes.push('природа и животные (wildlife, endangered)');
+      } else if (lower.includes('get up') && lower.includes('brush my teeth')) {
+        lexThemes.push('распорядок дня (My Morning)');
       }
     }
 
-    return raw || 'Практика английского языка';
+    // 4. Извлекаем слова и игровые миры/интересы
+    const vocabList = this.extractVocabFromPresentationAndScenario(presentationText, scenarioText);
+    const worlds = [];
+    if (lower.includes('skyrim')) worlds.push('Арина — волшебница мира Skyrim');
+    if (lower.includes('spore')) worlds.push('Матвей — исследователь мира Spore');
+    if (lower.includes('genshin')) worlds.push('Genshin Impact');
+
+    // 5. Ищем смысловой подзаголовок урока на Слайде 1–2 (например: «Что уже сделано — и что важно сейчас?» или «Распродажа Академии: процесс или результат?»)
+    let subtitle = '';
+    const quoteMatch = combined.match(/«([^»]{6,65})»/) || combined.match(/(?:Что уже сделано[^?.!]*\?|Распродажа Академии:\s*[^?.!]*\?)/i);
+    if (quoteMatch) {
+      subtitle = (quoteMatch[1] || quoteMatch[0]).trim();
+    }
+
+    // 6. Собираем умную тему урока по СУТИ И КОНТЕКСТУ (а не просто по названию файла!)
+    let smartTopic = '';
+    if (grammarPoints.length > 0) {
+      smartTopic = grammarPoints[0];
+      if (lexThemes.length > 0 && !smartTopic.toLowerCase().includes(lexThemes[0].toLowerCase())) {
+        smartTopic += ` + Лексика: ${lexThemes.slice(0, 2).join(', ')}`;
+      } else if (subtitle && !smartTopic.toLowerCase().includes(subtitle.slice(0, 12).toLowerCase()) && smartTopic.length < 55) {
+        smartTopic += ` (${subtitle})`;
+      }
+      if (unitTag && !smartTopic.toLowerCase().includes('unit')) {
+        smartTopic = `${unitTag}: ${smartTopic}`;
+      }
+    } else if (lexThemes.length > 0) {
+      smartTopic = `${unitTag ? unitTag + ': ' : ''}Лексика и практика (${lexThemes.slice(0, 2).join(', ')})`;
+    } else if (subtitle) {
+      smartTopic = `${unitTag ? unitTag + ': ' : ''}${subtitle}`;
+    }
+
+    // Если в сценарии Perplexity есть явный заголовок темы, учитываем его
+    if (!smartTopic && scenarioText) {
+      const scTopicMatch = scenarioText.match(/(?:Тема урока|Тема занятия|^#\s+)[:\s]*([^\n#*]{5,80})/im);
+      if (scTopicMatch && scTopicMatch[1].trim()) {
+        smartTopic = scTopicMatch[1].trim();
+      }
+    }
+
+    // Очистка висячих слов из fallback-названия файла
+    if (!smartTopic) {
+      const noiseWords = ['и', 'с', 'со', 'для', 'от', 'к', 'по', 'в', 'на', 'and', 'with', 'for', 'to', 'lesson', 'урок', 'класс', '7', '6', '5', '4'];
+      let parts = cleanFile.split(/\s+/).filter(Boolean);
+      while (parts.length > 1 && noiseWords.includes(parts[parts.length - 1].toLowerCase())) parts.pop();
+      while (parts.length > 1 && noiseWords.includes(parts[0].toLowerCase())) parts.shift();
+      smartTopic = parts.join(' ').trim() || 'Практика английского языка';
+    }
+
+    return {
+      topic: smartTopic,
+      grammarPoints,
+      lexThemes,
+      vocabList,
+      worlds,
+      subtitle
+    };
+  },
+
+  detectTopicFromPresentation(filename = '', presentationText = '', studentName = '', scenarioText = '') {
+    const scen = scenarioText || document.getElementById('ls-scenario')?.value?.trim() || '';
+    const analysis = this.analyzePresentationEssence(presentationText, scen, filename, studentName);
+    return analysis.topic || 'Практика английского языка';
+  },
+
+  openPresentationPreviewModal() {
+    const text = this.attachedPresentationText || '';
+    if (!text) return UI.toast('Текст презентации пуст', 'warning');
+
+    const stId = document.getElementById('ls-student')?.value;
+    const st = this.students.find(s => s.id === stId);
+    const scen = document.getElementById('ls-scenario')?.value?.trim() || '';
+    const analysis = this.analyzePresentationEssence(text, scen, this.attachedPresentationName, st?.name);
+
+    const slides = text.split(/\n(?=Слайд \d+:)/i).map(s => s.trim()).filter(Boolean);
+
+    let overlay = document.getElementById('pres-preview-modal-overlay');
+    if (overlay) overlay.remove();
+
+    overlay = document.createElement('div');
+    overlay.id = 'pres-preview-modal-overlay';
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '100000';
+
+    const vocabBadges = analysis.vocabList.length > 0
+      ? analysis.vocabList.map(v => `<span style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:6px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:11px;"><b>${this.escapeHtml(v.en)}</b>${v.ipa ? ` <span style="color:var(--text-muted);margin-left:3px;">/${this.escapeHtml(v.ipa)}/</span>` : ''} — ${this.escapeHtml(v.ru)}</span>`).join('')
+      : '<span style="color:var(--text-muted);font-size:12px;">Слова будут взяты из контекста слайдов</span>';
+
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:780px;width:95%;max-height:88vh;display:flex;flex-direction:column;">
+        <div class="modal-header">
+          <h2 class="modal-title" style="display:flex;align-items:center;gap:8px;">
+            <span>📑 Что прочитано из презентации (${slides.length} сл.)</span>
+          </h2>
+          <button type="button" class="modal-close" id="pres-prev-close"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:12px;">
+          <div style="padding:12px;border-radius:10px;background:rgba(13,148,136,0.08);border:1px solid rgba(13,148,136,0.3);display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+              <div style="font-size:13px;font-weight:700;color:#0d9488;">🧠 Выжимка сути урока (как презентацию понимает ИИ и бот):</div>
+              <button type="button" id="pres-prev-apply-topic" class="btn btn-primary btn-xs" style="background:#0d9488;border-color:#0d9488;color:#fff;font-size:11px;">
+                🎯 Записать эту суть в «Тему урока»
+              </button>
+            </div>
+            <div style="font-size:13px;"><b>📌 Суть и тема урока:</b> <span style="color:var(--accent);font-weight:700;">${this.escapeHtml(analysis.topic)}</span></div>
+            ${analysis.grammarPoints.length > 0 ? `<div style="font-size:12px;"><b>🧩 Грамматика на слайдах:</b> ${this.escapeHtml(analysis.grammarPoints.join(' • '))}</div>` : ''}
+            ${analysis.worlds.length > 0 ? `<div style="font-size:12px;"><b>🐉 Игровой контекст учеников:</b> ${this.escapeHtml(analysis.worlds.join(', '))}</div>` : ''}
+            <div>
+              <div style="font-size:12px;font-weight:600;margin-bottom:4px;">🔤 Распознанная лексика со слайдов (${analysis.vocabList.length} сл.):</div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px;">${vocabBadges}</div>
+            </div>
+          </div>
+
+          <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-top:4px;">📖 Полный распознанный текст по слайдам (${text.length} симв.):</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${slides.map(s => {
+              const colonIdx = s.indexOf(':');
+              const sHead = colonIdx !== -1 ? s.slice(0, colonIdx + 1) : '';
+              const sBody = colonIdx !== -1 ? s.slice(colonIdx + 1).trim() : s;
+              return `
+                <div style="padding:10px 12px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:12px;line-height:1.5;">
+                  <span style="font-weight:700;color:var(--accent);">${this.escapeHtml(sHead)}</span>
+                  <span style="color:var(--text-primary);margin-left:4px;">${this.escapeHtml(sBody)}</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:11px;color:var(--text-muted);">✅ Весь этот текст передаётся в ИИ для генерации ДЗ и в Telegram-бот</span>
+          <button type="button" class="btn btn-primary" id="pres-prev-ok">Закрыть</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    if (window.lucide) window.lucide.createIcons();
+
+    const close = () => overlay.remove();
+    document.getElementById('pres-prev-close').onclick = close;
+    document.getElementById('pres-prev-ok').onclick = close;
+    overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+    const applyBtn = document.getElementById('pres-prev-apply-topic');
+    if (applyBtn) {
+      applyBtn.onclick = () => {
+        const topicEl = document.getElementById('ls-topic');
+        if (topicEl) {
+          topicEl.value = analysis.topic;
+          UI.toast(`🎯 Тема урока обновлена по сути презентации: "${analysis.topic}"`, 'success');
+        }
+        close();
+      };
+    }
   },
 
   renderPresentationBadge() {
@@ -3460,26 +4047,28 @@ const TutoringPage = {
           this.handleVisionRecognition(dataUrl);
           return;
         }
-        UI.toast('⏳ Презентация прикреплена, распознаю текст...', 'info');
+        UI.toast('⏳ Презентация прикреплена, анализирую слайды и контекст...', 'info');
         const extracted = await this.extractTextFromPresentationFile(file);
         if (extracted) {
           this.attachedPresentationText = extracted;
           // Окно сценария ls-scenario НЕ трогаем! Оно строго для конспекта Perplexity.
-          // Если там висел старый ошибочный авто-дамп презентации, очищаем его.
           const scenEl = document.getElementById('ls-scenario');
           if (scenEl && (scenEl.value.startsWith('[Конспект из презентации') || scenEl.value.startsWith('[Извлечено из презентации') || scenEl.value.includes('pk!') || scenEl.value.includes('p!kiW') || scenEl.value.trim().startsWith('Слайд 1:'))) {
             scenEl.value = '';
           }
         }
 
-        // Автоматическое определение темы урока из презентации
+        // Автоматическое определение темы урока по СУТИ И КОНТЕКСТУ презентации (а не просто по имени файла)
         const stId = document.getElementById('ls-student')?.value;
         const st = this.students.find(s => s.id === stId);
-        const detectedTopic = this.detectTopicFromPresentation(file.name, extracted, st?.name);
+        const scenVal = document.getElementById('ls-scenario')?.value?.trim() || '';
+        const detectedTopic = this.detectTopicFromPresentation(file.name, extracted, st?.name, scenVal);
         const topicEl = document.getElementById('ls-topic');
-        if (detectedTopic && topicEl && (!topicEl.value.trim() || topicEl.value.trim() === 'Практика английского языка')) {
+        const oldTopic = (topicEl?.value || '').trim();
+        const isRawFilenameTopic = !oldTopic || oldTopic === 'Практика английского языка' || oldTopic.toLowerCase() === file.name.replace(/\.[^/.]+$/, '').replace(/[_\-\d]+/g, ' ').trim().toLowerCase() || oldTopic === 'Present Perfect Mission';
+        if (detectedTopic && topicEl && isRawFilenameTopic) {
           topicEl.value = detectedTopic;
-          UI.toast(`🎯 Тема урока определена: "${detectedTopic}"`, 'success');
+          UI.toast(`🎯 Тема урока по сути презентации: "${detectedTopic}"`, 'success');
         }
         const detectTopicBtn = document.getElementById('ls-btn-detect-topic');
         if (detectTopicBtn) detectTopicBtn.style.display = 'inline-flex';
@@ -3494,7 +4083,7 @@ const TutoringPage = {
 
         this.renderPresentationBadge();
         const scCount = extracted ? (extracted.match(/Слайд \d+/gi)?.length || 1) : 0;
-        UI.toast(extracted ? `✅ Презентация прочитана (${scCount} сл.)! Текст сохранён для ИИ.` : 'Презентация прикреплена к уроку!', 'success');
+        UI.toast(extracted ? `✅ Презентация прочитана (${scCount} сл.)! Нажмите «👁️ Что прочитано» для просмотра разбора.` : 'Презентация прикреплена к уроку!', 'success');
       };
     }
 
@@ -3520,10 +4109,11 @@ const TutoringPage = {
       detectTopicBtn.onclick = () => {
         const stId = document.getElementById('ls-student')?.value;
         const st = this.students.find(s => s.id === stId);
-        const topic = this.detectTopicFromPresentation(this.attachedPresentationName, this.attachedPresentationText, st?.name);
+        const scenVal = document.getElementById('ls-scenario')?.value?.trim() || '';
+        const topic = this.detectTopicFromPresentation(this.attachedPresentationName, this.attachedPresentationText, st?.name, scenVal);
         if (topic) {
           document.getElementById('ls-topic').value = topic;
-          UI.toast(`🎯 Тема урока обновлена: "${topic}"`, 'success');
+          UI.toast(`🎯 Тема урока обновлена по сути презентации: "${topic}"`, 'success');
         } else {
           UI.toast('Сначала прикрепите файл презентации', 'info');
         }
@@ -3554,14 +4144,11 @@ const TutoringPage = {
         }
       }
 
-      // Кнопка быстрого предпросмотра прочитанного текста
+      // Кнопка предпросмотра прочитанного текста и разбора сути (красивое модальное окно вместо alert)
       if (previewBtn) {
         if (this.attachedPresentationText && this.attachedPresentationText.length > 20) {
           previewBtn.style.display = 'inline-block';
-          previewBtn.onclick = () => {
-            const previewText = this.attachedPresentationText.slice(0, 1800) + (this.attachedPresentationText.length > 1800 ? `\n\n... (всего распознано ${this.attachedPresentationText.length} символов)` : '');
-            alert(`📖 Текст из презентации, готовый для ИИ (сохранен в базе):\n\n${previewText}`);
-          };
+          previewBtn.onclick = () => this.openPresentationPreviewModal();
         } else {
           previewBtn.style.display = 'none';
         }
