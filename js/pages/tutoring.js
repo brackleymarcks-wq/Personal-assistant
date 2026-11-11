@@ -1818,6 +1818,20 @@ const TutoringPage = {
     }
 
     // 3. Serialize cards with auto-compression to avoid PostgreSQL statement timeout
+    // Если есть текст ДЗ, но ещё нет PNG-карточки — автоматически создаём PNG-карточку с письменным заданием для тетради!
+    const cleanHwForCard = this.cleanHomeworkText(document.getElementById('ls-homework')?.value || '');
+    if (cleanHwForCard.length > 10 && (!this.attachedCards || this.attachedCards.length === 0)) {
+      try {
+        const stObj = this.students.find(s => s.id === student_id);
+        const topicVal = document.getElementById('ls-topic')?.value?.trim() || 'English Practice';
+        const autoCard = await this.renderHomeworkWorksheetCardCanvas(topicVal, cleanHwForCard, stObj?.name || 'Ученик');
+        if (autoCard) {
+          this.attachedCards = [autoCard];
+        }
+      } catch (e) {
+        console.warn('Auto card in saveLesson error:', e);
+      }
+    }
     if (this.attachedCards && this.attachedCards.length > 0) {
       const compressedCards = await Promise.all(this.attachedCards.map(async (card) => {
         if (card && card.startsWith('data:image/') && card.length > 200000) {
@@ -2194,8 +2208,8 @@ const TutoringPage = {
       .replace(/\[(ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ|МАТЕРИАЛЫ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ)\]:?[^\n]*/gi, '')
       .split(/\\?n?\[МАТЕРИАЛЫ\]:/i)[0]
       // 3. Remove status / progress / dispatch bracket tags
-      .replace(/\[\/?(ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|МАТЕРИАЛЫ)\]/gi, '')
-      .replace(/\[(ДЗ_ПРОВЕРЕНО[A-ZА-Я0-9_]*|ДЗ_СДАНО[A-ZА-Я0-9_]*|ОТПРАВИТЬ[A-ZА-Я0-9_]*|ПЕРЕНЕСЕН[A-ZА-Я0-9_]*|АНОНС[A-ZА-Я0-9_]*|ПРОГРЕСС[A-ZА-Я0-9_]*:[^\]]+)\]/gi, '')
+      .replace(/\[\/?(ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|МАТЕРИАЛЫ|ОС_ПО_ФОТО[A-ZА-Я0-9_]*)\]/gi, '')
+      .replace(/\[(ДЗ_ПРОВЕРЕНО[A-ZА-Я0-9_]*|ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ФАЙЛ[A-ZА-Я0-9_]*:[^\]]+|ОТПРАВИТЬ[A-ZА-Я0-9_]*|ПЕРЕНЕСЕН[A-ZА-Я0-9_]*|АНОНС[A-ZА-Я0-9_]*|ПРОГРЕСС[A-ZА-Я0-9_]*:[^\]]+)\]/gi, '')
       .replace(/\[([A-ZА-Я0-9_]{3,}):[^\]]+\]/g, '')
       // 4. Answers / Teacher keys / base64
       .replace(/(?:🔑|🎯)?\s*(?:КЛЮЧИ|ОТВЕТЫ)\s+ДЛЯ\s+(?:ПРЕПОДАВАТЕЛЯ|УЧИТЕЛЯ)[\s\S]*$/gi, '')
@@ -3282,8 +3296,23 @@ const TutoringPage = {
             ls
           );
           document.getElementById('hw-disp-text').value = hw;
+          try {
+            const wsPng = await this.renderHomeworkWorksheetCardCanvas(topic, hw, st.name);
+            if (wsPng) {
+              if (!this.dispatcherCards) this.dispatcherCards = [];
+              if (this._lastDispAutoCard) {
+                const oldIdx = this.dispatcherCards.indexOf(this._lastDispAutoCard);
+                if (oldIdx !== -1) this.dispatcherCards.splice(oldIdx, 1);
+              }
+              this._lastDispAutoCard = wsPng;
+              this.dispatcherCards.unshift(wsPng);
+              this.renderDispatcherCardsPreview(st);
+            }
+          } catch (ce) {
+            console.warn('Dispatcher auto card error:', ce);
+          }
           this.updateDispatcherPreview(st);
-          UI.toast('ДЗ сгенерировано!', 'success');
+          UI.toast('ДЗ + PNG-карточка задания сгенерированы!', 'success');
         } catch (e) {
           UI.toast('Ошибка ИИ: ' + e.message, 'error');
         } finally {
@@ -3309,6 +3338,14 @@ const TutoringPage = {
       sendBtn.textContent = '⏳ Отправляю...';
 
       try {
+        if (cleanHwOnly && (!this.dispatcherCards || this.dispatcherCards.length === 0)) {
+          try {
+            const autoWsPng = await this.renderHomeworkWorksheetCardCanvas(topic || 'English Lesson', cleanHwOnly, st.name);
+            if (autoWsPng) {
+              this.dispatcherCards = [autoWsPng];
+            }
+          } catch (e) {}
+        }
         let lessonTarget = ls;
         if (!lessonTarget) {
           lessonTarget = await DB.createLesson({
@@ -4378,43 +4415,43 @@ const TutoringPage = {
   async renderHomeworkWorksheetCardCanvas(topic, hwText, studentName = 'Ученик') {
     const canvas = document.createElement('canvas');
     canvas.width = 920;
-    canvas.height = 680;
+    canvas.height = 760;
     const ctx = canvas.getContext('2d');
 
     // Deep slate gradient background
-    const grad = ctx.createLinearGradient(0, 0, 920, 680);
+    const grad = ctx.createLinearGradient(0, 0, 920, 760);
     grad.addColorStop(0, '#0f172a');
     grad.addColorStop(1, '#1e293b');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 920, 680);
+    ctx.fillRect(0, 0, 920, 760);
 
     // Subtle accent glow
-    const glow = ctx.createRadialGradient(460, 120, 20, 460, 260, 420);
+    const glow = ctx.createRadialGradient(460, 120, 20, 460, 280, 460);
     glow.addColorStop(0, 'rgba(13, 148, 136, 0.22)');
     glow.addColorStop(1, 'rgba(15, 23, 42, 0)');
     ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, 920, 680);
+    ctx.fillRect(0, 0, 920, 760);
 
     // Outer frame
     ctx.strokeStyle = 'rgba(45, 212, 191, 0.35)';
     ctx.lineWidth = 3;
-    ctx.strokeRect(20, 20, 880, 640);
+    ctx.strokeRect(20, 20, 880, 720);
 
     // Header bar
-    ctx.fillStyle = 'rgba(13, 148, 136, 0.2)';
+    ctx.fillStyle = 'rgba(13, 148, 136, 0.22)';
     ctx.fillRect(22, 22, 876, 86);
 
     ctx.textAlign = 'left';
     ctx.font = 'bold 16px Inter, system-ui, sans-serif';
     ctx.fillStyle = '#2dd4bf';
-    ctx.fillText(`🇬🇧 HOMEWORK WORKSHEET CARD • ${(studentName || 'STUDENT').toUpperCase()}`, 44, 54);
+    ctx.fillText(`🇬🇧 ПИСЬМЕННОЕ ЗАДАНИЕ В ТЕТРАДИ • ${(studentName || 'STUDENT').toUpperCase()}`, 44, 54);
 
-    ctx.font = 'bold 26px Inter, system-ui, sans-serif';
+    ctx.font = 'bold 25px Inter, system-ui, sans-serif';
     ctx.fillStyle = '#f8fafc';
     const cleanTopic = (topic || 'English Practice').slice(0, 52);
     ctx.fillText(`📚 Тема: ${cleanTopic}`, 44, 88);
 
-    // Extract clean lines from hwText
+    // Extract clean lines from hwText (keep Vocabulary & Written Exercise, exclude section 3/4 meta instructions)
     const cleanHw = (hwText || '')
       .replace(/\[[\s\S]*?\]/g, '')
       .replace(/[*_`#]/g, '')
@@ -4436,9 +4473,8 @@ const TutoringPage = {
           y += lineHeight;
           linesDrawn++;
           if (linesDrawn >= maxLines - 1) {
-            // Remaining words in last line
             const rest = words.slice(n).join(' ');
-            ctx.fillText(rest.length > 75 ? rest.slice(0, 72) + '...' : rest, x, y);
+            ctx.fillText(rest.length > 78 ? rest.slice(0, 75) + '...' : rest, x, y);
             return y + lineHeight;
           }
         } else {
@@ -4452,31 +4488,31 @@ const TutoringPage = {
       return y;
     };
 
-    let curY = 142;
-    ctx.font = '19px Inter, system-ui, sans-serif';
+    let curY = 138;
+    ctx.font = '18px Inter, system-ui, sans-serif';
     ctx.fillStyle = '#e2e8f0';
 
-    for (const line of cleanHw.slice(0, 14)) {
-      if (curY > 565) break;
+    for (const line of cleanHw.slice(0, 18)) {
+      if (curY > 645) break;
       if (/^(1\.|2\.|🔤|✍️|💡)/.test(line)) {
         curY += 6;
-        ctx.font = 'bold 20px Inter, system-ui, sans-serif';
+        ctx.font = 'bold 19px Inter, system-ui, sans-serif';
         ctx.fillStyle = '#5eead4';
-        curY = drawWrappedLine(line, 44, curY, 830, 26, 2);
-        ctx.font = '18px Inter, system-ui, sans-serif';
+        curY = drawWrappedLine(line, 44, curY, 830, 24, 2);
+        ctx.font = '17px Inter, system-ui, sans-serif';
         ctx.fillStyle = '#f1f5f9';
       } else {
-        curY = drawWrappedLine(line, 52, curY, 820, 25, 2);
+        curY = drawWrappedLine(line, 52, curY, 820, 23, 2);
       }
     }
 
-    // Footer instruction box
-    ctx.fillStyle = 'rgba(15, 118, 110, 0.35)';
-    ctx.fillRect(36, 588, 848, 54);
+    // Footer mandatory instruction box
+    ctx.fillStyle = 'rgba(15, 118, 110, 0.42)';
+    ctx.fillRect(36, 668, 848, 56);
     ctx.font = 'bold 17px Inter, system-ui, sans-serif';
     ctx.fillStyle = '#99f6e4';
     ctx.textAlign = 'center';
-    ctx.fillText('📸 Выполни в тетради и пришли ФОТО в бот ИЛИ 💬 напиши ответы прямо в чат!', 460, 621);
+    ctx.fillText('📸 ОБЯЗАТЕЛЬНО: Выполни письменно в тетради и пришли ФОТО тетрадки в бот!', 460, 702);
 
     return canvas.toDataURL('image/png');
   },
