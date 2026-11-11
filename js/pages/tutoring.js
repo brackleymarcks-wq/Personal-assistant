@@ -2700,6 +2700,7 @@ const TutoringPage = {
     const dossier = this.parseStudentDossier(st);
     const stLessons = (this.lessons.filter(l => l.student_id === studentId && l.status === 'Проведен') || []).map(l => ({
       ...l,
+      _rawHomework: l.homework || '',
       homework: this.cleanHomeworkText(l.homework)
     }));
     try {

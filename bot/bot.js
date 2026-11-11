@@ -1394,6 +1394,303 @@ async function persistPhotoHwData(lesson, actor = null, fileId = null, feedback 
   } catch (e) {}
 }
 
+async function buildStudentAnalyticsAndProgressReport(st, options = { forParent: false }) {
+  if (!st) return { text: 'Ученик не найден.', photoFileId: null, kb: [] };
+  const doss = parseStudentDossierBot(st);
+  const { data: allLs } = await db.from('lessons')
+    .select('*')
+    .eq('student_id', st.id)
+    .order('date', { ascending: false });
+
+  const conducted = (allLs || []).filter(l => l.status === 'Проведен');
+  const planned = (allLs || []).filter(l => l.status === 'Запланирован');
+  const latestLesson = conducted[0] || null;
+  const isVoroniny = (st.name || '').toLowerCase().includes('арина') && (st.name || '').toLowerCase().includes('матвей');
+
+  let totalHwAssigned = 0;
+  let fixedHwCount = 0;
+  let missedHwCount = 0;
+  let inProgressCount = 0;
+  const fixedDates = [];
+  const missedDates = [];
+  const lessonHistoryLines = [];
+
+  for (let i = 0; i < conducted.length; i++) {
+    const l = conducted[i];
+    const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' });
+    const rawHw = l.homework || '';
+    const cleanHw = cleanHomeworkTextBot(rawHw);
+    const topicName = (l.topic && l.topic.trim()) || 'Практика по программе';
+    const hasHw = cleanHw.length > 5 || rawHw.includes('[КАРТОЧКИ_ДЗ]') || rawHw.includes('[ФОТО_ДЗ_СДАНО]') || rawHw.includes('[ДЗ_СДАНО]') || rawHw.includes('[ДЗ_ПРОВЕРЕНО]');
+
+    const hasPhoto = rawHw.includes('[ФОТО_ДЗ_СДАНО]');
+    const isChecked = rawHw.includes('[ДЗ_ПРОВЕРЕНО]');
+    const isSubmitted = rawHw.includes('[ДЗ_СДАНО]');
+    const isFixed = hasPhoto || isChecked || isSubmitted;
+
+    const pctMatch = rawHw.match(/\[ПРОГРЕСС_ДЗ:(\d+)%\]/);
+    let savedPct = pctMatch ? parseInt(pctMatch[1], 10) : (isFixed ? 100 : 0);
+    if (i === 0 && latestLesson) {
+      const liveSum = getHwCompletionSummary(st, latestLesson);
+      if (liveSum.pct > savedPct) savedPct = liveSum.pct;
+    }
+
+    let groupDetail = '';
+    if (isVoroniny) {
+      const aDone = rawHw.includes('[ФОТО_ДЗ_СДАНО_АРИНА]') || rawHw.includes('[ДЗ_СДАНО_АРИНА]') || rawHw.includes('[ДЗ_ПРОВЕРЕНО_АРИНА]') || isChecked;
+      const mDone = rawHw.includes('[ФОТО_ДЗ_СДАНО_МАТВЕЙ]') || rawHw.includes('[ДЗ_СДАНО_МАТВЕЙ]') || rawHw.includes('[ДЗ_ПРОВЕРЕНО_МАТВЕЙ]') || isChecked;
+      const aPctM = rawHw.match(/\[ПРОГРЕСС_АРИНА:(\d+)%\]/);
+      const mPctM = rawHw.match(/\[ПРОГРЕСС_МАТВЕЙ:(\d+)%\]/);
+      const aPct = aPctM ? aPctM[1] + '%' : (aDone ? '100%' : '0%');
+      const mPct = mPctM ? mPctM[1] + '%' : (mDone ? '100%' : '0%');
+      groupDetail = ` [👧 Арина: ${aDone ? '✅ сдано' : `⏳ ${aPct}`} | 👦 Матвей: ${mDone ? '✅ сдано' : `⏳ ${mPct}`}]`;
+    }
+
+    if (hasHw) {
+      totalHwAssigned++;
+      if (isFixed) {
+        fixedHwCount++;
+        fixedDates.push(`${dStr} («${topicName.slice(0, 35)}»)`);
+        const photoBadge = hasPhoto ? '📸 фото тетрадки проверено' : (isChecked ? 'проверено преподавателем' : 'зафиксировано в боте');
+        lessonHistoryLines.push(`• ${dStr} — «${topicName}»\n   └ ✅ ДЗ выполнено и зафиксировано (${photoBadge}, ${savedPct || 100}%)${groupDetail}`);
+      } else if (i === 0) {
+        inProgressCount++;
+        lessonHistoryLines.push(`• ${dStr} — «${topicName}»\n   └ ⏳ Текущее ДЗ в работе (сейчас выполнено: ${savedPct}%, ждём 📸 фото тетрадки)${groupDetail}`);
+      } else {
+        missedHwCount++;
+        missedDates.push(`${dStr} («${topicName.slice(0, 35)}»)`);
+        lessonHistoryLines.push(`• ${dStr} — «${topicName}»\n   └ ❌ ДЗ не было зафиксировано (${savedPct > 0 ? `было начато на ${savedPct}% без сдачи` : 'не приступал(а)'})${groupDetail}`);
+      }
+    } else {
+      lessonHistoryLines.push(`• ${dStr} — «${topicName}»\n   └ ℹ️ Урок проведён (без отдельного письменного ДЗ)`);
+    }
+  }
+
+  const currentSummary = latestLesson ? getHwCompletionSummary(st, latestLesson) : null;
+  const warmupErrors = extractHwWarmupErrorsFromDossier(doss);
+  const completedDenominator = Math.max(0, totalHwAssigned - inProgressCount);
+  const stabilityPct = completedDenominator > 0
+    ? Math.round((fixedHwCount / completedDenominator) * 100)
+    : (fixedHwCount > 0 ? 100 : 0);
+
+  let text = '';
+  if (options.forParent) {
+    text += `📊 *Отчёт об успеваемости и дисциплине ДЗ: ${st.name}*\n`;
+    if (st.grade) text += `🎓 Уровень / класс: ${st.grade}\n`;
+    if (doss.unit) text += `📖 Программа: ${doss.unit}\n`;
+    text += `\n━━━━━━━━━━━━━━\n`;
+    text += `📈 *1. ОБЩАЯ СТАТИСТИКА ЗАНЯТИЙ И ДЗ:*\n`;
+    text += `• 📚 *Всего проведено уроков:* ${conducted.length}\n`;
+    text += `• 📌 *Всего задано домашних заданий:* ${totalHwAssigned}\n`;
+    text += `• ✅ *Зафиксировано выполненных ДЗ:* ${fixedHwCount}${completedDenominator > 0 ? ` из ${completedDenominator} завершённых (${stabilityPct}%)` : ''}\n`;
+    text += `• ❌ *Не было зафиксировано (пропущено):* ${missedHwCount}\n`;
+    if (inProgressCount > 0 && currentSummary) {
+      text += `• ⏳ *Текущее ДЗ (в работе прямо сейчас):* готовность ${currentSummary.pct}% (${currentSummary.hasNotebookPhoto ? '📸 фото тетрадки получено ✅' : 'ждём 📸 фото письменного упражнения в тетради'})\n`;
+    }
+    text += `• 🔥 *Текущая серия без пропусков (Streak):* ${doss.streak || 0} ДЗ подряд\n`;
+
+    if (fixedDates.length > 0) {
+      text += `\n✅ *Когда была фиксация выполненного ДЗ:*\n${fixedDates.map(d => `  • ${d}`).join('\n')}\n`;
+    }
+    if (missedDates.length > 0) {
+      text += `\n⚠️ *Уроки, где ДЗ не было зафиксировано:*\n${missedDates.map(d => `  • ${d}`).join('\n')}\n`;
+    }
+
+    text += `\n━━━━━━━━━━━━━━\n`;
+    text += `📅 *2. ПОЛНАЯ ХРОНОЛОГИЯ ПРОЙДЕННЫХ УРОКОВ (${conducted.length}):*\n`;
+    text += lessonHistoryLines.length > 0 ? lessonHistoryLines.join('\n') : 'Пока нет проведённых уроков.';
+
+    if (latestLesson && currentSummary) {
+      const latestDateStr = new Date(latestLesson.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' });
+      text += `\n\n━━━━━━━━━━━━━━\n`;
+      text += `🎯 *3. СТАТУС ТЕКУЩЕГО ДОМАШНЕГО ЗАДАНИЯ (урок от ${latestDateStr}):*\n`;
+      text += `• Тема: «${latestLesson.topic || 'Практика английского'}»\n`;
+      text += `• Выполнено сейчас: *${currentSummary.pct}%*\n`;
+      if (currentSummary.groupBreakdownText) {
+        text += `${currentSummary.groupBreakdownText}\n`;
+      }
+      text += `• Что уже сделано ребёнком:\n  • ${currentSummary.doneText}\n`;
+      text += `• Что осталось доделать:\n  • ${currentSummary.leftText}\n`;
+    }
+
+    if (doss.errors || warmupErrors) {
+      text += `\n━━━━━━━━━━━━━━\n`;
+      text += `💡 *4. ЗОНЫ РОСТА И НАД ЧЕМ РАБОТАЕМ:*\n`;
+      if (doss.errors) text += `• По урокам: ${doss.errors}\n`;
+      if (warmupErrors) text += `• По ответам в тренажёре бота:\n${warmupErrors.split('\n').slice(0, 4).join('\n')}\n`;
+    }
+
+    text += `\n⏱ *Важно о формате ДЗ:* все наши домашние задания специально рассчитаны всего на *10–15 минут* (5 слов урока + 4 коротких предложения письменно в тетради с отправкой фото в бот). Главная цель — не перегружать ребёнка, а сформировать спокойную привычку выполнять небольшое задание стабильно после каждого урока! 🌟`;
+  } else {
+    text += `📊 *ПОЛНЫЙ ОТЧЁТ ПО УЧЕНИКУ: ${st.name.toUpperCase()}*\n`;
+    if (st.grade) text += `🎓 Класс/уровень: ${st.grade} | 💰 Ставка: ${st.price || 0} BYN\n`;
+    text += `📱 ТГ ученика: ${doss.tgId ? `подключён (${doss.tgUser || doss.tgId}) ✅` : 'не подключён ⚠️'} | 👨‍👩‍👧 ТГ родителя: ${doss.parentTgId ? `подключён (${doss.parentTgUser || doss.parentTgId}) ✅` : 'не подключён ⚠️'}\n`;
+    text += `\n━━━━━━━━━━━━━━\n`;
+    text += `📈 *1. СВОДКА: СКОЛЬКО ПРОШЁЛ И ДИСЦИПЛИНА ДЗ*\n`;
+    text += `• 📚 *Всего проведено уроков:* ${conducted.length}\n`;
+    text += `• 📌 *Всего задано ДЗ:* ${totalHwAssigned}\n`;
+    text += `• ✅ *Зафиксировано сделанных ДЗ:* ${fixedHwCount}${completedDenominator > 0 ? ` из ${completedDenominator} прошлых (${stabilityPct}%)` : ''}\n`;
+    text += `• ❌ *Не сделано / без фиксации:* ${missedHwCount}\n`;
+    text += `• ⏳ *В работе сейчас (текущее ДЗ):* ${inProgressCount > 0 && currentSummary ? `${currentSummary.pct}% (${currentSummary.hasNotebookPhoto ? '📸 фото сдано ✅' : 'ждём 📸 фото тетрадки 🔒'})` : 'нет активного долга'}\n`;
+    text += `• 🔥 *Ударный режим (Streak):* ${doss.streak || 0} ДЗ подряд\n`;
+
+    if (fixedDates.length > 0) {
+      text += `\n✅ *Когда была фиксация сделанного ДЗ (${fixedDates.length}):*\n${fixedDates.map(d => `  • ${d}`).join('\n')}\n`;
+    } else {
+      text += `\n✅ *Когда была фиксация сделанного ДЗ:* пока 0 зафиксированных ДЗ\n`;
+    }
+    if (missedDates.length > 0) {
+      text += `\n❌ *Когда НЕ было фиксации ДЗ (${missedDates.length}):*\n${missedDates.map(d => `  • ${d}`).join('\n')}\n`;
+    }
+
+    text += `\n━━━━━━━━━━━━━━\n`;
+    text += `📅 *2. ПОУРОЧНАЯ ХРОНОЛОГИЯ (ВСЕ ${conducted.length} УРОКОВ):*\n`;
+    text += lessonHistoryLines.length > 0 ? lessonHistoryLines.join('\n') : 'Уроков пока нет.';
+
+    if (latestLesson && currentSummary) {
+      const latestDateStr = new Date(latestLesson.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' });
+      text += `\n\n━━━━━━━━━━━━━━\n`;
+      text += `🎯 *3. ДЕТАЛИ ТЕКУЩЕГО ДЗ (от ${latestDateStr} — «${latestLesson.topic || 'Урок'}»):*\n`;
+      text += `• Готовность: *${currentSummary.pct}%* (Кнопка сдачи: ${currentSummary.canSubmit ? 'ОТКРЫТА ✅' : 'ЗАБЛОКИРОВАНА 🔒 — ждём фото тетрадки'})\n`;
+      if (currentSummary.groupBreakdownText) {
+        text += `${currentSummary.groupBreakdownText}\n`;
+      }
+      text += `• Выполнено:\n  • ${currentSummary.doneText}\n`;
+      text += `• Осталось:\n  • ${currentSummary.leftText}\n`;
+      if (currentSummary.photoFeedback) {
+        text += `\n🤖 *Последняя ОС бота по фото тетрадки:*\n${currentSummary.photoFeedback.slice(0, 450)}\n`;
+      }
+    }
+
+    if (doss.errors || warmupErrors) {
+      text += `\n━━━━━━━━━━━━━━\n`;
+      text += `⚠️ *4. НАКОПЛЕННЫЕ ОШИБКИ (УРОКИ + ТГ-БОТ):*\n`;
+      if (doss.errors) text += `• Из уроков: ${doss.errors}\n`;
+      if (warmupErrors) text += `• Из ответов в боте:\n${warmupErrors}\n`;
+    }
+
+    if (planned.length > 0) {
+      const nextP = planned[planned.length - 1];
+      const nextDStr = new Date(nextP.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      text += `\n🗓 *Следующий запланированный урок:* ${nextDStr} (${nextP.topic || 'тема не указана'})`;
+    }
+  }
+
+  const kb = [
+    [{ text: `🔔 Напомнить ${st.name} про ДЗ (15 мин)`, callback_data: `teacher_nudge_hw:${st.id}` }],
+    [{ text: `👨‍👩‍👧 Отправить этот отчёт родителю`, callback_data: `teacher_send_analytics_parent:${st.id}` }],
+    [{ text: `🎤 Написать ученику в бот`, callback_data: `teacher_reply_st:${st.id}` }]
+  ];
+
+  return {
+    text,
+    photoFileId: currentSummary?.photoFileId || null,
+    kb,
+    stats: {
+      totalConducted: conducted.length,
+      totalHwAssigned,
+      fixedHwCount,
+      missedHwCount,
+      inProgressCount,
+      currentPct: currentSummary?.pct || 0,
+      hasNotebookPhoto: !!currentSummary?.hasNotebookPhoto,
+      canSubmit: !!currentSummary?.canSubmit
+    }
+  };
+}
+
+async function buildAllStudentsProgressOverview() {
+  const { data: students } = await db.from('students').select('*').order('name');
+  if (!students || students.length === 0) return { text: 'Ученики не найдены.', kb: [] };
+
+  let out = `📊 *СВОДНЫЙ ОТЧЁТ ПО ВСЕМ УЧЕНИКАМ (УРОКИ И ФИКСАЦИЯ ДЗ):*\n\n`;
+  const kb = [];
+
+  for (const st of students) {
+    const rep = await buildStudentAnalyticsAndProgressReport(st, { forParent: false });
+    const s = rep.stats;
+    const statusIcon = s.canSubmit ? '✅' : (s.currentPct > 0 ? '⏳' : '🔒');
+    out += `👤 *${st.name}* (${st.grade || 'шк.'})\n`;
+    out += `   • Пройдено уроков: *${s.totalConducted}*\n`;
+    out += `   • Сдано и зафиксировано ДЗ: *${s.fixedHwCount}* | Не сдано прошлых: *${s.missedHwCount}*\n`;
+    out += `   • Текущее ДЗ сейчас: ${statusIcon} *${s.currentPct}%* (${s.hasNotebookPhoto ? '📸 фото тетрадки сдано ✅' : 'ждём 📸 фото тетрадки'})\n\n`;
+    kb.push([
+      { text: `📊 Подробно: ${st.name}`, callback_data: `teacher_st_report:${st.id}` },
+      { text: `🔔 Напомнить ДЗ`, callback_data: `teacher_nudge_hw:${st.id}` }
+    ]);
+  }
+  kb.push([{ text: '🔔 Напомнить ВСЕМ, у кого ещё не сдано ДЗ', callback_data: 'teacher_nudge_all_hw' }]);
+  return { text: out.trim(), kb };
+}
+
+async function nudgeStudentAboutHomework(st, isManual = false) {
+  if (!st) return { sent: false, reason: 'no_student' };
+  const doss = parseStudentDossierBot(st);
+  const targetIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (targetIds.length === 0) return { sent: false, reason: 'no_tg_id' };
+
+  const lastLs = await getLatestLessonWithMaterials(st.id);
+  if (!lastLs || !lastLs.homework) return { sent: false, reason: 'no_active_hw' };
+
+  const hwStatus = getHwCompletionSummary(st, lastLs);
+  if (hwStatus.canSubmit && !isManual) {
+    return { sent: false, reason: 'already_completed' };
+  }
+
+  // Anti-spam check for automatic reminders: max once per calendar day (Minsk) AND at least 16 hours after the lesson
+  const todayMinsk = getMinskDateString(0);
+  const rawHw = lastLs.homework || '';
+  if (!isManual) {
+    const lessonAgeHours = (Date.now() - new Date(lastLs.date).getTime()) / (1000 * 3600);
+    if (lessonAgeHours < 16) return { sent: false, reason: 'lesson_too_recent' };
+    const lastRemMatch = rawHw.match(/\[НАПОМИНАНИЕ_ДЗ_ДАТА:([^\]]+)\]/);
+    if (lastRemMatch && lastRemMatch[1].trim() === todayMinsk) {
+      return { sent: false, reason: 'already_reminded_today' };
+    }
+  }
+
+  const { cleanHw: noCardsHw, cards } = extractAttachedCards(rawHw);
+  const cleanHw = cleanHomeworkTextBot(noCardsHw);
+  const topic = lastLs.topic || 'нашему прошедшему уроку';
+  const kbMarkup = buildStudentKeyboard(st, lastLs);
+
+  for (const tid of targetIds) {
+    const actor = resolveStudentActor(st, tid);
+    const actorSum = computeSingleActorHwSummary(st, lastLs, actor);
+    if (actorSum.canSubmit && !isManual) continue;
+
+    if (cards.length > 0 && actorSum.pct === 0) {
+      await sendCardsToChat(tid, cards, '🖼 Карточка твоего небольшого ДЗ (на 15 минут)');
+    }
+
+    const nudgeMsg = `👋 *Привет, ${actor.name}! Как там твоя небольшая домашка по теме «${topic}»?* 😊\n\n` +
+      `⏱ Она специально рассчитана всего на *10–15 минут* — без перегруза, чтобы легко держать форму!\n` +
+      `📊 *Твоя готовность сейчас:* ${actorSum.pct}%\n` +
+      `✅ *Уже сделано:* ${actorSum.doneList.length ? actorSum.doneList.join(', ') : 'пока 0%'}\n\n` +
+      `✍️ *Что осталось для зачёта:*\n` +
+      `1️⃣ Запиши короткое письменное упражнение с карточки в свою тетрадку и пришли сюда *📸 ФОТО тетрадки*!\n` +
+      `2️⃣ Для быстрой разминки нажми кнопки со словами и мини-тестиком ниже 👇\n\n` +
+      `🔥 _Давай сделаем сегодня за 15 минут, чтобы твой огонёк ударного режима (${doss.streak || 1} дн.) горел стабильно! Жду фото твоей тетрадки!_ 💪🚀`;
+
+    await sendCleanMessage(tid, nudgeMsg, { reply_markup: kbMarkup }).catch(() => {});
+  }
+
+  // Record reminder date tag so cron won't repeat today
+  try {
+    let updatedHw = lastLs.homework || '';
+    const remTag = `[НАПОМИНАНИЕ_ДЗ_ДАТА:${todayMinsk}]`;
+    if (/\[НАПОМИНАНИЕ_ДЗ_ДАТА:[^\]]+\]/.test(updatedHw)) {
+      updatedHw = updatedHw.replace(/\[НАПОМИНАНИЕ_ДЗ_ДАТА:[^\]]+\]/g, remTag);
+    } else {
+      updatedHw = `${updatedHw.trim()} ${remTag}`.trim();
+    }
+    lastLs.homework = updatedHw;
+    await db.from('lessons').update({ homework: updatedHw }).eq('id', lastLs.id);
+  } catch (e) {}
+
+  return { sent: true, pct: hwStatus.pct, topic };
+}
+
 function addStudentXp(studentId, lessonId, userId, userName, amount) {
   const prog = getPracticeProgress(studentId, lessonId);
   if (!prog.userScores) prog.userScores = {};
@@ -2766,13 +3063,16 @@ async function executeFunctionCall(name, args) {
         const result = [];
         for (const st of (sts || [])) {
           const dossier = parseStudentDossierBot(st);
-          const { data: recentLessons } = await db.from('lessons').select('*').eq('student_id', st.id).order('date', { ascending: false }).limit(5);
+          const { data: recentLessons } = await db.from('lessons').select('*').eq('student_id', st.id).order('date', { ascending: false });
+          const analytics = await buildStudentAnalyticsAndProgressReport(st, { forParent: false });
           result.push({
             name: st.name,
             grade: st.grade,
             price: st.price,
             dossier,
-            recent_lessons: recentLessons || []
+            stats: analytics.stats,
+            full_analytics_report: analytics.text,
+            all_lessons: recentLessons || []
           });
         }
         return { success: true, students: result };
@@ -4013,14 +4313,16 @@ bot.on('callback_query', async (query) => {
     try {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
-      await bot.answerCallbackQuery(query.id, { text: '📊 Формирую отчёт об успеваемости...' });
-      const doss = parseStudentDossierBot(st);
-      const { data: recentLs } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(8);
-      const historyLines = (recentLs || []).map(l => `- ${new Date(l.date).toLocaleDateString('ru-RU')}: ${l.topic || 'Практика'} ${(l.homework || '').includes('[ДЗ_ПРОВЕРЕНО]') || (l.homework || '').includes('[ДЗ_СДАНО]') ? '(ДЗ выполнено ✅)' : ''}`).join('\n');
-      const prompt = `Ты — преподаватель английского Игорь. Составь структурированный, доброжелательный "📊 Отчёт об успеваемости" для родителей ученика ${st.name} (${st.grade || ''}).\nПройденные уроки:\n${historyLines || 'Занятия только начались'}\nТекущий учебник/программа: ${doss.unit || 'по уровню'}.\nАктивный словарь: ${doss.vocab || 'по темам уроков'}.\nЗоны роста (над чем работаем): ${doss.errors || 'разговорная практика и грамматика'}.\nУдарный режим выполнения ДЗ: ${doss.streak || 0} подряд.\nСтруктура:\n1. 🌟 Пройденные темы и главные успехи\n2. 📈 Над чем сейчас работаем особенно внимательно\n3. 🎯 План на ближайшие занятия\nПиши тепло, профессионально, до 1200 символов.`;
-      const planRes = await executeFunctionCall('generate_lesson_plan', { prompt });
-      const repText = planRes.generated_plan || `📊 *Сводка по ученику ${st.name}:*\nПройдено уроков в выборке: ${(recentLs || []).length}.\nУдарный режим ДЗ: 🔥 ${doss.streak || 0}`;
-      await bot.sendMessage(chatId, repText, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, repText));
+      await bot.answerCallbackQuery(query.id, { text: '📊 Формирую полный отчёт об успеваемости и ДЗ...' });
+      const rep = await buildStudentAnalyticsAndProgressReport(st, { forParent: true });
+      await sendCleanMessage(chatId, rep.text, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }],
+            [{ text: '🔄 Обновить отчёт', callback_data: `parent_req_report:${st.id}` }]
+          ]
+        }
+      });
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -4033,26 +4335,110 @@ bot.on('callback_query', async (query) => {
       await bot.answerCallbackQuery(query.id, { text: '📚 Загружаю данные о ДЗ...' });
       if (!lastLs) return bot.sendMessage(chatId, `По ученику *${st.name}* пока нет записанных уроков.`, { parse_mode: 'Markdown' });
       const { cleanHw: noCardsHw, cards } = extractAttachedCards(lastLs.homework || '');
-      const isDone = noCardsHw.includes('[ДЗ_СДАНО]') || noCardsHw.includes('[ДЗ_ПРОВЕРЕНО]');
-      const cleanHw = noCardsHw.split('\\n[МАТЕРИАЛЫ]:')[0].replace('[ДЗ_ПРОВЕРЕНО]', '').replace('[ДЗ_СДАНО]', '').replace('[ОТПРАВИТЬ_В_ТГ]', '').replace('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]', '').trim();
+      const hwSum = getHwCompletionSummary(st, lastLs);
+      const cleanHw = cleanHomeworkTextBot(noCardsHw);
       const dStr = new Date(lastLs.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
       
-      let msg = `📚 *Текущее домашнее задание (${st.name}):*\n📅 Урок от: ${dStr}\n📖 *Тема:* ${lastLs.topic || 'Английский язык'}\n📌 *Задание:* ${cleanHw || 'Без письменного задания'}`;
-      if (cards.length > 0) msg += `\n🖼 *Прикреплено карточек:* ${cards.length} шт. (отправляю ниже)`;
-      msg += `\n\nСтатус выполнения: ${isDone ? '✅ *Уже выполнено / сдано ребёнком!*' : '⏳ *В процессе выполнения*'}`;
+      let msg = `📚 *Текущее домашнее задание (${st.name} — на 10–15 минут):*\n📅 Урок от: ${dStr}\n📖 *Тема:* ${lastLs.topic || 'Английский язык'}\n📌 *Задание:*\n${cleanHw || 'Выполнить упражнение на карточке в тетради и нажать кнопки ниже'}`;
+      if (cards.length > 0) msg += `\n\n🖼 *Прикреплено карточек для тетради:* ${cards.length} шт. (отправляю ниже)`;
+      msg += `\n\n📊 *Готовность сейчас:* *${hwSum.pct}%* (${hwSum.canSubmit ? '✅ *Полностью выполнено и фото тетрадки проверено!*' : `⏳ *В процессе (${hwSum.hasNotebookPhoto ? 'фото тетрадки получено ✅' : 'ждём 📸 фото письменного ДЗ в тетради'})*`})`;
+      if (hwSum.groupBreakdownText) msg += `\n${hwSum.groupBreakdownText}`;
+      msg += `\n• Уже сделано: ${hwSum.doneText}\n• Осталось: ${hwSum.leftText}`;
       
-      await bot.sendMessage(chatId, msg, {
-        parse_mode: 'Markdown',
+      await sendCleanMessage(chatId, msg, {
         reply_markup: {
           inline_keyboard: [
+            [{ text: '📊 Полный отчёт по всем урокам и ДЗ', callback_data: `parent_req_report:${st.id}` }],
             [{ text: '🔤 5 слов урока ребёнка', callback_data: `student_words:${st.id}` }, { text: '📝 Проверить ребёнка (тестик)', callback_data: `student_poll_quiz:${st.id}` }]
           ]
         }
-      }).catch(() => bot.sendMessage(chatId, msg));
+      });
 
       if (cards.length > 0) {
-        await sendCardsToChat(chatId, cards, `🖼 Карточка к ДЗ (${st.name})`);
+        await sendCardsToChat(chatId, cards, `🖼 Карточка письменного ДЗ в тетрадь (${st.name})`);
       }
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('teacher_st_report:')) {
+    const studentId = data.split(':')[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      await bot.answerCallbackQuery(query.id, { text: `📊 Загружаю полный отчёт по ${st.name}...` });
+      const rep = await buildStudentAnalyticsAndProgressReport(st, { forParent: false });
+      await sendCleanMessage(chatId, rep.text, {
+        reply_markup: { inline_keyboard: rep.kb }
+      });
+      if (rep.photoFileId) {
+        await bot.sendPhoto(chatId, rep.photoFileId, {
+          caption: `📸 *Последнее присланное фото тетрадки (${st.name})*`,
+          parse_mode: 'Markdown'
+        }).catch(() => {});
+      }
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('teacher_nudge_hw:')) {
+    const studentId = data.split(':')[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      await bot.answerCallbackQuery(query.id, { text: `🔔 Отправляю напоминание ${st.name}...` });
+      const res = await nudgeStudentAboutHomework(st, true);
+      if (res.sent) {
+        await bot.sendMessage(chatId, `🔔 Напоминание про 15-минутное ДЗ («${res.topic}», сейчас выполнено: ${res.pct}%) отправлено ученику *${st.name}*!`, { parse_mode: 'Markdown' });
+      } else {
+        await bot.sendMessage(chatId, `⚠️ Не удалось отправить напоминание *${st.name}*: ${res.reason === 'no_tg_id' ? 'ученик ещё не подключён к ТГ-боту' : 'нет активного ДЗ'}.`, { parse_mode: 'Markdown' });
+      }
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data === 'teacher_nudge_all_hw') {
+    try {
+      await bot.answerCallbackQuery(query.id, { text: '🔔 Проверяю всех учеников и напоминаю про ДЗ...' });
+      const { data: students } = await db.from('students').select('*').order('name');
+      const nudged = [];
+      for (const st of (students || [])) {
+        const lastLs = await getLatestLessonWithMaterials(st.id);
+        if (!lastLs || !lastLs.homework) continue;
+        const sum = getHwCompletionSummary(st, lastLs);
+        if (!sum.canSubmit) {
+          const r = await nudgeStudentAboutHomework(st, true);
+          if (r.sent) nudged.push(`${st.name} (${r.pct}%)`);
+        }
+      }
+      if (nudged.length > 0) {
+        await bot.sendMessage(chatId, `🔔 Напоминание про 15-минутное ДЗ отправлено ученикам:\n• ${nudged.join('\n• ')}`, { parse_mode: 'Markdown' });
+      } else {
+        await bot.sendMessage(chatId, `✅ У всех подключённых учеников текущее ДЗ уже сдано или нет активных долгов!`, { parse_mode: 'Markdown' });
+      }
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('teacher_send_analytics_parent:')) {
+    const studentId = data.split(':')[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      const doss = parseStudentDossierBot(st);
+      const targetParentId = doss.parentTgId || doss.tgId;
+      if (!targetParentId) {
+        return bot.answerCallbackQuery(query.id, { text: 'У ученика не привязан ТГ родителя или семьи!', show_alert: true });
+      }
+      await bot.answerCallbackQuery(query.id, { text: '👨‍👩‍👧 Отправляю полный отчёт родителю...' });
+      const rep = await buildStudentAnalyticsAndProgressReport(st, { forParent: true });
+      const pIds = String(targetParentId).split(',').map(s => s.trim()).filter(Boolean);
+      for (const pid of pIds) {
+        await sendCleanMessage(pid, rep.text, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
+            ]
+          }
+        }).catch(() => {});
+      }
+      await bot.sendMessage(chatId, `👨‍👩‍👧 Полный отчёт об успеваемости и статистике фиксации ДЗ по ученику *${st.name}* успешно отправлен родителю!`, { parse_mode: 'Markdown' });
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -6507,6 +6893,62 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
         }
       });
     }
+    // --- БЫСТРЫЙ ПЕРЕХВАТ ЗАПРОСОВ ИГОРЯ ОБ УСПЕХАХ И ДЗ УЧЕНИКОВ ---
+    const progressQueryRegex = /(?:как\s+(?:там\s+)?(?:успехи|дела|дз|домашка|прогресс)|отч[её]т\s+по|статистика\s+по|сводка\s+по|сколько\s+(?:прош[её]л|сделал|уроков)|кто\s+сделал\s+дз|успеваемость)/i;
+    const nudgeQueryRegex = /^(?:напомни|пни|напиши)\s+(?:про\s+дз|детям\s+про\s+дз|ученикам\s+про\s+дз|насч[её]т\s+дз)/i;
+
+    if (nudgeQueryRegex.test(textToProcess.trim())) {
+      const { data: allSt } = await db.from('students').select('*').order('name');
+      const matchedSt = matchStudent(allSt || [], textToProcess);
+      if (matchedSt) {
+        const res = await nudgeStudentAboutHomework(matchedSt, true);
+        if (res.sent) {
+          return bot.sendMessage(chatId, `🔔 Напоминание про 15-минутное ДЗ («${res.topic}», сейчас выполнено: ${res.pct}%) отправлено ученику *${matchedSt.name}*!`, { parse_mode: 'Markdown' });
+        }
+        return bot.sendMessage(chatId, `⚠️ Не удалось отправить напоминание *${matchedSt.name}*: ${res.reason === 'no_tg_id' ? 'не привязан ТГ' : 'нет активного ДЗ'}.`, { parse_mode: 'Markdown' });
+      } else {
+        const nudged = [];
+        for (const s of (allSt || [])) {
+          const lastLs = await getLatestLessonWithMaterials(s.id);
+          if (!lastLs || !lastLs.homework) continue;
+          const sum = getHwCompletionSummary(s, lastLs);
+          if (!sum.canSubmit) {
+            const r = await nudgeStudentAboutHomework(s, true);
+            if (r.sent) nudged.push(`${s.name} (${r.pct}%)`);
+          }
+        }
+        return bot.sendMessage(chatId, nudged.length > 0
+          ? `🔔 Напоминание про 15-минутное ДЗ отправлено:\n• ${nudged.join('\n• ')}`
+          : `✅ У всех подключённых учеников текущее ДЗ уже выполнено!`, { parse_mode: 'Markdown' });
+      }
+    }
+
+    if (progressQueryRegex.test(textToProcess.trim())) {
+      bot.sendChatAction(chatId, 'typing');
+      const { data: allSt } = await db.from('students').select('*').order('name');
+      const matchedSt = matchStudent(allSt || [], textToProcess);
+      if (matchedSt) {
+        const rep = await buildStudentAnalyticsAndProgressReport(matchedSt, { forParent: false });
+        await sendCleanMessage(chatId, rep.text, {
+          reply_markup: { inline_keyboard: rep.kb }
+        });
+        if (rep.photoFileId) {
+          await bot.sendPhoto(chatId, rep.photoFileId, {
+            caption: `📸 *Последнее присланное фото тетрадки (${matchedSt.name})*`,
+            parse_mode: 'Markdown'
+          }).catch(() => {});
+        }
+        return;
+      } else {
+        const overview = await buildAllStudentsProgressOverview();
+        await sendCleanMessage(chatId, overview.text, {
+          reply_markup: { inline_keyboard: overview.kb }
+        });
+        return;
+      }
+    }
+    // -----------------------------------------------------------------
+
     await saveMessage('user', textToProcess);
 
     // Показываем "печатает..."
@@ -7239,6 +7681,32 @@ cron.schedule('* * * * *', async () => {
     }
   } catch (e) {
     console.error('Cron reminders check error:', e);
+  }
+}, { timezone: 'UTC' });
+
+// Автоматическое дружелюбное напоминание детям про небольшое ДЗ (10–15 минут)
+// Срабатывает в 15:30 и 18:30 по Минску (12:30 и 15:30 UTC), но не чаще 1 раза в сутки на ученика
+// и только если с момента урока прошло не менее 16 часов, а ДЗ ещё не зафиксировано
+cron.schedule('30 12,15 * * *', async () => {
+  try {
+    const { data: students } = await db.from('students').select('*').order('name');
+    if (!students || students.length === 0) return;
+    const nudgedList = [];
+    for (const st of students) {
+      const res = await nudgeStudentAboutHomework(st, false);
+      if (res.sent) {
+        nudgedList.push(`• *${st.name}* (тема: «${res.topic}», сейчас выполнено: ${res.pct}%)`);
+      }
+    }
+    if (nudgedList.length > 0 && ADMIN_CHAT_ID) {
+      await bot.sendMessage(
+        ADMIN_CHAT_ID,
+        `🔔 *Авто-напоминание детям про ДЗ (15 минут):*\nБот дружелюбно написал ученикам, у которых ещё не зафиксировано текущее ДЗ:\n${nudgedList.join('\n')}`,
+        { parse_mode: 'Markdown' }
+      ).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Auto homework nudge cron error:', e);
   }
 }, { timezone: 'UTC' });
 
