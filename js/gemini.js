@@ -4,7 +4,7 @@
 
 // Defaults, will be overridden by Config
 const DEFAULT_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free';
+const DEFAULT_MODEL = 'baidu/ernie-5.5-flash-preview:free';
 
 
 // Function declarations in OpenAI format
@@ -660,16 +660,26 @@ const Gemini = {
     return null;
   },
 
-  async _callAPI(arg1, arg2, arg3, arg4 = 0, arg5 = null, arg6 = false) {
+  async _callAPI(arg1, arg2, arg3, arg4 = 0, arg5 = null, arg6 = false, _retryDepth = 0) {
     const isExtendedSig = Array.isArray(arg5);
     const passedKey = (isExtendedSig ? arg2 : arg1);
     const apiKey = passedKey || this._getCurrentKey() || Config.geminiKey;
     const systemInstruction = isExtendedSig ? arg4 : arg2;
     const messages = isExtendedSig ? arg5 : (Array.isArray(arg3) ? arg3 : []);
-    const retryCount = isExtendedSig ? 0 : (typeof arg4 === 'number' ? arg4 : 0);
+    const retryCount = _retryDepth || (isExtendedSig ? 0 : (typeof arg4 === 'number' ? arg4 : 0));
     const disableTools = isExtendedSig ? !!arg6 : (typeof arg6 === 'boolean' ? arg6 : false);
     const apiUrl = Config.aiApiUrl || DEFAULT_API_URL;
-    const FALLBACK_MODELS = [Config.aiModel || DEFAULT_MODEL, 'openrouter/free', 'nvidia/nemotron-3-ultra-550b-a55b:free'];
+    const configuredModel = Config.aiModel || DEFAULT_MODEL;
+    const deadModels = ['nvidia/nemotron-3-ultra-550b-a55b:free', 'google/gemma-4-31b-it:free', 'google/gemma-3-27b-it:free', 'qwen/qwen3-235b-a22b:free', 'gpt-4o'];
+    const primaryModel = deadModels.includes(configuredModel) ? 'baidu/ernie-5.5-flash-preview:free' : configuredModel;
+    const FALLBACK_MODELS = Array.from(new Set([
+      primaryModel,
+      'baidu/ernie-5.5-flash-preview:free',
+      'cohere/north-mini-code:free',
+      'recursive/flint-v1.0:free',
+      'dots-studio/dots-3-note-preview:free',
+      'openrouter/free'
+    ]));
     const model = FALLBACK_MODELS[Math.min(retryCount, FALLBACK_MODELS.length - 1)];
 
     // Ensure messages don't pass raw giant base64 data URLs into text models
@@ -681,24 +691,33 @@ const Gemini = {
       return m;
     });
 
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          { role: 'system', content: systemInstruction },
-          ...sanitizedMessages
-        ],
-        tools: disableTools ? undefined : TOOLS,
-        temperature: 0.7,
-        max_tokens: 3500
-      }),
-      signal: AbortSignal.timeout(45000)
-    });
+    let res;
+    try {
+      res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: 'system', content: systemInstruction },
+            ...sanitizedMessages
+          ],
+          tools: disableTools ? undefined : TOOLS,
+          temperature: 0.7,
+          max_tokens: 3500
+        }),
+        signal: AbortSignal.timeout(35000)
+      });
+    } catch (netErr) {
+      if (retryCount < FALLBACK_MODELS.length - 1) {
+        console.warn(`AI network/timeout error on ${model}, switching to fallback #${retryCount + 1}...`);
+        return this._callAPI(apiUrl, apiKey, model, systemInstruction, messages, disableTools, retryCount + 1);
+      }
+      throw netErr;
+    }
 
     if (!res.ok) {
       let err;
@@ -716,25 +735,36 @@ const Gemini = {
       }
       
       // Check if key is rate limited and we can rotate to a backup key
-      if ((res.status === 429 || errMsg.includes('free-models-per-day') || errMsg.includes('Rate limit')) && retryCount < 3) {
+      if ((res.status === 429 || errMsg.includes('free-models-per-day') || errMsg.includes('Rate limit')) && retryCount < FALLBACK_MODELS.length) {
         const newKey = this._rotateKey();
         if (newKey && newKey !== apiKey) {
           console.warn('Rotated to backup key on 429 rate limit. Retrying immediately...');
-          return this._callAPI(apiUrl, newKey, model, systemInstruction, messages, disableTools);
+          return this._callAPI(apiUrl, newKey, model, systemInstruction, messages, disableTools, retryCount + 1);
         }
       }
 
-      // Fallback chain across models on 404/429/5xx (up to 2 retries)
-      if ((res.status === 429 || res.status === 404 || res.status >= 500) && retryCount < 2) {
-        console.warn(`AI API status ${res.status} on model. Switching to fallback model #${retryCount + 1}...`);
-        await new Promise(r => setTimeout(r, 1200));
-        return this._callAPI(apiKey, systemInstruction, messages, retryCount + 1, null, disableTools);
+      // Fallback chain across models on 404/429/5xx
+      if ((res.status === 429 || res.status === 404 || res.status >= 500 || res.status === 400) && retryCount < FALLBACK_MODELS.length - 1) {
+        console.warn(`AI API status ${res.status} on ${model}. Switching to fallback model #${retryCount + 1}...`);
+        await new Promise(r => setTimeout(r, 800));
+        return this._callAPI(apiUrl, apiKey, model, systemInstruction, messages, disableTools, retryCount + 1);
       }
       
       throw new Error(errMsg);
     }
 
-    return res.json();
+    const jsonData = await res.json();
+    const msgObj = jsonData?.choices?.[0]?.message;
+    const hasContent = msgObj?.content && String(msgObj.content).trim().length > 0;
+    const hasToolCalls = Array.isArray(msgObj?.tool_calls) && msgObj.tool_calls.length > 0;
+
+    // Если модель вернула 200 OK, но пустой content (как бывает у reasoning-моделей на OpenRouter) — сразу переключаемся на следующую модель!
+    if (!hasContent && !hasToolCalls && retryCount < FALLBACK_MODELS.length - 1) {
+      console.warn(`AI model ${model} returned empty content (null). Switching to fallback model #${retryCount + 1}...`);
+      return this._callAPI(apiUrl, apiKey, model, systemInstruction, messages, disableTools, retryCount + 1);
+    }
+
+    return jsonData;
   },
 
   async parseInboxItem(text) {
@@ -942,49 +972,47 @@ const Gemini = {
       }
 
       let materialsBlock = '';
-      if (hasScenario) materialsBlock += `\n📋 СЦЕНАРИЙ И КОНСПЕКТ УРОКА (ИЗ PERPLEXITY):\n"""\n${currentLesson.scenario.slice(0, 8000)}\n"""\n`;
-      if (presSummary) materialsBlock += `\n📑 МАТЕРИАЛЫ И СЛАЙДЫ ПРЕЗЕНТАЦИИ УРОКА:\n"""\n${presSummary.slice(0, 10000)}\n"""\n`;
+      if (hasScenario) materialsBlock += `\n📋 СЦЕНАРИЙ И КОНСПЕКТ УРОКА (ИЗ PERPLEXITY):\n"""\n${currentLesson.scenario.slice(0, 7500)}\n"""\n`;
+      if (presSummary) materialsBlock += `\n📑 МАТЕРИАЛЫ И СЛАЙДЫ ПРЕЗЕНТАЦИИ УРОКА:\n"""\n${presSummary.slice(0, 9000)}\n"""\n`;
       if (hasMaterials) materialsBlock += `\nДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ / ССЫЛКИ УРОКА:\n"""\n${currentLesson.materials}\n"""\n`;
       if (hasDebrief) materialsBlock += `\nИТОГИ УРОКА И ЗАМЕЧАНИЯ ПРЕПОДАВАТЕЛЯ (ДЕБРИФИНГ):\n"""\n${currentLesson.debrief}\n"""\n`;
       if (hasCards) materialsBlock += `\nПРИКРЕПЛЁННЫЕ PNG-КАРТОЧКИ / СКРИНШОТЫ УПРАЖНЕНИЙ: Преподаватель прикрепил ${currentLesson.cards.length} карточек (переданы во вложении). Обязательно считай слова и упражнения с этих карточек и построй ДЗ вокруг них!\n`;
+      if (studentCtx.errors || studentCtx.notes) {
+        materialsBlock += `\n⚠️ НАКОПЛЕННЫЕ ОШИБКИ УЧЕНИКА (ИЗ ПРОШЛЫХ УРОКОВ И ОТВЕТОВ В ТГ-БОТЕ):\n"""\n${[studentCtx.errors, studentCtx.notes].filter(Boolean).join('\n')}\n"""\n`;
+      }
+      if (studentCtx.historySummary) {
+        materialsBlock += `\n⏪ ХРОНОЛОГИЯ ПРОШЛЫХ УРОКОВ УЧЕНИКА (ЧТО УЖЕ ПРОХОДИЛИ):\n"""\n${studentCtx.historySummary}\n"""\n`;
+      }
 
       prompt = `Ты — первоклассный, заботливый методист и преподаватель английского языка.
 Ученик: ${studentCtx.name || 'Ученик'} (${studentCtx.grade || 'уровень по программе'}).
-Тема урока: "${currentLesson.topic || 'Английский язык'}".
+Тема текущего урока: "${currentLesson.topic || 'Английский язык'}".
 ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общий английский') + '".'}
 
 ТВОЯ ЗАДАЧА:
-Сформировать идеальное, понятное и живое домашнее задание НАПРЯМУЮ ДЛЯ УЧЕНИКА.
-ОБЯЗАТЕЛЬНЫЕ ПРИОРИТЕТЫ ИСТОЧНИКОВ ДЛЯ ДЗ:
-1. ПРЕЗЕНТАЦИЯ УРОКА И СЦЕНАРИЙ ИЗ PERPLEXITY — ГЛАВНАЯ ОСНОВА:
-   - Домашнее задание должно опираться НАПРЯМУЮ на то, что разбиралось в прикреплённой презентации и сценарии урока!
-   - Используй конкретные примеры предложений, сюжеты, персонажей, грамматические формулы и правила из презентации/сценария.
-   - Отрабатывай и закрепляй именно те правила и лексику, которые были в уроке.
-2. ОБЯЗАТЕЛЬНОЕ ТРЕБОВАНИЕ: ДЗ должно быть строго рассчитано на 15–20 МИНУТ МАКСИМУМ (не перегружай ребёнка!).
-3. Пиши простым, понятным детским языком (на «ты»). Обращайся как дружелюбный репетитор!
+Сформировать идеальное, понятное и живое домашнее задание НАПРЯМУЮ ДЛЯ УЧЕНИКА, объединяющее 4 источника:
+1. ПРЕЗЕНТАЦИЯ УРОКА И СЦЕНАРИЙ ИЗ PERPLEXITY — ГЛАВНАЯ ОСНОВА (70% задания):
+   - Опирайся НАПРЯМУЮ на слайды прикреплённой презентации и сценарий из Perplexity!
+   - Используй конкретные правила, маркеры, слова и сюжеты/персонажей из презентации и сценария этого урока (например, если в уроке были Арина и Матвей, Skyrim / Spore, Present Perfect и маркеры already/just/yet, ever/never, for/since, been/gone — строй предложения именно на них!).
+2. ПОВТОРЕНИЕ ПРОШЛЫХ УРОКОВ И РАБОТА НАД ОШИБКАМИ ИЗ ТГ-БОТА (30% задания):
+   - Обязательно включи отдельный шаг «🎯 Шаг 3. Реванш по прошлым ловушкам (работа над ошибками и повторение)» на 2–3 предложения, которые бьют точно по слабым местам ученика из прошлых уроков и его ошибкам в ответах ТГ-бота (например: путаница времён, степени сравнения, предлоги или слова, где он ошибался).
+3. ОБЯЗАТЕЛЬНОЕ ТРЕБОВАНИЕ: ДЗ должно быть строго рассчитано на 15–20 МИНУТ МАКСИМУМ (не перегружай ребёнка!).
+4. Пиши простым, понятным детским языком (на «ты»). Обращайся по имени к ученику (${studentCtx.name || 'Ученик'})!
 
-КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО:
-- Запрещены методические термины для учителей: «орально», «дебрифинг», «алгоритм», «тренажёр X vs Y», «ключи для учителя»!
-- Запрещены таблицы markdown (|---|---|) и звёздочки markdown (** или *).
-- Пиши простыми глаголами действия: «Посмотри на карточку выше...», «Запиши в тетрадку...», «Сфоткай и пришли фото сюда...».
-
-СТРУКТУРА ДОМАШНЕГО ЗАДАНИЯ (СТРОГО 3-4 ШАГА):
-1. Если прикреплены карточки (PNG/картинки):
-   - Обязательно прямо сошлись на них: «🖼 По карточкам выше:»
-   - Раздели задания по карточкам:
-     • Что сказать устно или надиктовать голосовым сообщением в чат.
-     • Что перевести и записать аккуратно от руки в тетрадку.
-2. 📸 Инструкция по сдаче:
-   «Сфоткай тетрадку с номерами и пришли сюда фото в чат — бот проверит каждое предложение и разберёт ошибки! 🚀»
-3. 🎮 Интерактивная практика в боте (~3 минуты):
-   «Нажми кнопки ниже под сообщением (слова, тест, игра), чтобы набрать прогресс и сохранить свой ударный режим (Streak)! 🔥»
-   «Пришли фото тетрадки ИЛИ напиши ответы на Шаг 2 прямо сюда в чат (либо пройди все интерактивные карточки и тестик по кнопкам ниже до 75%+)! Бот проверит твои ответы, объяснит ошибки и сразу передаст отчёт Игорю! 🚀»
+СТРУКТУРА ДОМАШНЕГО ЗАДАНИЯ (СТРОГО 4 ШАГА):
+Шаг 1. 🔤 Слова и разминка по презентации урока (устно или голосовым в чат):
+- Перечисли 5–6 ключевых слов/маркеров прямо из презентации и сценария этого урока с переводом и попроси составить с 2 из них устные примеры (или прислать голосовым сообщением сюда в бот).
+Шаг 2. ✍️ Главная миссия в тетрадке (по новой теме из презентации и сценария):
+- Дай 4 конкретных предложения (перевести на английский или раскрыть скобки/вставить нужную форму) строго по правилам и сюжетам сегодняшней презентации и конспекта Perplexity.
+Шаг 3. 🎯 Реванш по прошлым ловушкам (повторение прошлых тем и ошибок из ТГ-бота):
+- Дай 2–3 предложения с «ловушкой» специально на те правила и темы из прошлых уроков или ошибок в ТГ-боте, которые даются ученику сложнее всего (чтобы закрепить старый материал вместе с новым).
+Шаг 4. 📸 Как сдать задание + 🎮 Бонус в боте:
+- Напиши: «Сфоткай тетрадку с номерами (или напиши ответы прямо сюда в чат) — бот проверит каждое предложение и разберёт ошибки! А затем нажми кнопки ниже (слова, тестик, игра), чтобы набрать 75%+ и сохранить свой ударный режим (Streak)! 🔥🚀»
 
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО:
 - НЕ добавляй никаких ключей для преподавателя или готовых ответов! Задание читает сам ученик!
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ таблицы markdown (|---|---|). Никаких таблиц!
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ звездочки markdown (** или *). Никаких звездочек в тексте! Оформляй эмодзи, дефисами и абзацами.
-- Время выполнения: строго 15-20 минут. Никаких гигантских текстов!`;
+- Запрещены методические термины для учителей: «орально», «дебрифинг», «алгоритм», «тренажёр X vs Y», «ключи для учителя»!
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ таблицы markdown (|---|---|) и звёздочки markdown (** или *). Оформляй эмодзи, нумерацией (1, 2, 3...) и абзацами.`;
     } else if (mode === 'lesson_announcement') {
       const timeStr = currentLesson.date ? new Date(currentLesson.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '17:00';
       const dateStr = currentLesson.date ? new Date(currentLesson.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : 'сегодня';
@@ -1016,22 +1044,57 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
       prompt = `До конца урока осталось 5-7 минут! Создай живую, увлекательную устную мини-игру на 5 минут по теме "${currentLesson.topic || 'Повторение и лексика'}", используя активный словарь, типичные ошибки и интересы ученика.\nВыбери один из форматов: "Детективное расследование / Алиби", "Угадай слово по 3 подсказкам (Taboo)", "2 правды и 1 ложь с ловушками на грамматику" или "Блиц-аукцион ошибок".\nПиши сразу готовый сценарий и реплики для преподавателя (с правильными ответами в скобках)!`;
     }
 
-    if (mode === 'homework') {
-      if (Array.isArray(currentLesson.cards) && currentLesson.cards.length > 0) {
-        prompt += `\n[К уроку преподавателем прикреплены карточки с упражнениями: ${currentLesson.cards.length} шт.]`;
-      }
-      if (currentLesson.presentationText) {
-        prompt += `\n[Материалы из презентации урока:\n${currentLesson.presentationText.slice(0, 6000)}]`;
-      }
-    }
-
     const sysInstruction = `Ты — топовый методист и ИИ-ассистент преподавателя английского языка (Twee + Lesson Mate AI).\nДОСЬЕ УЧЕНИКА:\n${dossierText}`;
-    const data = await this._callAPI(apiUrl, apiKey, model, sysInstruction, [{ role: 'user', content: prompt }], true);
-    let out = data.choices?.[0]?.message?.content?.trim() || '';
+    let out = '';
+    try {
+      const data = await this._callAPI(apiUrl, apiKey, model, sysInstruction, [{ role: 'user', content: prompt }], true);
+      out = data.choices?.[0]?.message?.content?.trim() || '';
+    } catch (apiErr) {
+      console.warn('generateTutoringAI API error, using smart fallback if homework:', apiErr.message);
+      if (mode !== 'homework') throw apiErr;
+    }
     if (mode === 'homework') {
-      out = out.replace(/\*\*/g, '').replace(/\*/g, '');
+      out = out.replace(/\*\*/g, '').replace(/\*/g, '').trim();
+      if (!out || out.length < 40) {
+        out = this.buildSmartFallbackHomework(studentCtx, currentLesson, prevLesson);
+      }
     }
     return out;
+  },
+
+  buildSmartFallbackHomework(studentCtx = {}, currentLesson = {}, prevLesson = null) {
+    const stName = studentCtx.name || 'Ученик';
+    const topic = currentLesson.topic || 'Практика английского языка';
+    const vocabItems = (studentCtx.vocab || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 6);
+    const prevTopic = prevLesson?.topic || '';
+    const errorsText = studentCtx.errors || '';
+
+    const vocabLine = vocabItems.length > 0
+      ? vocabItems.map(v => `• ${v}`).join('\n')
+      : '• Повтори ключевые слова и маркеры из слайдов сегодняшней презентации';
+
+    return [
+      `Привет, ${stName}! 🇬🇧 Вот твоя персональная миссия по уроку «${topic}» (на 15 минут):`,
+      ``,
+      `🔤 Шаг 1. Слова и маркеры из презентации (устно или голосовым в чат):`,
+      vocabLine,
+      `Прочитай их вслух и запиши голосовое сообщение в бот с 2 своими примерами!`,
+      ``,
+      `✍️ Шаг 2. Главная миссия в тетрадке (по презентации и сценарию урока):`,
+      `Переведи на английский или раскрой скобки по правилу сегодняшнего урока («${topic}»):`,
+      `1. Я только что выполнил(а) новую миссию (use: just + Present Perfect / правило урока).`,
+      `2. Ты когда-нибудь видел(а) этого персонажа в игре? (use: ever).`,
+      `3. Мы ещё не проверили все секретные комнаты (use: yet).`,
+      `4. Он ушёл в магазин и ещё не вернулся (been to или gone to?).`,
+      ``,
+      `🎯 Шаг 3. Реванш по прошлым ловушкам (повторение и работа над ошибками):`,
+      prevTopic ? `Вспомни нашу прошлую тему («${prevTopic}») и проверь себя на частых ошибках${errorsText ? ` (${errorsText.slice(0, 90)})` : ''}:` : `Проверь себя на наших прошлых ловушках:`,
+      `5. Выбери правильное время и переведи: «Я учу эти слова уже 20 минут (for 20 minutes)» vs «Я уже выучил 5 слов (already)».`,
+      `6. Исправь ошибку в предложении или сравни два предмета, используя правильную степень сравнения.`,
+      ``,
+      `📸 Шаг 4. Как сдать ДЗ + Бонус в боте:`,
+      `Сфоткай тетрадку с номерами 1–6 (или напиши ответы прямо сюда в чат) — бот проверит каждое предложение и разберёт ошибки! А затем нажми кнопки ниже (🔤 Слова урока, 📝 Тестик, 🎮 Мини-игра), чтобы набрать 75%+ и сохранить свой ударный режим (Streak)! 🔥🚀`
+    ].join('\n');
   },
 
   async parsePerplexityLesson(rawText, studentName = 'Ученик') {

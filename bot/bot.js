@@ -77,12 +77,15 @@ function rotateAIKey() {
   }
   return null;
 }
-const AI_MODEL = (useOpenRouterOverride || process.env.AI_MODEL === 'gpt-4o' || process.env.AI_MODEL === 'google/gemma-4-31b-it:free')
-  ? 'nvidia/nemotron-3-ultra-550b-a55b:free'
+const deadBotModels = ['gpt-4o', 'google/gemma-4-31b-it:free', 'google/gemma-3-27b-it:free', 'nvidia/nemotron-3-ultra-550b-a55b:free', 'qwen/qwen3-235b-a22b:free'];
+const AI_MODEL = (useOpenRouterOverride || deadBotModels.includes(process.env.AI_MODEL))
+  ? 'baidu/ernie-5.5-flash-preview:free'
   : process.env.AI_MODEL;
 const FALLBACK_MODELS = [
-  'nvidia/nemotron-3-ultra-550b-a55b:free',
-  'nvidia/nemotron-3.5-lightning:free',
+  'baidu/ernie-5.5-flash-preview:free',
+  'cohere/north-mini-code:free',
+  'recursive/flint-v1.0:free',
+  'dots-studio/dots-3-note-preview:free',
   'openrouter/free'
 ];
 const recentUrls = new Map();
@@ -742,11 +745,43 @@ const activeSchoolHwRequests = new Map(); // chatId -> { studentId, studentName,
 const pendingSchoolHwApprovals = new Map(); // reqId -> { chatId, student, studentName, photoUrl, photoFileId, text, caption, createdAt }
 const pendingTeacherReplyToStudent = new Map(); // adminChatId -> { studentId, studentName, expiresAt }
 
-async function saveHwWarmupErrorsToDossier(st, warmupText) {
+async function saveHwWarmupErrorsToDossier(st, warmupText, actorName = '', conciseErrorSummary = '') {
   if (!st || !st.id || !warmupText) return;
+  const trimmed = String(warmupText).trim();
+  if (!trimmed || trimmed.includes('вижу только условие задачи')) return;
+
   const doss = parseStudentDossierBot(st);
-  const cleanNotes = (doss.notes || '').replace(/\[РАЗМИНКА_ПО_ОШИБКАМ_ДЗ\]:[\s\S]*$/i, '').trim();
-  doss.notes = (cleanNotes ? cleanNotes + '\n' : '') + `[РАЗМИНКА_ПО_ОШИБКАМ_ДЗ]: ${warmupText.trim()}`;
+  const dateTag = new Date().toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit' });
+  const whoPrefix = actorName ? `${dateTag} (${actorName})` : dateTag;
+  const newEntry = `[${whoPrefix}]: ${trimmed.replace(/\s+/g, ' ').slice(0, 260)}`;
+
+  // 1. Накапливаем журнал последних ошибок в [РАЗМИНКА_ПО_ОШИБКАМ_ДЗ] (до 6 записей), не затирая прошлые!
+  const rawNotes = doss.notes || '';
+  const warmupMatch = rawNotes.match(/\[РАЗМИНКА_ПО_ОШИБКАМ_ДЗ\]:\s*([\s\S]*)$/i);
+  const baseNotes = rawNotes.replace(/\[РАЗМИНКА_ПО_ОШИБКАМ_ДЗ\]:[\s\S]*$/i, '').trim();
+  const existingWarmupLines = warmupMatch
+    ? warmupMatch[1].split('\n').map(l => l.trim()).filter(l => l && !l.includes('вижу только условие задачи'))
+    : [];
+
+  if (!existingWarmupLines.some(l => l.includes(trimmed.slice(0, 45)))) {
+    existingWarmupLines.unshift(newEntry);
+  }
+  const mergedWarmupBlock = existingWarmupLines.slice(0, 6).join('\n');
+  doss.notes = (baseNotes ? baseNotes + '\n' : '') + `[РАЗМИНКА_ПО_ОШИБКАМ_ДЗ]:\n${mergedWarmupBlock}`;
+
+  // 2. Двусторонняя синхронизация с приложением: добавляем выжимку ошибки прямо в [ОШИБКИ] (doss.errors), чтобы карточка памяти и генератор ДЗ на сайте сразу видели ошибки из ТГ-бота!
+  const shortErr = (conciseErrorSummary || trimmed).replace(/\s+/g, ' ').trim().slice(0, 140);
+  if (shortErr && !/ошибок нет|без существенных|нет ошибок/i.test(shortErr)) {
+    const taggedShort = actorName && !shortErr.toLowerCase().includes(actorName.toLowerCase())
+      ? `ТГ (${actorName}): ${shortErr}`
+      : `ТГ: ${shortErr}`;
+    const existingErrs = (doss.errors || '').split(/\s*\|\s*|\s*;\s*/).map(s => s.trim()).filter(Boolean);
+    if (!existingErrs.some(e => e.toLowerCase().includes(shortErr.slice(0, 28).toLowerCase()))) {
+      existingErrs.push(taggedShort);
+      doss.errors = existingErrs.slice(-10).join(' | ');
+    }
+  }
+
   const newSched = serializeStudentDossierBot(doss);
   await db.from('students').update({ schedule: newSched }).eq('id', st.id);
   st.schedule = newSched;
@@ -1036,8 +1071,8 @@ async function getLatestLessonWithMaterials(studentId) {
     }
   }
 
-  // Собираем краткую историю прошлых проведённых уроков для контекста ИИ бота
-  const historyLines = conducted.slice(0, 5).map(l => {
+  // Собираем полную историю всех прошлых проведённых уроков для контекста ИИ бота
+  const historyLines = conducted.map(l => {
     const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' });
     return `- ${dStr}: ${l.topic || 'Практика'}`;
   }).join('\n');
@@ -2770,38 +2805,33 @@ async function executeFunctionCall(name, args) {
         return { success: true, lesson, message: `Урок с ${st.name} успешно добавлен!` + (args.paid && st.price > 0 ? ` Записан доход ${st.price} BYN.` : '') + (args.student_errors ? `\n⚠️ В досье ученика записана ошибка: ${args.student_errors}` : '') + autoSentNote + `\n\n${followUpMsg}` };
       }
       case 'generate_lesson_plan': {
-        try {
-          const response = await fetch(AI_API_URL, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${getActiveAIKey()}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: AI_MODEL,
-              messages: [{ role: 'system', content: 'Ты опытный и креативный преподаватель английского. Помоги составить учебный материал, план урока или вопросы по запросу.' }, { role: 'user', content: args.prompt }]
-            })
-          });
-          const json = await response.json();
-          if (json.choices?.[0]?.message?.content) {
-            return { success: true, generated_plan: json.choices[0].message.content, message: 'План сгенерирован успешно.' };
-          }
-          if (json.error?.message && (json.error.message.includes('Rate limit') || json.error.message.includes('free-models-per-day'))) {
-            const nextKey = rotateAIKey();
-            if (nextKey) {
-              const retryRes = await fetch(AI_API_URL, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${nextKey}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: AI_MODEL,
-                  messages: [{ role: 'system', content: 'Ты опытный и креативный преподаватель английского.' }, { role: 'user', content: args.prompt }]
-                })
-              });
-              const retryJson = await retryRes.json();
-              if (retryJson.choices?.[0]?.message?.content) {
-                return { success: true, generated_plan: retryJson.choices[0].message.content, message: 'План сгенерирован успешно.' };
-              }
+        const modelsToTry = Array.from(new Set([AI_MODEL, ...FALLBACK_MODELS]));
+        for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+          const curModel = modelsToTry[mIdx];
+          try {
+            const response = await fetch(AI_API_URL, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${getActiveAIKey()}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: curModel,
+                messages: [
+                  { role: 'system', content: 'Ты опытный и креативный преподаватель английского. Помоги составить учебный материал, план урока или вопросы по запросу.' },
+                  { role: 'user', content: args.prompt }
+                ],
+                max_tokens: 3000
+              })
+            });
+            const json = await response.json();
+            const content = json.choices?.[0]?.message?.content;
+            if (content && String(content).trim().length > 0) {
+              return { success: true, generated_plan: String(content).trim(), message: 'План сгенерирован успешно.' };
             }
+            if (response.status === 429 || (json.error?.message && (json.error.message.includes('Rate limit') || json.error.message.includes('free-models-per-day')))) {
+              rotateAIKey();
+            }
+          } catch (e) {
+            console.error(`generate_lesson_plan error on ${curModel}:`, e.message);
           }
-        } catch (e) {
-          console.error('generate_lesson_plan error:', e.message);
         }
         return {
           success: true,
@@ -4306,17 +4336,18 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
       const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
       prog.quizRound++;
 
+      const botMistakes = extractHwWarmupErrorsFromDossier(doss);
       const pollPrompt = `Ты — методист по английскому для ${actor.name} (${st.grade || 'школьник'}).
-СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, СЛОВАРЮ И СЦЕНАРИЮ ЭТОГО УРОКА:
+СОСТАВЬ ТЕСТ СТРОГО ПО МАТЕРИАЛАМ, ПРЕЗЕНТАЦИИ, СЦЕНАРИЮ ЭТОГО УРОКА И НАКОПЛЕННЫМ ОШИБКАМ УЧЕНИКА:
 ${materialsText || `Тема урока: "${lastLs?.topic || 'English'}"`}
-Словарь и ошибки: "${doss.vocab || ''} | ${doss.errors || ''}".
+Словарь и накопленные ошибки ученика: "${doss.vocab || ''} | ${doss.errors || ''} | ${botMistakes || ''}".
 Раунд тестирования: #${prog.quizRound}.
 
 ТВОЯ ЗАДАЧА:
-Составь МИНИ-ТЕСТ РОВНО ИЗ 3 РАЗНЫХ ВОПРОСОВ (Telegram Quiz Polls) СТРОГО ПО МАТЕРИАЛАМ УРОКА ВЫШЕ ДЛЯ ЭТОГО УЧЕНИКА:
-- Вопрос 1: Новое слово или фраза по теме урока (с контекстным переводом или выбором верного слова).
-- Вопрос 2: Главное грамматическое правило этого урока (например: притяжательные местоимения my/his/her/their/'s, если тема про них; или фразы в магазине; или степени сравнения).
-- Вопрос 3: Практическая фраза/ситуация по материалам урока.
+Составь МИНИ-ТЕСТ РОВНО ИЗ 3 РАЗНЫХ ВОПРОСОВ (Telegram Quiz Polls) ДЛЯ ЭТОГО УЧЕНИКА:
+- Вопрос 1 (По презентации и сценарию текущего урока): Новое слово, маркер или фраза из сегодняшнего урока.
+- Вопрос 2 (Главное правило текущего урока): Грамматическая конструкция сегодняшнего урока (например: Present Perfect have/has + V3, already/just/yet, ever/never, been vs gone; или степени сравнения / местоимения по теме урока).
+- Вопрос 3 (🎯 Реванш по прошлым ошибкам и темам): Вопрос специально на то правило или слово из прошлых уроков и ошибок в ТГ-боте ("${doss.errors || botMistakes || 'прошлые темы'}"), где ученик раньше ошибался или путался!
 Каждый новый раунд меняй вопросы, не повторяйся!
 
 Верни СТРОГО валидный JSON массив из 3 объектов без markdown-обертки:
@@ -5260,11 +5291,16 @@ bot.on('poll_answer', async (answer) => {
       await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
     }
 
-    // Если ученик ошибся — отправляем ему в чат понятное объяснение правила!
+    // Если ученик ошибся — отправляем ему в чат понятное объяснение правила И сохраняем ошибку в досье (двусторонняя связь с приложением)!
     let studentExplanationSent = '';
     if (!isCorrect && pollInfo.chatId) {
       studentExplanationSent = `💡 Разбор вопроса:\n«${pollInfo.question}»\n\n❌ Твой ответ: ${chosenText}\n✅ Правильный ответ: ${correctText}\n📖 Почему так: ${pollInfo.explanation || 'Запомни эту конструкцию из нашего урока!'}`;
       await sendCleanMessage(pollInfo.chatId, studentExplanationSent).catch(() => {});
+      if (st) {
+        const cleanQ = (pollInfo.question || '').replace(/^\d+\/\d+\.\s*/, '').trim();
+        const errRecord = `Ошибка в тесте: «${cleanQ}» (выбрал(а) "${chosenText}" вместо "${correctText}")`;
+        await saveHwWarmupErrorsToDossier(st, errRecord, actor.name, errRecord).catch(() => {});
+      }
     }
 
     // Когда ученик ответил на все 3 вопроса раунда — присылаем обновлённый статус готовности ДЗ и клавиатуру
@@ -5999,7 +6035,7 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
 
           const ocrAnalysis = await askAI(ocrPrompt, '', visionImages, true, true, null, true);
           if (ocrAnalysis) {
-            await saveHwWarmupErrorsToDossier(st, ocrAnalysis.slice(0, 450)).catch(() => {});
+            await saveHwWarmupErrorsToDossier(st, ocrAnalysis.slice(0, 450), actor.name, `Фото ДЗ: ${ocrAnalysis.slice(0, 120)}`).catch(() => {});
             const studentOcrMsg = `🤖 *Разбор твоего письменного ДЗ по фото, ${actor.name}:*\n\n${ocrAnalysis}`;
             await bot.sendMessage(chatId, studentOcrMsg, {
               parse_mode: 'Markdown',
@@ -6052,6 +6088,9 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
       const evalPrompt = `Ученик ${actor.name} (${st.grade || ''}) решал твой мини-квиз по английскому:\nКВИЗ:\n${quizObj.quizText}\n\nОТВЕТЫ УЧЕНИКА:\n"${studentText}"\n\nПроверь ответы дружелюбно и понятно (обращайся напрямую к ученику ${actor.name} на "ты", до 800 символов): похвали за правильные ответы, мягко объясни ошибки и правило (если есть) и поздравь с серией 🔥 ${newStreak} выполненных заданий подряд!`;
       const evalRes = await executeFunctionCall('generate_lesson_plan', { prompt: evalPrompt });
       const feedback = evalRes.generated_plan || `Отличная работа, ${actor.name}! 🔥 Твоя серия: ${newStreak}!`;
+      if (/ошиб|не совсем|правильно будет|вместо|нужно использовать/i.test(feedback)) {
+        await saveHwWarmupErrorsToDossier(st, `Мини-квиз (ответ "${studentText.slice(0, 80)}"): ${feedback.slice(0, 200)}`, actor.name, `Мини-квиз: ошибка в "${studentText.slice(0, 60)}"`).catch(() => {});
+      }
       const studentQuizReply = `🌟 *Проверка твоего мини-квиза:*\n\n${feedback}\n\n📊 *Готовность ДЗ: ${updatedProg.pct}%*\n🔥 *Твой стрик: ${newStreak} (+10 XP)*`;
       await bot.sendMessage(chatId, studentQuizReply, {
         parse_mode: 'Markdown',
@@ -6192,9 +6231,10 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
       await persistHwProgressPercent(lastLs, updatedProg.pct, actor, st);
     }
 
-    const warmupNote = aiAnalysis?.warmup_next_lesson || ((aiAnalysis?.errors_made && !/без существенных|ошибок нет|нет ошибок/i.test(aiAnalysis.errors_made)) ? aiAnalysis.errors_made : '');
-    if (warmupNote) {
-      await saveHwWarmupErrorsToDossier(st, warmupNote).catch(() => {});
+    const hasRealErrors = aiAnalysis?.errors_made && !/без существенных|ошибок нет|нет ошибок/i.test(aiAnalysis.errors_made);
+    const warmupNote = aiAnalysis?.warmup_next_lesson || (hasRealErrors ? aiAnalysis.errors_made : '');
+    if (warmupNote || hasRealErrors) {
+      await saveHwWarmupErrorsToDossier(st, warmupNote || aiAnalysis.errors_made, actor.name, hasRealErrors ? aiAnalysis.errors_made : warmupNote).catch(() => {});
     }
 
     if (aiAnalysis && aiAnalysis.is_fully_done) {

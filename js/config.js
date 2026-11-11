@@ -14,7 +14,9 @@ const Config = {
       // FORCIBLY PREFER ENV CONFIG (so github_pat updates work instantly for all users)
       const finalKey = env.geminiKey || local.geminiKey || '';
       const finalUrl = env.aiApiUrl || local.aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions';
-      const finalModel = env.aiModel || local.aiModel || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+      const rawModel = env.aiModel || local.aiModel || 'baidu/ernie-5.5-flash-preview:free';
+      const deadModels = ['nvidia/nemotron-3-ultra-550b-a55b:free', 'google/gemma-4-31b-it:free', 'google/gemma-3-27b-it:free', 'qwen/qwen3-235b-a22b:free', 'gpt-4o'];
+      const finalModel = deadModels.includes(rawModel) ? 'baidu/ernie-5.5-flash-preview:free' : rawModel;
 
       return {
         supabaseUrl: env.supabaseUrl || local.supabaseUrl || '',
@@ -50,7 +52,7 @@ const Config = {
   get supabaseKey() { return this.get().supabaseKey || ''; },
   get geminiKey()   { return this.get().geminiKey || ''; }, // AI API Key
   get aiApiUrl()    { return this.get().aiApiUrl || 'https://openrouter.ai/api/v1/chat/completions'; },
-  get aiModel()     { return this.get().aiModel || 'nvidia/nemotron-3-ultra-550b-a55b:free'; },
+  get aiModel()     { return this.get().aiModel || 'baidu/ernie-5.5-flash-preview:free'; },
   get userName()    { return this.get().userName || 'Пользователь'; },
   get userId()      { return this.get().userId || null; },
 };

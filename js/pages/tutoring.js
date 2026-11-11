@@ -1523,25 +1523,34 @@ const TutoringPage = {
       btnEl.disabled = true;
       btnEl.textContent = '⏳ Генерирую...';
       try {
-        const scenario = document.getElementById('ls-scenario')?.value?.trim() || '';
+        const rawLsHw = ls?.homework || '';
+        const fallbackScen = rawLsHw.match(/\[СЦЕНАРИЙ_?УРОКА\]:([\s\S]*?)\[\/?\s*СЦЕНАРИЙ_?УРОКА\s*\]/i)?.[1]?.trim() || '';
+        const fallbackPresText = rawLsHw.match(/\[ПРЕЗЕНТАЦИЯ_?ТЕКСТ\]:([\s\S]*?)(?:\[\/?\s*ПРЕЗЕНТАЦИЯ_?ТЕКСТ\s*\]|(?=\n\[|$))/i)?.[1]?.trim() || '';
+        const scenario = document.getElementById('ls-scenario')?.value?.trim() || fallbackScen || '';
+        const presText = this.attachedPresentationText || fallbackPresText || '';
         const debrief = document.getElementById('ls-debrief-notes')?.value?.trim() || '';
         const materials = document.getElementById('ls-materials')?.value?.trim() || '';
+        const curEssence = this.analyzePresentationEssence(presText, scenario, this.attachedPresentationName || '', st.name);
+        const curVocabStr = curEssence.vocabList.map(v => v.formatted).join(', ');
+        const combinedVocab = [curVocabStr, mem.enrichedDossier.vocab].filter(Boolean).join(', ');
+
         const res = await Gemini.generateTutoringAI(mode, 
           {
             name: st.name,
             grade: st.grade,
             ...mem.enrichedDossier,
+            vocab: combinedVocab || mem.enrichedDossier.vocab,
             historySummary: mem.aiHistorySummary
           }, 
           { 
-            topic, 
+            topic: (topic && topic !== 'Present Perfect Mission') ? topic : (curEssence.topic || topic), 
             homework: hw, 
             scenario,
             debrief,
             materials,
             cards: this.attachedCards || [],
             presentation: this.attachedPresentation || '',
-            presentationText: this.attachedPresentationText || ''
+            presentationText: presText
           }, 
           prevLs,
           mem.historyLessons
@@ -1625,25 +1634,38 @@ const TutoringPage = {
       aiBtn.disabled = true;
       
       try {
-        const scenario = document.getElementById('ls-scenario')?.value?.trim() || '';
+        const rawLsHw = ls?.homework || '';
+        const fallbackScen = rawLsHw.match(/\[СЦЕНАРИЙ_?УРОКА\]:([\s\S]*?)\[\/?\s*СЦЕНАРИЙ_?УРОКА\s*\]/i)?.[1]?.trim() || '';
+        const fallbackPresText = rawLsHw.match(/\[ПРЕЗЕНТАЦИЯ_?ТЕКСТ\]:([\s\S]*?)(?:\[\/?\s*ПРЕЗЕНТАЦИЯ_?ТЕКСТ\s*\]|(?=\n\[|$))/i)?.[1]?.trim() || '';
+        const scenario = document.getElementById('ls-scenario')?.value?.trim() || fallbackScen || '';
+        const presText = this.attachedPresentationText || fallbackPresText || '';
         const debrief = document.getElementById('ls-debrief-notes')?.value?.trim() || '';
         const materials = document.getElementById('ls-materials')?.value?.trim() || '';
         const mem = this.compileStudentMemory(st.id, ls?.date, ls?.id);
+        const curEssence = this.analyzePresentationEssence(presText, scenario, this.attachedPresentationName || '', st.name);
+        const curVocabStr = curEssence.vocabList.map(v => v.formatted).join(', ');
+        const combinedVocab = [curVocabStr, mem.enrichedDossier.vocab].filter(Boolean).join(', ');
+        const effectiveTopic = (topic && topic !== 'Present Perfect Mission' && !/\b\d\s+\d\b/.test(topic)) ? topic : (curEssence.topic || topic);
+        if (effectiveTopic && effectiveTopic !== topic) {
+          document.getElementById('ls-topic').value = effectiveTopic;
+        }
+
         const homework = await Gemini.generateTutoringAI('homework', 
           {
             name: st.name,
             grade: st.grade,
             ...mem.enrichedDossier,
+            vocab: combinedVocab || mem.enrichedDossier.vocab,
             historySummary: mem.aiHistorySummary
           }, 
           {
-            topic,
+            topic: effectiveTopic,
             scenario,
             debrief,
             materials,
             cards: this.attachedCards,
             presentation: this.attachedPresentation,
-            presentationText: this.attachedPresentationText || ''
+            presentationText: presText
           }, 
           mem.prevLesson,
           mem.historyLessons
@@ -2119,7 +2141,7 @@ const TutoringPage = {
     return out;
   },
 
-  getStudentLessonHistory(studentId, beforeDate = null, excludeLessonId = null, limit = 6) {
+  getStudentLessonHistory(studentId, beforeDate = null, excludeLessonId = null, limit = null) {
     const exclId = excludeLessonId || this.currentLessonId || null;
     const cutoff = beforeDate ? new Date(beforeDate).getTime() : null;
     const refDayStr = beforeDate ? new Date(beforeDate).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' }) : null;
@@ -2141,7 +2163,7 @@ const TutoringPage = {
       })
       .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    return conducted.slice(0, limit);
+    return limit ? conducted.slice(0, limit) : conducted;
   },
 
   getPrevConductedLesson(studentId, beforeDate = null, excludeLessonId = null) {
@@ -2387,14 +2409,13 @@ const TutoringPage = {
   compileStudentMemory(studentId, lessonDate = null, excludeLessonId = null) {
     const st = this.students.find(s => s.id === studentId);
     const dossier = st ? this.parseStudentDossier(st) : {};
-    const history = this.getStudentLessonHistory(studentId, lessonDate, excludeLessonId, 8);
+    const history = this.getStudentLessonHistory(studentId, lessonDate, excludeLessonId, null);
     const prevLesson = history[0] || null;
 
-    // 1. Все проведённые уроки ученика (включая текущий для общей копилки знаний, но история строго до текущего)
+    // 1. Все проведённые уроки ученика за всё время (без лимитов!) для общей копилки знаний
     const allStudentConducted = (this.lessons || [])
       .filter(l => l.student_id === studentId && l.status === 'Проведен')
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 10);
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
 
     const vocabSet = new Map();
     if (dossier.vocab) {
@@ -2526,9 +2547,9 @@ const TutoringPage = {
     const mergedInterests = Array.from(detectedWorlds).filter(Boolean).join('; ');
     const mergedUnit = Array.from(detectedUnits).filter(Boolean).join('; ');
     const mergedErrors = errorNotesList.filter(Boolean).join(' | ');
-    const mergedVocab = Array.from(vocabSet.values()).slice(0, 35).join(', ');
+    const mergedVocab = Array.from(vocabSet.values()).slice(0, 80).join(', ');
 
-    const aiHistorySummary = detailedHistory.slice(0, 5).map(h => {
+    const aiHistorySummary = detailedHistory.map(h => {
       return `- ${h.dateStr}: Тема "${h.smartTopic}"${h.hwStatusLabel ? ` [${h.hwStatusLabel}]` : ''}${h.debrief ? ` | Заметки: ${h.debrief}` : ''}`;
     }).join('\n');
 
@@ -2599,8 +2620,8 @@ const TutoringPage = {
     const enr = mem.enrichedDossier;
     const ebb = this.getEbbinghausLesson(studentId, refDate);
 
-    // Цепочка прошлых уроков (до 5 штук)
-    const historyRows = mem.detailedHistory.slice(0, 5).map((h, idx) => {
+    // Полная цепочка всех прошлых проведённых уроков (без обрезки до 5 штук)
+    const historyRows = mem.detailedHistory.map((h, idx) => {
       const isPrev = idx === 0;
       return `
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:4px 6px;border-radius:6px;background:${isPrev ? 'rgba(13,148,136,0.08)' : 'transparent'};border-left:2px solid ${isPrev ? '#0d9488' : 'var(--border-light)'};">
@@ -2639,10 +2660,10 @@ const TutoringPage = {
           </div>
         ` : '<div style="color:var(--text-muted);">Предыдущих проведённых уроков до этой даты пока нет</div>'}
 
-        ${mem.detailedHistory.length > 1 ? `
+        ${mem.detailedHistory.length > 0 ? `
           <div style="margin-top:2px;">
-            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:4px;">📚 История последних проведённых уроков (хронология тем и ДЗ):</div>
-            <div style="display:flex;flex-direction:column;gap:3px;">${historyRows}</div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:4px;">📚 Полная хронология проведённых уроков (всего в памяти: ${mem.detailedHistory.length}):</div>
+            <div style="display:flex;flex-direction:column;gap:3px;max-height:155px;overflow-y:auto;padding-right:4px;">${historyRows}</div>
           </div>
         ` : ''}
 

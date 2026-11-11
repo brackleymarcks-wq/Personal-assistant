@@ -6,6 +6,6 @@ window.ENV_CONFIG = {
     ['sk', 'or', 'v1', '145e4770c93f96c02b2da6481633903883eba8541934de4cce06effb5555d5a8'].join('-')
   ],
   aiApiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-  aiModel: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  aiModel: 'baidu/ernie-5.5-flash-preview:free',
   userName: 'Игорь'
 };
