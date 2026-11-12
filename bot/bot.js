@@ -5459,8 +5459,8 @@ bot.on('callback_query', async (query) => {
       await sendCleanMessage(chatId, msg, {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '📊 Полный отчёт по всем урокам и ДЗ', callback_data: `parent_req_report:${st.id}` }],
-            [{ text: '🔤 5 слов урока ребёнка', callback_data: `student_words:${st.id}` }, { text: '📝 Проверить ребёнка (тестик)', callback_data: `student_poll_quiz:${st.id}` }]
+            [{ text: '📊 Полный отчёт (темы, ДЗ, зоны роста)', callback_data: `parent_req_report:${st.id}` }],
+            [{ text: '🏆 Паспорт прогресса (PNG-график)', callback_data: `parent_milestone_card:${st.id}` }]
           ]
         }
       });
@@ -5688,9 +5688,8 @@ ${materialsText || `Активный словарь: "${doss.vocab || ''}"\nТе
 
       const kb = isParentViewer
         ? [
-            [{ text: '📝 Посмотреть тестик ребёнка', callback_data: `student_poll_quiz:${st.id}` }],
-            [{ text: '🔤 Следующие 5 слов урока', callback_data: `student_words:${st.id}` }],
-            [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }]
+            [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }],
+            [{ text: '🏆 Паспорт прогресса (PNG-график)', callback_data: `parent_milestone_card:${st.id}` }]
           ]
         : [
             [{ text: '📝 Пройти тестик (3 вопроса)', callback_data: `student_poll_quiz:${st.id}` }],
