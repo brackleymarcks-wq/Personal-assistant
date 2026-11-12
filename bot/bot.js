@@ -1984,6 +1984,64 @@ async function nudgeStudentAboutHomework(st, isManual = false) {
 }
 
 const activeVoiceChallenges = new Map(); // chatId -> { studentId, actorName, topic, phrases, createdAt }
+const activeRoleplaySessions = new Map(); // chatId -> { studentId, lessonId, character, topic, turn, history, createdAt }
+
+let sessionPersistTimer = null;
+function schedulePersistBotSessions() {
+  if (sessionPersistTimer) clearTimeout(sessionPersistTimer);
+  sessionPersistTimer = setTimeout(async () => {
+    try {
+      const user = await getUser();
+      if (!user) return;
+      const { data: sRow } = await db.from('settings').select('*').eq('user_id', user.id).limit(1).maybeSingle();
+      if (!sRow) return;
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      const cleanMapObj = (m) => {
+        const out = {};
+        for (const [k, v] of m.entries()) {
+          if (!v?.createdAt || v.createdAt > cutoff) out[k] = v;
+        }
+        return out;
+      };
+      const ctx = {
+        ...(sRow.context || {}),
+        bot_sessions: {
+          quizzes: cleanMapObj(activeStudentQuizzes),
+          voiceChallenges: cleanMapObj(activeVoiceChallenges),
+          roleplays: cleanMapObj(activeRoleplaySessions),
+          savedAt: Date.now()
+        }
+      };
+      await db.from('settings').update({ context: ctx }).eq('id', sRow.id);
+    } catch (e) {
+      console.warn('Persist bot sessions error:', e.message);
+    }
+  }, 800);
+}
+
+async function loadBotSessionsFromDb() {
+  try {
+    const user = await getUser();
+    if (!user) return;
+    const { data: sRow } = await db.from('settings').select('*').eq('user_id', user.id).limit(1).maybeSingle();
+    const bs = sRow?.context?.bot_sessions;
+    if (!bs) return;
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const hydrate = (targetMap, obj) => {
+      if (!obj || typeof obj !== 'object') return;
+      for (const [k, v] of Object.entries(obj)) {
+        if (v && (!v.createdAt || v.createdAt > cutoff)) targetMap.set(k, v);
+      }
+    };
+    hydrate(activeStudentQuizzes, bs.quizzes);
+    hydrate(activeVoiceChallenges, bs.voiceChallenges);
+    hydrate(activeRoleplaySessions, bs.roleplays);
+    console.log(`♻️ Восстановлены сессии: квизы=${activeStudentQuizzes.size}, голос=${activeVoiceChallenges.size}, ролевки=${activeRoleplaySessions.size}`);
+  } catch (e) {
+    console.warn('Load bot sessions error:', e.message);
+  }
+}
+loadBotSessionsFromDb();
 
 function buildStudentInnovationsAndShieldMessage(st, actor = null) {
   const doss = parseStudentDossierBot(st);
@@ -2123,6 +2181,318 @@ async function broadcastInnovationsToStudents(targetStudent = null) {
     }
   }
   return sentTo;
+}
+
+async function generateMilestonePassportPng(st, actor = null) {
+  if (!st) return null;
+  try {
+    const doss = parseStudentDossierBot(st);
+    const bank = await getStudentVocabularyBank(st);
+    const { data: allLs } = await db.from('lessons')
+      .select('topic, homework, status')
+      .eq('student_id', st.id)
+      .eq('status', 'Проведен');
+    const conducted = allLs || [];
+    let fixedHw = 0, totalHw = 0;
+    for (const l of conducted) {
+      const hw = l.homework || '';
+      if (cleanHomeworkTextBot(hw).length > 5 || hw.includes('[КАРТОЧКИ_ДЗ]') || hw.includes('[ФОТО_ДЗ_СДАНО') || hw.includes('[ДЗ_СДАНО')) {
+        totalHw++;
+        if (hw.includes('[ФОТО_ДЗ_СДАНО') || hw.includes('[ДЗ_СДАНО') || hw.includes('[ДЗ_ПРОВЕРЕНО')) fixedHw++;
+      }
+    }
+    const stabilityPct = totalHw > 0 ? Math.round((fixedHw / totalHw) * 100) : 100;
+    const streak = doss.streak || 1;
+    const shields = doss.shields !== undefined ? doss.shields : 1;
+    const displayName = actor?.fullName || st.name;
+
+    let rank = 'Level 1: Word Explorer';
+    if (conducted.length >= 15 || bank.length >= 60) rank = 'Level 4: English Champion';
+    else if (conducted.length >= 8 || bank.length >= 35) rank = 'Level 3: Grammar Conqueror';
+    else if (conducted.length >= 4 || bank.length >= 15) rank = 'Level 2: Rule Master';
+
+    const vocabScore = Math.min(100, Math.max(25, bank.length * 2));
+    const lessonsScore = Math.min(100, Math.max(25, conducted.length * 7));
+    const streakScore = Math.min(100, Math.max(20, streak * 10));
+    const shieldScore = Math.min(100, Math.max(33, shields * 33));
+
+    const chartConfig = {
+      type: 'radar',
+      data: {
+        labels: [
+          `Homework (${stabilityPct}%)`,
+          `Vocabulary (${bank.length} words)`,
+          `Lessons (${conducted.length})`,
+          `Streak (${streak}d)`,
+          `Shields (${shields}/3)`
+        ],
+        datasets: [{
+          label: `${displayName} • ${rank}`,
+          data: [stabilityPct, vocabScore, lessonsScore, streakScore, shieldScore],
+          backgroundColor: 'rgba(13, 148, 136, 0.28)',
+          borderColor: '#0d9488',
+          borderWidth: 3,
+          pointBackgroundColor: '#f97316',
+          pointRadius: 5
+        }]
+      },
+      options: {
+        plugins: {
+          title: {
+            display: true,
+            text: [`ENGLISH PROGRESS PASSPORT: ${displayName.toUpperCase()}`, `${rank}  |  Streak: ${streak}  |  Shields: ${shields}/3`],
+            color: '#0f172a',
+            font: { size: 16, weight: 'bold' }
+          },
+          legend: { display: false }
+        },
+        scales: {
+          r: {
+            min: 0,
+            max: 100,
+            ticks: { stepSize: 25, backdropColor: 'transparent', color: '#64748b' },
+            pointLabels: { font: { size: 13, weight: 'bold' }, color: '#1e293b' },
+            grid: { color: '#cbd5e1' },
+            angleLines: { color: '#cbd5e1' }
+          }
+        }
+      }
+    };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4500);
+    try {
+      const resp = await fetch('https://quickchart.io/chart', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version: '4',
+          backgroundColor: '#f8fafc',
+          width: 680,
+          height: 500,
+          format: 'png',
+          chart: chartConfig
+        })
+      });
+      if (!resp.ok) return null;
+      const arrBuf = await resp.arrayBuffer();
+      return Buffer.from(arrBuf);
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (e) {
+    console.warn('Milestone PNG generation skipped:', e.message);
+    return null;
+  }
+}
+
+async function buildDailyTutorMorningBrief() {
+  const todayMinsk = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+  const { data: allStudents } = await db.from('students').select('*').order('name');
+  const { data: plannedLessons } = await db.from('lessons')
+    .select('*, students(name, grade, schedule)')
+    .eq('status', 'Запланирован')
+    .order('date', { ascending: true });
+
+  const todayLessons = (plannedLessons || []).filter(l => {
+    const lsMinsk = new Date(l.date).toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+    return lsMinsk === todayMinsk;
+  });
+
+  if (todayLessons.length === 0) {
+    return {
+      hasLessons: false,
+      text: `☀️ *Утренний бриф по урокам (${todayMinsk}):*\nНа сегодня запланированных уроков в календаре нет. Отличный день для методических заготовок или отдыха! ☕`,
+      kb: [[{ text: '📊 Общая сводка по всем ученикам', callback_data: 'teacher_all_students_overview' }]]
+    };
+  }
+
+  let text = `☀️ *УТРЕННИЙ БРИФ ПО УРОКАМ НА СЕГОДНЯ (${todayMinsk})*\n`;
+  text += `📚 Всего занятий сегодня: *${todayLessons.length}*\n\n`;
+  const kb = [];
+
+  for (const ls of todayLessons) {
+    const st = (allStudents || []).find(s => s.id === ls.student_id) || ls.students || { id: ls.student_id, name: 'Ученик' };
+    const doss = parseStudentDossierBot(st);
+    const timeStr = new Date(ls.date).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' });
+    const lastConducted = await getLatestLessonWithMaterials(st.id);
+    const hwSum = lastConducted ? getHwCompletionSummary(st, lastConducted) : null;
+
+    // Поиск темы ~2 недели назад по Эббингаузу
+    let ebbTopic = '';
+    try {
+      const { data: pastLs } = await db.from('lessons').select('date, topic').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(20);
+      const nowMs = Date.now();
+      const ebb = (pastLs || []).find(p => {
+        const diffDays = (nowMs - new Date(p.date).getTime()) / 86400000;
+        return diffDays >= 10 && diffDays <= 24 && p.topic;
+      });
+      if (ebb) ebbTopic = `${ebb.topic} (${new Date(ebb.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' })})`;
+    } catch (_) {}
+
+    const hwIcon = !hwSum ? '➖ нет прошлого ДЗ' : (hwSum.canSubmit ? `✅ СДАНО (${hwSum.pct}% + 📸)` : `⏳ НЕ СДАНО (${hwSum.pct}%${hwSum.hasNotebookPhoto ? '' : ', без фото'})`);
+    text += `🕐 *${timeStr}* — *${st.name}*\n`;
+    if (ls.topic) text += `• План сегодня: _${ls.topic}_\n`;
+    if (lastConducted?.topic) text += `• Прошлое ДЗ («${lastConducted.topic}»): *${hwIcon}*\n`;
+    if (hwSum?.groupBreakdownText) text += `  ${hwSum.groupBreakdownText.replace(/\n/g, '\n  ')}\n`;
+    if (doss.errors) text += `• ⚠️ Ошибки в фокусе: _${doss.errors.slice(0, 120)}_\n`;
+    if (ebbTopic) text += `• 🔄 Повторить (Эббингауз): _${ebbTopic}_\n`;
+    text += `\n`;
+
+    const row = [{ text: `📋 Разминка: ${st.name.split(' ')[0]}`, callback_data: `teacher_lesson_warmup:${st.id}` }];
+    if (hwSum && !hwSum.canSubmit && doss.tgId) {
+      row.push({ text: `🔔 Пнуть про ДЗ`, callback_data: `teacher_nudge_st:${st.id}` });
+    }
+    kb.push(row);
+  }
+
+  return { hasLessons: true, text, kb };
+}
+
+async function sendWeekendEbbinghausBonus(targetStudentId = null) {
+  const { data: students } = targetStudentId
+    ? await db.from('students').select('*').eq('id', targetStudentId)
+    : await db.from('students').select('*').order('name');
+  if (!students || students.length === 0) return [];
+
+  const sentTo = [];
+  for (const st of students) {
+    const doss = parseStudentDossierBot(st);
+    const targetIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (targetIds.length === 0) continue;
+
+    const lastLs = await getLatestLessonWithMaterials(st.id);
+    if (lastLs) {
+      const sum = getHwCompletionSummary(st, lastLs);
+      // Отправляем выходной бонус только если текущее ДЗ уже сделано (чтобы не перегружать!)
+      if (!sum.canSubmit && !targetStudentId) continue;
+    }
+
+    const { data: pastLs } = await db.from('lessons').select('date, topic').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(20);
+    const nowMs = Date.now();
+    const ebb = (pastLs || []).find(p => {
+      const diffDays = (nowMs - new Date(p.date).getTime()) / 86400000;
+      return diffDays >= 10 && diffDays <= 28 && p.topic;
+    });
+    if (!ebb) continue;
+
+    const bonusPrompt = `Ты — весёлый игровой наставник по английскому для ученика ${st.name} (${st.grade || 'школьник'}).
+~2 недели назад мы проходили тему: "${ebb.topic}".
+Придумай ОДИН супер-короткий, увлекательный 60-секундный бонус-вопрос выходного дня (на повторение по кривой Эббингауза) за +15 XP!
+Формат (без звёздочек **):
+🔄 БОНУС ВЫХОДНОГО ДНЯ (+15 XP)
+Помнишь нашу тему «${ebb.topic}»? Попробуй ответить на 1 быстрый вопрос:
+[1 чёткий вопрос или мини-перевод по интересам ученика]
+👇 Напиши ответ прямо сюда — это займёт меньше минуты!`;
+
+    const res = await executeFunctionCall('generate_lesson_plan', { prompt: bonusPrompt });
+    const bonusText = res?.generated_plan;
+    if (!bonusText) continue;
+
+    for (const tid of targetIds) {
+      activeStudentQuizzes.set(String(tid), { quizText: bonusText, studentName: st.name, studentId: st.id, lessonId: lastLs?.id || '', createdAt: Date.now() });
+      await sendCleanMessage(tid, bonusText, { reply_markup: buildStudentKeyboard(st, lastLs, tid) }).catch(() => {});
+      sentTo.push(`${st.name} (${ebb.topic})`);
+    }
+    schedulePersistBotSessions();
+  }
+  return sentTo;
+}
+
+async function handleTeacherVoiceLessonDebrief(chatId, rawText) {
+  const { data: allSt } = await db.from('students').select('*').order('name');
+  const st = matchStudent(allSt || [], rawText);
+  if (!st) {
+    return bot.sendMessage(chatId, '⚠️ Понял, что это итоги урока, но не расслышал имя ученика. Назови имя (например: *«Провели урок с Соней...»*).', { parse_mode: 'Markdown' });
+  }
+
+  bot.sendChatAction(chatId, 'typing');
+  const doss = parseStudentDossierBot(st);
+  const { data: recentLs } = await db.from('lessons').select('*').eq('student_id', st.id).order('date', { ascending: false }).limit(5);
+  const todayMinsk = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+  let targetLs = (recentLs || []).find(l => new Date(l.date).toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' }) === todayMinsk)
+    || (recentLs || []).find(l => l.status === 'Запланирован')
+    || (recentLs || [])[0];
+
+  const extractPrompt = `Ты — умный методист-ассистент преподавателя английского Игоря.
+Игорь только что надиктовал итоги проведённого урока с учеником ${st.name} (${st.grade || ''}):
+"""
+${rawText}
+"""
+Текущая тема урока в календаре: "${targetLs?.topic || 'не указана'}".
+Предыдущие ошибки ученика: "${doss.errors || 'нет'}".
+
+Верни СТРОГО валидный JSON:
+{
+  "topic": "Чёткая тема урока на английском/русском (если не названа, оставь или уточни по смыслу)",
+  "debrief_notes": "Краткая выжимка итогов урока для базы (что прошли, как занимался ученик)",
+  "errors": "Конкретные ошибки/слабые места, которые прозвучали (или пустая строка)",
+  "homework": "Короткое 15-минутное ДЗ: 5 слов по теме + 4 коротких письменных предложения для тетрадки (БЕЗ ответов и БЕЗ звёздочек **)",
+  "parent_report": "Тёплое короткое сообщение для родителей (до 550 символов): похвалить ребёнка, назвать тему, над чем работали и какое ДЗ задано"
+}`;
+
+  const aiRes = await executeFunctionCall('generate_lesson_plan', { prompt: extractPrompt });
+  let parsed = null;
+  try {
+    const m = aiRes?.generated_plan?.match(/\{[\s\S]*\}/);
+    if (m) parsed = JSON.parse(m[0]);
+  } catch (_) {}
+
+  const finalTopic = parsed?.topic || targetLs?.topic || 'Урок английского языка';
+  const debriefNotes = parsed?.debrief_notes || rawText;
+  const hwText = parsed?.homework || 'Повторить слова урока и составить 4 предложения в тетради.';
+  const parentRep = parsed?.parent_report || `Здравствуйте! 👋 Сегодня провели урок с ${st.name} по теме «${finalTopic}». Задали короткое ДЗ на 15 минут!`;
+
+  let newHw = hwText;
+  if (debriefNotes) newHw += `\n\n[ДЕБРИФИНГ]:\n${debriefNotes}\n[/ДЕБРИФИНГ]`;
+  if (parentRep) newHw += `\n\n[ОТЧЕТ_РОДИТЕЛЮ]:\n${parentRep}\n[/ОТЧЕТ_РОДИТЕЛЮ]`;
+
+  if (targetLs && targetLs.id) {
+    // Сохраняем старую презентацию/сценарий, если были прикреплены к запланированному уроку
+    const oldHw = targetLs.homework || '';
+    const oldScen = oldHw.match(/\[СЦЕНАРИЙ_УРОКА\]:[\s\S]*?\[\/СЦЕНАРИЙ_УРОКА\]/);
+    const oldPresText = oldHw.match(/\[ПРЕЗЕНТАЦИЯ_ТЕКСТ\]:[\s\S]*?\[\/ПРЕЗЕНТАЦИЯ_ТЕКСТ\]/);
+    if (oldScen) newHw += `\n\n${oldScen[0]}`;
+    if (oldPresText) newHw += `\n\n${oldPresText[0]}`;
+
+    await db.from('lessons').update({
+      topic: finalTopic,
+      homework: newHw,
+      status: 'Проведен'
+    }).eq('id', targetLs.id);
+    targetLs.topic = finalTopic;
+    targetLs.homework = newHw;
+    targetLs.status = 'Проведен';
+  } else {
+    const { data: created } = await db.from('lessons').insert({
+      student_id: st.id,
+      date: new Date().toISOString(),
+      topic: finalTopic,
+      homework: newHw,
+      status: 'Проведен',
+      paid: false
+    }).select().single();
+    targetLs = created;
+  }
+
+  if (parsed?.errors && parsed.errors.trim()) {
+    await saveHwWarmupErrorsToDossier(st, parsed.errors, st.name, parsed.errors).catch(() => {});
+  }
+
+  const summaryMsg =
+    `🎙️ *Итоги урока с ${st.name} сохранены в базу!* ✅\n\n` +
+    `📚 *Тема:* ${finalTopic}\n` +
+    `📝 *Дебрифинг:* ${debriefNotes}\n` +
+    `${parsed?.errors ? `⚠️ *Ошибки записаны в память:* ${parsed.errors}\n` : ''}` +
+    `\n📌 *Сгенерированное 15-мин ДЗ:*\n${hwText}\n\n` +
+    `👨‍👩‍👧 *Черновик отчёта родителю:*\n${parentRep}`;
+
+  const kb = [
+    [{ text: '🚀 Отправить ДЗ ученику + отчёт родителю', callback_data: `debrief_send_all:${targetLs.id}` }],
+    [{ text: '👦 Отправить ДЗ только ученику', callback_data: `debrief_send_st:${targetLs.id}` }]
+  ];
+  await sendCleanMessage(chatId, summaryMsg, { reply_markup: { inline_keyboard: kb } });
 }
 
 function addStudentXp(studentId, lessonId, userId, userName, amount) {
@@ -3167,8 +3537,9 @@ function buildStudentKeyboard(st, lesson, chatIdOrUserId = null) {
       [{ text: submitBtnText, callback_data: `student_hw_done:${lesson?.id || ''}` }],
       [{ text: ruleBtnText, callback_data: `student_grammar_rule:${st.id}` }, { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }],
       [{ text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
-      [{ text: '🎤 Голосовой челлендж', callback_data: `student_voice_challenge:${st.id}` }, extraPracticeBtn],
-      [{ text: `🛡️ Нововведения и Щит (${shields}🛡️)`, callback_data: `student_innovations:${st.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `student_milestone_card:${st.id}` }]
+      [{ text: '🎤 Голосовой челлендж', callback_data: `student_voice_challenge:${st.id}` }, { text: '🎭 Мини-ролевка', callback_data: `student_roleplay:${st.id}` }],
+      [extraPracticeBtn, { text: '🏆 Паспорт прогресса', callback_data: `student_milestone_card:${st.id}` }],
+      [{ text: `🛡️ Нововведения и Щит (${shields}🛡️)`, callback_data: `student_innovations:${st.id}` }]
     ]
   };
 }
@@ -5762,12 +6133,21 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
 
       const actor = resolveStudentActor(st, chatId, query.from);
-      await bot.answerCallbackQuery(query.id, { text: '🏆 Формирую Паспорт прогресса и достижений...' });
-      const passportText = await buildMilestonePassportReport(st, actor, isParent);
+      await bot.answerCallbackQuery(query.id, { text: '🏆 Рисую PNG-Паспорт прогресса и достижений...' });
+      const [passportText, pngBuffer] = await Promise.all([
+        buildMilestonePassportReport(st, actor, isParent),
+        generateMilestonePassportPng(st, actor).catch(() => null)
+      ]);
+      if (pngBuffer) {
+        await bot.sendPhoto(chatId, pngBuffer, {
+          caption: `🏆 *Паспорт прогресса: ${actor.fullName || st.name}*`,
+          parse_mode: 'Markdown'
+        }, { filename: 'passport.png', contentType: 'image/png' }).catch(() => {});
+      }
       const kb = isParent
         ? [[{ text: '📊 Полный отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }]]
         : [
-            [{ text: '📖 Правило урока', callback_data: `student_grammar_rule:${st.id}` }, { text: '🎤 Голосовой челлендж', callback_data: `student_voice_challenge:${st.id}` }],
+            [{ text: '📖 Правило урока', callback_data: `student_grammar_rule:${st.id}` }, { text: '🎭 Мини-ролевка', callback_data: `student_roleplay:${st.id}` }],
             [{ text: '🛡️ Про Щит и нововведения', callback_data: `student_innovations:${st.id}` }]
           ];
       await sendCleanMessage(chatId, passportText, { reply_markup: { inline_keyboard: kb } });
@@ -5841,12 +6221,129 @@ ${materialsText.slice(0, 3000)}
         sentences: engLines,
         createdAt: Date.now()
       });
+      schedulePersistBotSessions();
 
       await sendCleanMessage(chatId, vcText);
       if (engLines.length > 0) {
         await sendTtsAudio(chatId, engLines.join('. '), `Speaking Challenge: ${actor.name}`, '🔊 Сначала послушай, как звучат эти 3 фразы, а затем запиши своё голосовое!');
       }
       await sendCleanMessage(ADMIN_CHAT_ID, `🎤 [Копия для преподавателя]: ${actor.displayLabel} запустил(а) Голосовой челлендж на 15 секунд:\n\n${vcText}`).catch(() => {});
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('student_roleplay:') || data === 'student_roleplay')) {
+    const studentId = data.includes(':') ? data.split(':')[1] : null;
+    try {
+      let st = null;
+      if (studentId) {
+        const { data: sData } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+        st = sData;
+      }
+      if (!st) {
+        const sFound = await findStudentByTgChatId(chatId);
+        st = sFound?.student;
+      }
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+
+      const actor = resolveStudentActor(st, chatId, query.from);
+      await bot.answerCallbackQuery(query.id, { text: `🎭 Запускаю мини-ролевку для ${actor.name}...` });
+      const doss = parseStudentDossierBot(st);
+      const lastLs = await getLatestLessonWithMaterials(st.id);
+
+      const rpPrompt = `Ты — харизматичный персонаж из вселенной интересов ученика ${actor.name} (${st.grade || 'школьник'}): "${doss.interests || 'путешествия и приключения'}".
+Тема урока: "${lastLs?.topic || 'English'}".
+Придумай весёлую, короткую 3-ходовую мини-ролевку на английском (всего 2 минуты!).
+Начни игру:
+1. Назови себя (например, торговец из Skyrim / капитан корабля Spore / герой фильма) — 1 короткая строка на русском.
+2. Скажи 1 простую, живую реплику по-английски (используя лексику/грамматику темы "${lastLs?.topic || 'English'}"), и задай ${actor.name} простой вопрос, чтобы он(а) ответил(а) в ответ текстом или голосом!
+3. Подскажи 2-3 полезных английских слова в скобках, если нужно.
+СТРОГО: без звёздочек **! Отдельной последней строкой напиши строго: EN_LINE: <только английская фраза персонажа для озвучки>`;
+
+      const rpRes = await executeFunctionCall('generate_lesson_plan', { prompt: rpPrompt });
+      let rpRaw = rpRes?.generated_plan || `🎭 Привет, ${actor.name}! Я торговец артефактами!\nHello, traveler! Have you ever seen a magic dragon?\nEN_LINE: Hello, traveler! Have you ever seen a magic dragon?`;
+      const enMatch = rpRaw.match(/EN_LINE:\s*(.+)$/m);
+      const enPhrase = enMatch ? enMatch[1].trim() : '';
+      const cleanRp = rpRaw.replace(/EN_LINE:.*$/m, '').trim();
+
+      activeRoleplaySessions.set(String(chatId), {
+        studentId: st.id,
+        lessonId: lastLs?.id || null,
+        topic: lastLs?.topic || 'English',
+        interests: doss.interests || 'приключения',
+        turn: 1,
+        history: [`AI: ${cleanRp}`],
+        createdAt: Date.now()
+      });
+      schedulePersistBotSessions();
+
+      await sendCleanMessage(chatId, `🎭 *МИНИ-РОЛЕВКА (Ход 1 из 3 • +15 XP)*\n\n${cleanRp}\n\n💬 _Ответь персонажу по-английски (текстом или голосовым сообщением)!_`);
+      if (enPhrase) {
+        await sendTtsAudio(chatId, enPhrase, 'Roleplay', '🔊 Послушай реплику персонажа');
+      }
+      await sendCleanMessage(ADMIN_CHAT_ID, `🎭 [Копия для преподавателя]: ${actor.displayLabel} начал(а) 3-ходовую Мини-ролевку:\n\n${cleanRp}`).catch(() => {});
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('teacher_lesson_warmup:')) {
+    const stId = data.split(':')[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', stId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      await bot.answerCallbackQuery(query.id, { text: `📋 Готовлю 5-минутку для ${st.name}...` });
+      const doss = parseStudentDossierBot(st);
+      const lastLs = await getLatestLessonWithMaterials(st.id);
+      const warmupPrompt = `Составь идеальную 5-минутную разминку (Warm-up) для начала урока с учеником ${st.name} (${st.grade || ''}).
+Интересы: ${doss.interests || 'общие'}.
+Прошлая тема: ${lastLs?.topic || 'English'}.
+Ошибки из досье и ДЗ: ${doss.errors || 'нет'} | ${extractHwWarmupErrorsFromDossier(doss) || ''}.
+Дай:
+1. 2 живых Speaking-вопроса по интересам на разогрев.
+2. 3 коротких предложения-ловушки на исправление/перевод по его прошлым ошибкам (с ключами в скобках).
+Без звёздочек **!`;
+      const res = await executeFunctionCall('generate_lesson_plan', { prompt: warmupPrompt });
+      await sendCleanMessage(chatId, `📋 *5-МИНУТНАЯ РАЗМИНКА НА УРОК (${st.name}):*\n\n${res?.generated_plan || 'Повторите прошлые ошибки и слова урока.'}`);
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && (data.startsWith('debrief_send_all:') || data.startsWith('debrief_send_st:'))) {
+    const sendParentToo = data.startsWith('debrief_send_all:');
+    const lsId = data.split(':')[1];
+    try {
+      const { data: ls } = await db.from('lessons').select('*').eq('id', lsId).maybeSingle();
+      if (!ls) return bot.answerCallbackQuery(query.id, { text: 'Урок не найден', show_alert: true });
+      const { data: st } = await db.from('students').select('*').eq('id', ls.student_id).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      await bot.answerCallbackQuery(query.id, { text: '🚀 Отправляю в Telegram...' });
+      const stRes = await sendHomeworkToStudentBot(st, ls);
+      let pNote = '';
+      if (sendParentToo) {
+        const pRes = await sendParentLessonReportBot(st, ls);
+        pNote = pRes.sent ? '\n✅ Отчёт родителю отправлен!' : `\n⚠️ Родителю не отправлено (${pRes.reason})`;
+      }
+      await bot.sendMessage(chatId, `${stRes.sent ? `✅ ДЗ успешно отправлено ученику *${st.name}*!` : `⚠️ Ученику не отправлено (${stRes.reason})`}${pNote}`, { parse_mode: 'Markdown' });
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data === 'teacher_all_students_overview') {
+    try {
+      await bot.answerCallbackQuery(query.id, { text: '📊 Загружаю сводку...' });
+      const overview = await buildAllStudentsProgressOverview();
+      await sendCleanMessage(chatId, overview.text, { reply_markup: { inline_keyboard: overview.kb } });
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('teacher_nudge_st:')) {
+    const stId = data.split(':')[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', stId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      const res = await nudgeStudentAboutHomework(st, true);
+      if (res.sent) {
+        await bot.answerCallbackQuery(query.id, { text: `🔔 Напоминание отправлено ${st.name}!` });
+        await bot.sendMessage(chatId, `🔔 Дружелюбное напоминание про 15-минутное ДЗ («${res.topic}», сейчас выполнено: ${res.pct}%) отправлено ученику *${st.name}*!`, { parse_mode: 'Markdown' });
+      } else {
+        await bot.answerCallbackQuery(query.id, { text: `Не удалось: ${res.reason}`, show_alert: true });
+      }
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -5902,7 +6399,8 @@ ${materialsText.slice(0, 3000)}
       const quizPrompt = `Ты — дружелюбный игровой ИИ-тренер по английскому для ученика ${st.name} (${st.grade || ''}).\nСловарь ученика: ${doss.vocab || 'общая лексика по уровню'}.\nТипичные ошибки: ${doss.errors || 'грамматика времени'}.\nИнтересы: ${doss.interests || 'игры, фильмы, путешествия'}.\nПоследняя тема: ${lastLs?.topic || 'English practice'}.\n\nСоставь КОМПАКТНЫЙ (до 800 символов) увлекательный мини-квиз из 3 коротких вопросов (1: выбрать правильный вариант A/B/C, 2: вставить пропущенное слово в предложение по интересам ученика, 3: перевести короткую фразу на английский). НЕ пиши ответы сразу! Скажи ученику: "Напиши ответы 1, 2, 3 в ответном сообщении (или скажи голосом!), и я сразу проверю!"`;
       const planRes = await executeFunctionCall('generate_lesson_plan', { prompt: quizPrompt });
       const quizText = planRes.generated_plan || '1. Choose: I (was/were) happy yesterday.\n2. Translate: Я люблю путешествовать.\n3. Make a sentence with your favourite hobby!';
-      activeStudentQuizzes.set(String(chatId), { quizText, studentName: st.name, studentId: st.id, lessonId: lastLs?.id || '' });
+      activeStudentQuizzes.set(String(chatId), { quizText, studentName: st.name, studentId: st.id, lessonId: lastLs?.id || '', createdAt: Date.now() });
+      schedulePersistBotSessions();
       await bot.sendMessage(chatId, `🎯 *Мини-тренажёр слов (${st.name}):*\n\n${quizText}`, { parse_mode: 'Markdown' }).catch(() => bot.sendMessage(chatId, quizText));
       await sendCleanMessage(ADMIN_CHAT_ID, `👀 [Копия для преподавателя — ${st.name} открыл(а) «🎯 Мини-тренажёр слов»]:\n\n${quizText}`).catch(() => {});
     } catch (e) {
@@ -7255,6 +7753,7 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
     if (isVoiceSubmission && activeVoiceChallenges.has(String(chatId))) {
       const vcObj = activeVoiceChallenges.get(String(chatId));
       activeVoiceChallenges.delete(String(chatId));
+      schedulePersistBotSessions();
       const newStreak = await incrementStudentStreakBot(st, actor);
       const lastLs = await getLatestLessonWithMaterials(st.id);
       const rawProg = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
@@ -7289,9 +7788,65 @@ ${vcObj.challengeText}
       return;
     }
 
+    if (activeRoleplaySessions.has(String(chatId)) && studentText) {
+      const rpObj = activeRoleplaySessions.get(String(chatId));
+      rpObj.history.push(`${actor.name}: ${studentText}`);
+      const isFinalTurn = rpObj.turn >= 3;
+      if (isFinalTurn) {
+        activeRoleplaySessions.delete(String(chatId));
+      } else {
+        rpObj.turn += 1;
+        activeRoleplaySessions.set(String(chatId), rpObj);
+      }
+      schedulePersistBotSessions();
+
+      const lastLs = await getLatestLessonWithMaterials(st.id);
+      if (isFinalTurn) {
+        const newStreak = await incrementStudentStreakBot(st, actor);
+        const rawProg = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
+        rawProg.completedSteps.grammar = true;
+        const totalXp = addStudentXp(st.id, lastLs?.id, msg.from?.id || chatId, actor.name, 15);
+        const updatedProg = getHwCompletionSummary(st, lastLs, chatId, msg.from);
+        if (lastLs) await persistHwProgressPercent(lastLs, updatedProg.pct, actor, st);
+
+        const finishPrompt = `Ты завершаешь 3-ходовую мини-ролевку с учеником ${actor.name} по теме "${rpObj.topic}" (интересы: ${rpObj.interests}).
+Диалог:
+${rpObj.history.join('\n')}
+Попрощайся в образе персонажа (1 фраза на английском), затем тепло похвали ${actor.name} по-русски за смелость и английский, мягко поправь 1 ошибку (если была) и поздравь с получением +15 XP! Без звёздочек **!`;
+        const finRes = await executeFunctionCall('generate_lesson_plan', { prompt: finishPrompt });
+        const finText = finRes?.generated_plan || `Браво, ${actor.name}! Отличная беседа! +15 XP твои! 🏆`;
+        await sendCleanMessage(chatId, `🎭 *МИНИ-РОЛЕВКА ЗАВЕРШЕНА! (+15 XP)* 🏆\n\n${finText}\n\n📊 *Готовность ДЗ: ${updatedProg.pct}%* | ⭐ *Опыт: ${totalXp} XP* | 🔥 *Стрик: ${newStreak} дн.*`, {
+          reply_markup: buildStudentKeyboard(st, lastLs, chatId)
+        });
+        await sendCleanMessage(ADMIN_CHAT_ID, `🎭 [Копия: ${actor.displayLabel} завершил(а) Мини-ролевку (+15 XP)]:\n\n${rpObj.history.join('\n')}\n\n🤖 Итог:\n${finText}`).catch(() => {});
+      } else {
+        const nextPrompt = `Ты продолжаешь 3-ходовую мини-ролевку (сейчас ход ${rpObj.turn} из 3) с учеником ${actor.name} (${st.grade || ''}) по теме "${rpObj.topic}".
+История диалога:
+${rpObj.history.join('\n')}
+Ответь в образе персонажа 1-2 короткими простыми фразами на английском (мягко и естественно похвали/отреагируй на реплику ученика и задай следующий простой вопрос). Без звёздочек **!
+Последней строкой добавь: EN_LINE: <только английская фраза для озвучки>`;
+        const nextRes = await executeFunctionCall('generate_lesson_plan', { prompt: nextPrompt });
+        const rawReply = nextRes?.generated_plan || `Cool! And what do you like doing in your free time?\nEN_LINE: Cool! And what do you like doing in your free time?`;
+        const enMatch = rawReply.match(/EN_LINE:\s*(.+)$/m);
+        const enPhrase = enMatch ? enMatch[1].trim() : rawReply;
+        const cleanReply = rawReply.replace(/EN_LINE:.*$/m, '').trim();
+        rpObj.history.push(`AI: ${cleanReply}`);
+        activeRoleplaySessions.set(String(chatId), rpObj);
+        schedulePersistBotSessions();
+
+        await sendCleanMessage(chatId, `🎭 *МИНИ-РОЛЕВКА (Ход ${rpObj.turn} из 3)*\n\n${cleanReply}\n\n💬 _Твой ответ (текстом или голосом):_`);
+        if (enPhrase) await sendTtsAudio(chatId, enPhrase, 'Roleplay', '🔊 Послушай ответ персонажа');
+      }
+      if (msg.voice || msg.video_note) {
+        await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+      }
+      return;
+    }
+
     if (activeStudentQuizzes.has(String(chatId)) && studentText) {
       const quizObj = activeStudentQuizzes.get(String(chatId));
       activeStudentQuizzes.delete(String(chatId));
+      schedulePersistBotSessions();
       const newStreak = await incrementStudentStreakBot(st);
       const lastLs = await getLatestLessonWithMaterials(st.id);
       const prog = getHwCompletionSummary(st, lastLs, chatId, msg.from);
@@ -7657,10 +8212,22 @@ ${routerAcademic ? `АКАДЕМИЧЕСКАЯ СПРАВКА ПО ГРАММА�
         }
       });
     }
-    // --- БЫСТРЫЙ ПЕРЕХВАТ ЗАПРОСОВ ИГОРЯ ОБ УСПЕХАХ, ДЗ И НОВОВВЕДЕНИЯХ/ЩИТЕ УЧЕНИКОВ ---
+    // --- БЫСТРЫЙ ПЕРЕХВАТ ЗАПРОСОВ ИГОРЯ ОБ УСПЕХАХ, ДЗ, БРИФЕ УРОКОВ, ГОЛОСОВОМ ДЕБРИФИНГЕ И НОВОВВЕДЕНИЯХ ---
     const progressQueryRegex = /(?:как\s+(?:там\s+)?(?:успехи|дела|дз|домашка|прогресс)|отч[её]т\s+по|статистика\s+по|сводка\s+по|сколько\s+(?:прош[её]л|сделал|уроков)|кто\s+сделал\s+дз|успеваемость)/i;
     const nudgeQueryRegex = /^(?:напомни|пни|напиши)\s+(?:про\s+дз|детям\s+про\s+дз|ученикам\s+про\s+дз|насч[её]т\s+дз)/i;
     const innovationsBroadcastRegex = /(?:расскажи|отправь|напиши|разошли|скинь|объясни)\s+(?:вс[её]м\s+)?(?:детям|ученикам|ребятам|[а-яё]+)?\s*(?:про\s+|о\s+)?(?:нововведен|обновлен|щит|правил[ао]\s+бота|новые\s+правила)/i;
+    const morningTutorBriefRegex = /(?:план\s+уроков|бриф\s+уроков|какие\s+(?:сегодня\s+)?уроки|кто\s+сегодня\s+занимается|уроки\s+на\s+сегодня)/i;
+    const voiceDebriefRegex = /(?:провели\s+урок\s+с|итоги\s+урока\s+с|запиши\s+итоги\s+урока|дебрифинг\s+урока|зафиксируй\s+урок)/i;
+
+    if (morningTutorBriefRegex.test(textToProcess.trim())) {
+      bot.sendChatAction(chatId, 'typing');
+      const brief = await buildDailyTutorMorningBrief();
+      return sendCleanMessage(chatId, brief.text, { reply_markup: { inline_keyboard: brief.kb } });
+    }
+
+    if (voiceDebriefRegex.test(textToProcess.trim())) {
+      return handleTeacherVoiceLessonDebrief(chatId, textToProcess);
+    }
 
     if (innovationsBroadcastRegex.test(textToProcess.trim())) {
       const { data: allSt } = await db.from('students').select('*').order('name');
@@ -8494,6 +9061,35 @@ cron.schedule('30 12,15 * * *', async () => {
     }
   } catch (e) {
     console.error('Auto homework nudge cron error:', e);
+  }
+}, { timezone: 'UTC' });
+
+// Утренний бриф уроков преподавателю на сегодня: 09:00 по Минску (06:00 UTC)
+cron.schedule('0 6 * * *', async () => {
+  try {
+    if (!ADMIN_CHAT_ID) return;
+    const brief = await buildDailyTutorMorningBrief();
+    if (brief.hasLessons) {
+      await sendCleanMessage(ADMIN_CHAT_ID, brief.text, { reply_markup: { inline_keyboard: brief.kb } });
+    }
+  } catch (e) {
+    console.error('Morning tutor brief cron error:', e);
+  }
+}, { timezone: 'UTC' });
+
+// Бонус выходного дня по кривой Эббингауза: суббота 16:00 по Минску (13:00 UTC)
+cron.schedule('0 13 * * 6', async () => {
+  try {
+    const sentList = await sendWeekendEbbinghausBonus(null);
+    if (sentList.length > 0 && ADMIN_CHAT_ID) {
+      await bot.sendMessage(
+        ADMIN_CHAT_ID,
+        `🔄 *Выходной бонус по Эббингаузу (+15 XP):* отправлен ученикам, у которых уже сдано ДЗ:\n• ${sentList.join('\n• ')}`,
+        { parse_mode: 'Markdown' }
+      ).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Weekend Ebbinghaus bonus cron error:', e);
   }
 }, { timezone: 'UTC' });
 
