@@ -1955,14 +1955,19 @@ async function nudgeStudentAboutHomework(st, isManual = false) {
       await sendCardsToChat(tid, cards, '🖼 Карточка твоего небольшого ДЗ (на 15 минут)');
     }
 
-    const nudgeMsg = `👋 *Привет, ${actor.name}! Как там твоя небольшая домашка по теме «${topic}»?* 😊\n\n` +
-      `⏱ Она специально рассчитана всего на *10–15 минут* — без перегруза, чтобы легко держать форму!\n` +
-      `📊 *Твоя готовность сейчас:* ${actorSum.pct}%\n` +
-      `✅ *Уже сделано:* ${actorSum.doneList.length ? actorSum.doneList.join(', ') : 'пока 0%'}\n\n` +
-      `✍️ *Что осталось для зачёта:*\n` +
-      `1️⃣ Запиши короткое письменное упражнение с карточки в свою тетрадку и пришли сюда *📸 ФОТО тетрадки*!\n` +
-      `2️⃣ Для быстрой разминки нажми кнопки со словами, правилом урока и мини-тестиком ниже 👇\n\n` +
-      `🔥 _Давай сделаем сегодня за 15 минут, чтобы твой огонёк ударного режима (${doss.streak || 1} дн., защищён 🛡️ x${doss.shields} щитом) горел стабильно! Жду фото твоей тетрадки!_ 💪🚀`;
+    const whatIsLeft = actorSum.leftList.length
+      ? actorSum.leftList.slice(0, 3).map(s => `• ${s}`).join('\n')
+      : '• Осталось нажать кнопку «✅ Я сделал(а) ДЗ!»';
+
+    const nudgeMsg = `👋 *Привет, ${actor.name}! Напоминаю про небольшую домашку по теме «${topic}»* 😊\n\n` +
+      `📊 *Готовность сейчас:* ${actorSum.pct}% (для зачёта нужно от *75%* + 📸 фото тетради)\n` +
+      `✅ *Уже сделано:* ${actorSum.doneList.length ? actorSum.doneList.map(s => s.split(' (')[0]).join(', ') : 'пока 0%'}\n` +
+      `⏳ *Что нужно сделать:*\n${whatIsLeft}\n\n` +
+      `📌 *Кратко — как у нас сдаётся ДЗ (всего 10–15 минут):*\n` +
+      `1️⃣ Нажми 1–2 кнопки разминки внизу (*«📖 Правило урока»*, *«🔤 5 слов»* или *«📝 Тестик»*) — это даст до *60%*.\n` +
+      `2️⃣ Напиши короткое письменное задание с карточки от руки в тетради и пришли сюда *📸 ФОТО тетрадки*.\n` +
+      `3️⃣ Бот сразу проверит фото, даст подсказки и откроет кнопку *«✅ Я сделал(а) ДЗ!»* 💪\n\n` +
+      `🔥 _Огонёк ударного режима: ${doss.streak || 1} дн. (защищён 🛡️ x${doss.shields ?? 1} щитом). Жду фото твоей тетрадки!_ 🚀`;
 
     await sendCleanMessage(tid, nudgeMsg, { reply_markup: kbMarkup }).catch(() => {});
   }
@@ -2052,27 +2057,57 @@ function buildStudentInnovationsAndShieldMessage(st, actor = null) {
 
   return (
     `🎉 *ПРИВЕТ, ${childName.toUpperCase()}! БОЛЬШОЕ ОБНОВЛЕНИЕ И НОВЫЕ ПРАВИЛА БОТА!* 🚀🇬🇧\n\n` +
-    `Игорь обновил твоего бота-помощника по английскому! Вот какие крутые нововведения теперь работают для тебя:\n\n` +
+    `Игорь обновил твоего бота-помощника по английскому! Вот как теперь всё работает и что нового появилось:\n\n` +
     `━━━━━━━━━━━━━━\n` +
-    `🛡️ *1. У ТЕБЯ ПОЯВИЛСЯ «ЩИТ ЗАМОРОЗКИ СТРИКА»!*\n` +
-    `• Твой запас щитов сейчас: *${shieldsVisual} (${curShields} из 3)*\n` +
-    `• Твой ударный режим (Streak): *🔥 ${curStreak} ДЗ подряд*\n` +
-    `• *Как работает Щит:* мы знаем, что иногда в школе бывает завал. Если ты случайно пропустишь день, твой накопленный огонёк 🔥 *НЕ СГОРИТ* — Щит автоматически примет удар на себя и спасёт твою серию!\n` +
-    `• *Как заработать новый Щит:* за каждые *5 сданных подряд домашних заданий* бот дарит тебе *+1 новый 🛡️ Щит заморозки* (в рюкзаке помещается до 3 щитов)!\n\n` +
+    `📌 *1. ГЛАВНЫЙ ПРИНЦИП ВЫПОЛНЕНИЯ ДЗ (ВСЕГО 10–15 МИНУТ):*\n` +
+    `• *Шаг 1 (разминка — 5 минут):* нажимай кнопки *«📖 Правило урока»*, *«🔤 5 слов урока»*, *«📝 Тестик»* или *«🃏 Флеш-карточки»*. Они дают до *60%* готовности.\n` +
+    `• *Шаг 2 (главный! — 5–10 минут):* перепиши короткое письменное упражнение с PNG-карточки *от руки в свою тетрадь* и пришли сюда *📸 ФОТО тетрадки*! Без фото тетрадки сдать ДЗ нельзя — так мы учимся писать без ошибок.\n` +
+    `• *Шаг 3 (финиш — 75%+):* бот сам проверит твоё фото, подскажет, если есть помарка, и разблокирует кнопку *«✅ Я сделал(а) ДЗ!»*.\n\n` +
     `━━━━━━━━━━━━━━\n` +
-    `⏱ *2. ДОМАШКА ВСЕГО НА 10–15 МИНУТ + 📸 ФОТО ТЕТРАДКИ*\n` +
-    `• Больше никаких огромных скучных заданий! Только *5 главных слов урока* и *4 коротких предложения* на красивой карточке.\n` +
-    `• ⚠️ *Главное правило сдачи ДЗ (75%):* кнопки в боте (слова, флеш-карточки, тестик) дают разминку до *60%*. А чтобы открылась кнопка *«✅ Я сделал(а) ДЗ!»*, обязательно перепиши упражнение с карточки от руки в тетрадь и пришли сюда *📸 ФОТО своей тетрадки*! Я сам проверю твой почерк и подскажу, если где-то закралась ошибка!\n\n` +
+    `🛡️ *2. «ЩИТ ЗАМОРОЗКИ СТРИКА» (ТВОЯ ЗАЩИТА ОГОНЬКА)*\n` +
+    `• Твой запас щитов сейчас: *${shieldsVisual} (${curShields} из 3)* | Стрик: *🔥 ${curStreak} дн.*\n` +
+    `• Если в школе случился завал и ты пропустил(а) день — твой огонёк *НЕ СГОРИТ*! Щит автоматически спасёт серию.\n` +
+    `• За каждые *5 дней стрика подряд* бот дарит *+1 новый 🛡️ Щит* (до 3 в запасе).\n\n` +
     `━━━━━━━━━━━━━━\n` +
-    `📖 *3. БОТ ВСЕГДА РАССКАЖЕТ ПРАВИЛО УРОКА (+ 🔊 ОЗВУЧКА)*\n` +
-    `• Если подзабыл(а) тему или правило с презентации — просто нажми кнопку *«📖 Правило урока»*! Я простыми словами за 1 минуту объясню секрет правила на примерах из твоих любимых игр и озвучу английские фразы голосом!\n\n` +
+    `📖 *3. «ПРАВИЛО УРОКА» ИЗ МИРОВЫХ УЧЕБНИКОВ + 🔊 ОЗВУЧКА*\n` +
+    `• Забыл(а) правило с урока? Нажми *«📖 Правило урока»* (или напиши в чат «объясни правило») — бот подтянет полное правило (British Council / Cambridge), разложит всё «на пальцах» и пришлёт голосовую озвучку примеров!\n\n` +
     `━━━━━━━━━━━━━━\n` +
-    `🎤 *4. ГОЛОСОВОЙ ЧЕЛЛЕНДЖ НА 15 СЕКУНД (+15 XP)*\n` +
-    `• Нажми кнопку *«🎤 Голосовой челлендж»*, послушай 3 короткие фразы урока и прочитай их вслух в микрофон Telegram — я оценю твоё произношение и начислю бонусные баллы!\n\n` +
+    `🎤🎭 *4. ГОВОРЕНИЕ БЕЗ СКУКИ: ЧЕЛЛЕНДЖ И МИНИ-РОЛЕВКА*\n` +
+    `• *«🎤 Голосовой челлендж»* — прочитай 3 короткие фразы вслух за 15 секунд и получи *+15 XP*.\n` +
+    `• *«🎭 Мини-ролевка»* — короткий 3-ходовый диалог на английском с персонажем из твоих любимых игр/фильмов за *+15 XP*!\n\n` +
     `━━━━━━━━━━━━━━\n` +
-    `🏆 *5. ТВОЙ «ПАСПОРТ ПРОГРЕССА»*\n` +
-    `• Нажми *«🏆 Паспорт прогресса»*, чтобы посмотреть свой ранг, сколько слов уже в твоей копилке и сколько наград ты собрал(а)!\n\n` +
-    `👇 *Попробуй новые кнопки прямо сейчас!*`
+    `🏆 *5. ТВОЙ «ПАСПОРТ ПРОГРЕССА» (С КАРТИНКОЙ-РАДАРОМ)*\n` +
+    `• Нажми *«🏆 Паспорт прогресса»*, чтобы увидеть свой ранг, диаграмму навыков, количество выученных слов и собранные награды!\n\n` +
+    `👇 *Все кнопки уже ждут тебя прямо под этим сообщением!*`
+  );
+}
+
+function buildParentInnovationsMessage(st) {
+  const doss = parseStudentDossierBot(st);
+  const curStreak = doss.streak || 1;
+  const curShields = doss.shields !== undefined ? doss.shields : 1;
+
+  return (
+    `Здравствуйте! 👋🇬🇧\n` +
+    `Мы обновили нашего умного Telegram-помощника по английскому языку для ученика *${st.name}*!\n` +
+    `Делимся с вами, как теперь устроена домашняя работа и какие новые полезные функции появились:\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `📌 *1. ПРИНЦИП ВЫПОЛНЕНИЯ ДЗ (10–15 МИНУТ БЕЗ ПЕРЕГРУЗА)*\n` +
+    `Наша главная цель — не утомить ребёнка объёмом, а сформировать стабильную привычку заниматься регулярно:\n` +
+    `• *Шаг 1 (Интерактивная разминка — до 60%):* в боте ребёнок повторяет 5 ключевых слов урока, проходит мини-тест или флеш-карточки.\n` +
+    `• *Шаг 2 (Обязательное письмо в тетради — 75%+):* ребёнок выполняет небольшое письменное упражнение с карточки *от руки в тетради* и отправляет *📸 фото тетрадки* в бот. Только после проверки фото тетрадки открывается кнопка *«✅ Я сделал(а) ДЗ!»*.\n` +
+    `• *Обратная связь сразу:* бот проверяет фото почерка, мягко объясняет ошибки простым языком, пересылает фото с разбором преподавателю Игорю и сохраняет ошибки в память для повторения на следующем уроке.\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `📖 *2. ПОЛНОЕ ОБЪЯСНЕНИЕ ПРАВИЛ + ОЗВУЧКА*\n` +
+    `• Если ребёнок забыл тему, по кнопке *«📖 Правило урока»* бот объясняет её простыми словами, дополняя материалы урока академической базой (British Council / Cambridge Grammar), и присылает аудио-озвучку произношения.\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `🛡️ *3. «ЩИТ ЗАМОРОЗКИ СТРИКА» И МОТИВАЦИЯ БЕЗ СТРЕССА*\n` +
+    `• Сейчас у ребёнка серия: *🔥 ${curStreak} дн.* и *🛡️ ${curShields}/3 Щита заморозки*.\n` +
+    `• Если в школе много уроков и ребёнок случайно пропустил 1 день — накопленная серия *не сгорает*, Щит автоматически спасает прогресс.\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `🎤🎭 *4. РАЗГОВОРНАЯ ПРАКТИКА И «ПАСПОРТ ПРОГРЕССА»*\n` +
+    `• Добавлены *«🎤 Голосовой челлендж»* (15 секунд чтения вслух) и *«🎭 Мини-ролевка»* (3 коротких диалога с персонажем по интересам ребёнка).\n` +
+    `• В любой момент вы сами можете нажать кнопки ниже, чтобы посмотреть *🏆 Паспорт прогресса (с графиком-радаром)*, свежий отчёт по всем урокам и текущее ДЗ ребёнка — или просто написать свой вопрос прямо сюда в чат! 😊`
   );
 }
 
@@ -2178,6 +2213,37 @@ async function broadcastInnovationsToStudents(targetStudent = null) {
       const kbMarkup = buildStudentKeyboard(st, lastLs, tid);
       await sendCleanMessage(tid, msg, { reply_markup: kbMarkup }).catch(() => {});
       sentTo.push(`${actor.displayLabel}`);
+    }
+  }
+  return sentTo;
+}
+
+async function broadcastInnovationsToParents(targetStudent = null) {
+  const students = targetStudent
+    ? [targetStudent]
+    : ((await db.from('students').select('*').order('name')).data || []);
+
+  const sentTo = [];
+  const seenParentIds = new Set();
+  for (const st of students) {
+    const doss = parseStudentDossierBot(st);
+    const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (parentIds.length === 0) continue;
+
+    const msg = buildParentInnovationsMessage(st);
+    const kb = {
+      inline_keyboard: [
+        [{ text: '🏆 Паспорт прогресса (PNG + отчёт)', callback_data: `parent_milestone_card:${st.id}` }],
+        [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }, { text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
+      ]
+    };
+
+    for (const pid of parentIds) {
+      const dedupKey = `${pid}_${st.id}`;
+      if (seenParentIds.has(dedupKey)) continue;
+      seenParentIds.add(dedupKey);
+      await sendCleanMessage(pid, msg, { reply_markup: kb }).catch(() => {});
+      sentTo.push(`👨‍👩‍👧 Родитель: ${st.name}`);
     }
   }
   return sentTo;
@@ -2396,6 +2462,37 @@ async function sendWeekendEbbinghausBonus(targetStudentId = null) {
       sentTo.push(`${st.name} (${ebb.topic})`);
     }
     schedulePersistBotSessions();
+  }
+  return sentTo;
+}
+
+async function broadcastInnovationsToParents(targetStudent = null) {
+  const students = targetStudent
+    ? [targetStudent]
+    : ((await db.from('students').select('*').order('name')).data || []);
+
+  const sentTo = [];
+  const seenParentIds = new Set();
+  for (const st of students) {
+    const doss = parseStudentDossierBot(st);
+    const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (parentIds.length === 0) continue;
+
+    const msg = buildParentInnovationsMessage(st);
+    const kb = {
+      inline_keyboard: [
+        [{ text: '🏆 Паспорт прогресса (PNG + отчёт)', callback_data: `parent_milestone_card:${st.id}` }],
+        [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }, { text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
+      ]
+    };
+
+    for (const pid of parentIds) {
+      const dedupKey = `${pid}_${st.id}`;
+      if (seenParentIds.has(dedupKey)) continue;
+      seenParentIds.add(dedupKey);
+      await sendCleanMessage(pid, msg, { reply_markup: kb }).catch(() => {});
+      sentTo.push(`👨‍👩‍👧 Родитель: ${st.name}`);
+    }
   }
   return sentTo;
 }
@@ -6157,12 +6254,15 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
   } else if (data === 'teacher_broadcast_innovations' || (data && data.startsWith('teacher_send_innovations:'))) {
     const targetStId = data.includes(':') ? data.split(':')[1] : null;
     try {
-      await bot.answerCallbackQuery(query.id, { text: '🛡️ Отправляю рассказ про нововведения и Щит...' });
-      const sentList = await broadcastInnovationsToStudents(targetStId);
-      if (sentList.length > 0) {
-        await bot.sendMessage(chatId, `✅ *Сообщение про нововведения, правила и 🛡️ Щит заморозки успешно отправлено:*\n• ${sentList.join('\n• ')}`, { parse_mode: 'Markdown' });
+      await bot.answerCallbackQuery(query.id, { text: '🛡️ Отправляю рассказ про нововведения ученикам и родителям...' });
+      const targetSt = targetStId ? (await db.from('students').select('*').eq('id', targetStId).maybeSingle()).data : null;
+      const sentStudents = await broadcastInnovationsToStudents(targetSt);
+      const sentParents = await broadcastInnovationsToParents(targetSt);
+      const allSent = [...sentStudents, ...sentParents];
+      if (allSent.length > 0) {
+        await bot.sendMessage(chatId, `✅ *Уведомления о нововведениях, принципе ДЗ и 🛡️ Щите отправлены:*\n• ${allSent.join('\n• ')}`, { parse_mode: 'Markdown' });
       } else {
-        await bot.sendMessage(chatId, '⚠️ Не найдено привязанных Telegram ID учеников для отправки.');
+        await bot.sendMessage(chatId, '⚠️ Не найдено привязанных Telegram ID учеников или родителей.');
       }
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
@@ -8215,7 +8315,7 @@ ${routerAcademic ? `АКАДЕМИЧЕСКАЯ СПРАВКА ПО ГРАММА�
     // --- БЫСТРЫЙ ПЕРЕХВАТ ЗАПРОСОВ ИГОРЯ ОБ УСПЕХАХ, ДЗ, БРИФЕ УРОКОВ, ГОЛОСОВОМ ДЕБРИФИНГЕ И НОВОВВЕДЕНИЯХ ---
     const progressQueryRegex = /(?:как\s+(?:там\s+)?(?:успехи|дела|дз|домашка|прогресс)|отч[её]т\s+по|статистика\s+по|сводка\s+по|сколько\s+(?:прош[её]л|сделал|уроков)|кто\s+сделал\s+дз|успеваемость)/i;
     const nudgeQueryRegex = /^(?:напомни|пни|напиши)\s+(?:про\s+дз|детям\s+про\s+дз|ученикам\s+про\s+дз|насч[её]т\s+дз)/i;
-    const innovationsBroadcastRegex = /(?:расскажи|отправь|напиши|разошли|скинь|объясни)\s+(?:вс[её]м\s+)?(?:детям|ученикам|ребятам|[а-яё]+)?\s*(?:про\s+|о\s+)?(?:нововведен|обновлен|щит|правил[ао]\s+бота|новые\s+правила)/i;
+    const innovationsBroadcastRegex = /(?:расскажи|отправь|напиши|разошли|скинь|объясни)\s+(?:вс[её]м\s+)?(?:детям|ученикам|родителям|ребятам|[а-яё\s]+)?\s*(?:про\s+|о\s+)?(?:нововведен|обновлен|щит|правил[ао]\s+бота|новые\s+правила|принцип\s+дз)/i;
     const morningTutorBriefRegex = /(?:план\s+уроков|бриф\s+уроков|какие\s+(?:сегодня\s+)?уроки|кто\s+сегодня\s+занимается|уроки\s+на\s+сегодня)/i;
     const voiceDebriefRegex = /(?:провели\s+урок\s+с|итоги\s+урока\s+с|запиши\s+итоги\s+урока|дебрифинг\s+урока|зафиксируй\s+урок)/i;
 
@@ -8232,11 +8332,13 @@ ${routerAcademic ? `АКАДЕМИЧЕСКАЯ СПРАВКА ПО ГРАММА�
     if (innovationsBroadcastRegex.test(textToProcess.trim())) {
       const { data: allSt } = await db.from('students').select('*').order('name');
       const matchedSt = matchStudent(allSt || [], textToProcess);
-      const sentList = await broadcastInnovationsToStudents(matchedSt ? matchedSt.id : null);
-      if (sentList.length > 0) {
-        return bot.sendMessage(chatId, `🛡️ *Бот рассказал про все нововведения, правила и Щит заморозки стрика:*\n• ${sentList.join('\n• ')}`, { parse_mode: 'Markdown' });
+      const sentStudents = await broadcastInnovationsToStudents(matchedSt || null);
+      const sentParents = await broadcastInnovationsToParents(matchedSt || null);
+      const allSent = [...sentStudents, ...sentParents];
+      if (allSent.length > 0) {
+        return bot.sendMessage(chatId, `🛡️ *Бот рассказал про нововведения, принцип ДЗ и Щит заморозки:*\n• ${allSent.join('\n• ')}`, { parse_mode: 'Markdown' });
       }
-      return bot.sendMessage(chatId, '⚠️ Не найдено привязанных Telegram ID учеников для отправки.');
+      return bot.sendMessage(chatId, '⚠️ Не найдено привязанных Telegram ID учеников или родителей для отправки.');
     }
 
     if (nudgeQueryRegex.test(textToProcess.trim())) {
