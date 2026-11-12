@@ -2220,16 +2220,20 @@ async function broadcastInnovationsToStudents(targetStudent = null) {
 
 async function buildParentPaymentStatusMessage(st) {
   if (!st) return { text: 'Ученик не найден.', unpaidCount: 0, totalAmount: 0 };
-  const pricePerLesson = Number(st.price) || 0;
+  const defaultPrice = Number(st.price) || 0;
   const { data: lessons } = await db.from('lessons')
-    .select('id, date, topic, status, paid')
+    .select('id, date, topic, status, paid, homework')
     .eq('student_id', st.id)
     .eq('status', 'Проведен')
     .order('date', { ascending: true });
 
   const conducted = lessons || [];
   const unpaid = conducted.filter(l => !l.paid);
-  const totalAmount = unpaid.length * pricePerLesson;
+  const getLsPrice = (l) => {
+    const m = (l?.homework || '').match(/\[ЦЕНА_УРОКА:(\d+(?:\.\d+)?)\]/);
+    return m ? Number(m[1]) : defaultPrice;
+  };
+  const totalAmount = unpaid.reduce((acc, l) => acc + getLsPrice(l), 0);
 
   if (unpaid.length === 0) {
     return {
@@ -2238,25 +2242,26 @@ async function buildParentPaymentStatusMessage(st) {
       text:
         `💳 *Статус оплаты (${st.name}):*\n\n` +
         `✅ *Задолженности нет!* Все проведённые занятия (${conducted.length} шт.) полностью оплачены. 🌟\n` +
-        (pricePerLesson > 0 ? `💰 Стоимость 1 занятия: *${pricePerLesson} BYN* (бел. руб.).` : '')
+        (defaultPrice > 0 ? `💰 Текущая стоимость 1 занятия: *${defaultPrice} BYN* (бел. руб.).` : '')
     };
   }
 
   const lines = unpaid.map((l, idx) => {
     const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', year: 'numeric' });
     const topicPart = l.topic ? ` — _${l.topic}_` : '';
-    const pricePart = pricePerLesson > 0 ? ` (*${pricePerLesson} BYN*)` : '';
+    const lsPrice = getLsPrice(l);
+    const pricePart = lsPrice > 0 ? ` (*${lsPrice} BYN*)` : '';
     return `  ${idx + 1}. 📅 *${dStr}*${topicPart}${pricePart}`;
   });
 
   let text = `💳 *Расчёт по оплате (${st.name}):*\n\n`;
   text += `📌 *Неоплаченных проведённых уроков:* *${unpaid.length}*\n`;
-  if (pricePerLesson > 0) {
-    text += `💰 *Стоимость 1 урока:* ${pricePerLesson} BYN\n`;
+  if (defaultPrice > 0) {
+    text += `💰 *Текущая ставка за 1 урок:* ${defaultPrice} BYN\n`;
   }
   text += `\n🗓 *Даты неоплаченных занятий:*\n${lines.join('\n')}\n\n`;
   text += `━━━━━━━━━━━━━━\n`;
-  text += pricePerLesson > 0
+  text += totalAmount > 0
     ? `💵 *Итого к оплате:* *${totalAmount} BYN* (бел. руб.)\n\n`
     : `⚠️ _Стоимость занятия уточните у преподавателя Игоря._\n\n`;
   text += `_Если вы уже перевели оплату, просто напишите сюда — Игорь отметит в системе!_ 😊`;
@@ -2340,16 +2345,20 @@ async function broadcastInnovationsToParents(targetStudent = null) {
 
 async function buildParentPaymentStatusMessage(st) {
   if (!st) return { text: 'Ученик не найден.', unpaidCount: 0, totalAmount: 0 };
-  const pricePerLesson = Number(st.price) || 0;
+  const defaultPrice = Number(st.price) || 0;
   const { data: lessons } = await db.from('lessons')
-    .select('id, date, topic, status, paid')
+    .select('id, date, topic, status, paid, homework')
     .eq('student_id', st.id)
     .eq('status', 'Проведен')
     .order('date', { ascending: true });
 
   const conducted = lessons || [];
   const unpaid = conducted.filter(l => !l.paid);
-  const totalAmount = unpaid.length * pricePerLesson;
+  const getLsPrice = (l) => {
+    const m = (l?.homework || '').match(/\[ЦЕНА_УРОКА:(\d+(?:\.\d+)?)\]/);
+    return m ? Number(m[1]) : defaultPrice;
+  };
+  const totalAmount = unpaid.reduce((acc, l) => acc + getLsPrice(l), 0);
 
   if (unpaid.length === 0) {
     return {
@@ -2358,25 +2367,26 @@ async function buildParentPaymentStatusMessage(st) {
       text:
         `💳 *Статус оплаты (${st.name}):*\n\n` +
         `✅ *Задолженности нет!* Все проведённые занятия (${conducted.length} шт.) полностью оплачены. 🌟\n` +
-        (pricePerLesson > 0 ? `💰 Стоимость 1 занятия: *${pricePerLesson} BYN* (бел. руб.).` : '')
+        (defaultPrice > 0 ? `💰 Текущая стоимость 1 занятия: *${defaultPrice} BYN* (бел. руб.).` : '')
     };
   }
 
   const lines = unpaid.map((l, idx) => {
     const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', year: 'numeric' });
     const topicPart = l.topic ? ` — _${l.topic}_` : '';
-    const pricePart = pricePerLesson > 0 ? ` (*${pricePerLesson} BYN*)` : '';
+    const lsPrice = getLsPrice(l);
+    const pricePart = lsPrice > 0 ? ` (*${lsPrice} BYN*)` : '';
     return `  ${idx + 1}. 📅 *${dStr}*${topicPart}${pricePart}`;
   });
 
   let text = `💳 *Расчёт по оплате (${st.name}):*\n\n`;
   text += `📌 *Неоплаченных проведённых уроков:* *${unpaid.length}*\n`;
-  if (pricePerLesson > 0) {
-    text += `💰 *Стоимость 1 урока:* ${pricePerLesson} BYN\n`;
+  if (defaultPrice > 0) {
+    text += `💰 *Текущая ставка за 1 урок:* ${defaultPrice} BYN\n`;
   }
   text += `\n🗓 *Даты неоплаченных занятий:*\n${lines.join('\n')}\n\n`;
   text += `━━━━━━━━━━━━━━\n`;
-  text += pricePerLesson > 0
+  text += totalAmount > 0
     ? `💵 *Итого к оплате:* *${totalAmount} BYN* (бел. руб.)\n\n`
     : `⚠️ _Стоимость занятия уточните у преподавателя Игоря._\n\n`;
   text += `_Если вы уже перевели оплату, просто напишите сюда — Игорь отметит в системе!_ 😊`;
@@ -2646,16 +2656,20 @@ async function sendWeekendEbbinghausBonus(targetStudentId = null) {
 
 async function buildParentPaymentStatusMessage(st) {
   if (!st) return { text: 'Ученик не найден.', unpaidCount: 0, totalAmount: 0 };
-  const pricePerLesson = Number(st.price) || 0;
+  const defaultPrice = Number(st.price) || 0;
   const { data: lessons } = await db.from('lessons')
-    .select('id, date, topic, status, paid')
+    .select('id, date, topic, status, paid, homework')
     .eq('student_id', st.id)
     .eq('status', 'Проведен')
     .order('date', { ascending: true });
 
   const conducted = lessons || [];
   const unpaid = conducted.filter(l => !l.paid);
-  const totalAmount = unpaid.length * pricePerLesson;
+  const getLsPrice = (l) => {
+    const m = (l?.homework || '').match(/\[ЦЕНА_УРОКА:(\d+(?:\.\d+)?)\]/);
+    return m ? Number(m[1]) : defaultPrice;
+  };
+  const totalAmount = unpaid.reduce((acc, l) => acc + getLsPrice(l), 0);
 
   if (unpaid.length === 0) {
     return {
@@ -2664,25 +2678,26 @@ async function buildParentPaymentStatusMessage(st) {
       text:
         `💳 *Статус оплаты (${st.name}):*\n\n` +
         `✅ *Задолженности нет!* Все проведённые занятия (${conducted.length} шт.) полностью оплачены. 🌟\n` +
-        (pricePerLesson > 0 ? `💰 Стоимость 1 занятия: *${pricePerLesson} BYN* (бел. руб.).` : '')
+        (defaultPrice > 0 ? `💰 Текущая стоимость 1 занятия: *${defaultPrice} BYN* (бел. руб.).` : '')
     };
   }
 
   const lines = unpaid.map((l, idx) => {
     const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', year: 'numeric' });
     const topicPart = l.topic ? ` — _${l.topic}_` : '';
-    const pricePart = pricePerLesson > 0 ? ` (*${pricePerLesson} BYN*)` : '';
+    const lsPrice = getLsPrice(l);
+    const pricePart = lsPrice > 0 ? ` (*${lsPrice} BYN*)` : '';
     return `  ${idx + 1}. 📅 *${dStr}*${topicPart}${pricePart}`;
   });
 
   let text = `💳 *Расчёт по оплате (${st.name}):*\n\n`;
   text += `📌 *Неоплаченных проведённых уроков:* *${unpaid.length}*\n`;
-  if (pricePerLesson > 0) {
-    text += `💰 *Стоимость 1 урока:* ${pricePerLesson} BYN\n`;
+  if (defaultPrice > 0) {
+    text += `💰 *Текущая ставка за 1 урок:* ${defaultPrice} BYN\n`;
   }
   text += `\n🗓 *Даты неоплаченных занятий:*\n${lines.join('\n')}\n\n`;
   text += `━━━━━━━━━━━━━━\n`;
-  text += pricePerLesson > 0
+  text += totalAmount > 0
     ? `💵 *Итого к оплате:* *${totalAmount} BYN* (бел. руб.)\n\n`
     : `⚠️ _Стоимость занятия уточните у преподавателя Игоря._\n\n`;
   text += `_Если вы уже перевели оплату, просто напишите сюда — Игорь отметит в системе!_ 😊`;
@@ -2766,16 +2781,20 @@ async function broadcastInnovationsToParents(targetStudent = null) {
 
 async function buildParentPaymentStatusMessage(st) {
   if (!st) return { text: 'Ученик не найден.', unpaidCount: 0, totalAmount: 0 };
-  const pricePerLesson = Number(st.price) || 0;
+  const defaultPrice = Number(st.price) || 0;
   const { data: lessons } = await db.from('lessons')
-    .select('id, date, topic, status, paid')
+    .select('id, date, topic, status, paid, homework')
     .eq('student_id', st.id)
     .eq('status', 'Проведен')
     .order('date', { ascending: true });
 
   const conducted = lessons || [];
   const unpaid = conducted.filter(l => !l.paid);
-  const totalAmount = unpaid.length * pricePerLesson;
+  const getLsPrice = (l) => {
+    const m = (l?.homework || '').match(/\[ЦЕНА_УРОКА:(\d+(?:\.\d+)?)\]/);
+    return m ? Number(m[1]) : defaultPrice;
+  };
+  const totalAmount = unpaid.reduce((acc, l) => acc + getLsPrice(l), 0);
 
   if (unpaid.length === 0) {
     return {
@@ -2784,25 +2803,26 @@ async function buildParentPaymentStatusMessage(st) {
       text:
         `💳 *Статус оплаты (${st.name}):*\n\n` +
         `✅ *Задолженности нет!* Все проведённые занятия (${conducted.length} шт.) полностью оплачены. 🌟\n` +
-        (pricePerLesson > 0 ? `💰 Стоимость 1 занятия: *${pricePerLesson} BYN* (бел. руб.).` : '')
+        (defaultPrice > 0 ? `💰 Текущая стоимость 1 занятия: *${defaultPrice} BYN* (бел. руб.).` : '')
     };
   }
 
   const lines = unpaid.map((l, idx) => {
     const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', year: 'numeric' });
     const topicPart = l.topic ? ` — _${l.topic}_` : '';
-    const pricePart = pricePerLesson > 0 ? ` (*${pricePerLesson} BYN*)` : '';
+    const lsPrice = getLsPrice(l);
+    const pricePart = lsPrice > 0 ? ` (*${lsPrice} BYN*)` : '';
     return `  ${idx + 1}. 📅 *${dStr}*${topicPart}${pricePart}`;
   });
 
   let text = `💳 *Расчёт по оплате (${st.name}):*\n\n`;
   text += `📌 *Неоплаченных проведённых уроков:* *${unpaid.length}*\n`;
-  if (pricePerLesson > 0) {
-    text += `💰 *Стоимость 1 урока:* ${pricePerLesson} BYN\n`;
+  if (defaultPrice > 0) {
+    text += `💰 *Текущая ставка за 1 урок:* ${defaultPrice} BYN\n`;
   }
   text += `\n🗓 *Даты неоплаченных занятий:*\n${lines.join('\n')}\n\n`;
   text += `━━━━━━━━━━━━━━\n`;
-  text += pricePerLesson > 0
+  text += totalAmount > 0
     ? `💵 *Итого к оплате:* *${totalAmount} BYN* (бел. руб.)\n\n`
     : `⚠️ _Стоимость занятия уточните у преподавателя Игоря._\n\n`;
   text += `_Если вы уже перевели оплату, просто напишите сюда — Игорь отметит в системе!_ 😊`;

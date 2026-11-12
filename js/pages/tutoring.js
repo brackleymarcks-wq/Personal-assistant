@@ -580,6 +580,13 @@ const TutoringPage = {
   },
 
 
+  getLessonPrice(ls, st = null) {
+    const m = (ls?.homework || '').match(/\[ЦЕНА_УРОКА:(\d+(?:\.\d+)?)\]/);
+    if (m) return Number(m[1]) || 0;
+    const targetSt = st || this.students.find(s => s.id === ls?.student_id);
+    return targetSt ? (Number(targetSt.price) || 0) : 0;
+  },
+
   openPaymentHistoryModal(studentId = null, filterStatus = 'all', filterMonth = null) {
     const modal = document.getElementById('payment-history-modal');
     if (!modal) return;
@@ -673,7 +680,7 @@ const TutoringPage = {
 
     filtered.forEach(l => {
       const st = this.students.find(s => s.id === l.student_id);
-      const price = st ? (Number(st.price) || 0) : 0;
+      const price = this.getLessonPrice(l, st);
       if (l.paid) {
         totalPaidAmount += price;
         totalPaidCount++;
@@ -690,7 +697,7 @@ const TutoringPage = {
       if (l.status === 'Проведен' && !l.paid) {
         if (studentFilter === 'all' || l.student_id === studentFilter) {
           const st = this.students.find(s => s.id === l.student_id);
-          allTimeUnpaidAmount += st ? (Number(st.price) || 0) : 0;
+          allTimeUnpaidAmount += this.getLessonPrice(l, st);
           allTimeUnpaidCount++;
         }
       }
@@ -756,7 +763,7 @@ const TutoringPage = {
 
     listContainer.innerHTML = filtered.map(ls => {
       const st = this.students.find(s => s.id === ls.student_id);
-      const price = st ? (Number(st.price) || 0) : 0;
+      const price = this.getLessonPrice(ls, st);
       const stName = st ? st.name : 'Ученик';
       const lessonDate = new Date(ls.date);
       const dateFormatted = lessonDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) + 
@@ -802,7 +809,7 @@ const TutoringPage = {
     const ls = this.lessons.find(l => l.id === lessonId);
     if (!ls) return;
     const st = this.students.find(s => s.id === ls.student_id);
-    const price = st ? (Number(st.price) || 0) : 0;
+    const price = this.getLessonPrice(ls, st);
     const stName = st ? st.name : 'Ученик';
 
     if (!markAsPaid) {
@@ -1286,6 +1293,17 @@ const TutoringPage = {
     };
 
     try {
+      // Если изменилась ставка ученика (например, с 30 на 40 BYN), фиксируем старую цену на уже проведённых неоплаченных уроках,
+      // чтобы прошлые долги не пересчитались задним числом по новому тарифу.
+      if (id && freshSt && Number(freshSt.price) > 0 && Number(freshSt.price) !== data.price) {
+        const oldPrice = Number(freshSt.price);
+        const pastUnpaid = (this.lessons || []).filter(l => l.student_id === id && l.status === 'Проведен' && !l.paid && !(l.homework || '').includes('[ЦЕНА_УРОКА:'));
+        for (const ul of pastUnpaid) {
+          const taggedHw = `${ul.homework || ''} [ЦЕНА_УРОКА:${oldPrice}]`.trim();
+          await DB.updateLesson(ul.id, { homework: taggedHw }).catch(() => {});
+          ul.homework = taggedHw;
+        }
+      }
       if (id) await DB.updateStudent(id, data);
       else await DB.createStudent(data);
       document.getElementById('student-modal').classList.add('hidden');
@@ -2103,13 +2121,13 @@ const TutoringPage = {
   },
 
   async payAllDebts(studentId, unpaidCount, pricePerLesson, studentName) {
-    const total = unpaidCount * pricePerLesson;
-    if (!confirm(`Отметить все неоплаченные проведенные уроки (${this.pluralizeLessons(unpaidCount)}) для ${studentName} как оплаченные?\nОбщая сумма: ${total} BYN`)) {
-      return;
-    }
-
     const unpaidConductedLessons = this.lessons.filter(l => l.student_id === studentId && l.status === 'Проведен' && !l.paid);
     if (unpaidConductedLessons.length === 0) return;
+    const st = this.students.find(s => s.id === studentId);
+    const total = unpaidConductedLessons.reduce((acc, l) => acc + this.getLessonPrice(l, st), 0);
+    if (!confirm(`Отметить все неоплаченные проведенные уроки (${this.pluralizeLessons(unpaidConductedLessons.length)}) для ${studentName} как оплаченные?\nОбщая сумма: ${total} BYN`)) {
+      return;
+    }
 
     try {
       // Update each lesson to paid = true
@@ -2229,7 +2247,7 @@ const TutoringPage = {
   extractPreservedBotTags(rawHw) {
     if (!rawHw) return { prefixTags: [], suffixBlocks: [] };
     const prefixTags = [];
-    const singleRegex = /\[(ДЗ_ПРОВЕРЕНО[A-ZА-Я0-9_]*|ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ФАЙЛ[A-ZА-Я0-9_]*:[^\]]+|ПРОГРЕСС[A-ZА-Я0-9_]*:[^\]]+|НАПОМИНАНИЕ_ДЗ_ДАТА:[^\]]+)\]/gi;
+    const singleRegex = /\[(ДЗ_ПРОВЕРЕНО[A-ZА-Я0-9_]*|ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ФАЙЛ[A-ZА-Я0-9_]*:[^\]]+|ПРОГРЕСС[A-ZА-Я0-9_]*:[^\]]+|НАПОМИНАНИЕ_ДЗ_ДАТА:[^\]]+|ЦЕНА_УРОКА:[^\]]+)\]/gi;
     let m;
     while ((m = singleRegex.exec(rawHw)) !== null) {
       if (!prefixTags.includes(m[0])) prefixTags.push(m[0]);
@@ -2956,7 +2974,7 @@ const TutoringPage = {
     const ls = this.lessons.find(l => l.id === lessonId);
     if (!ls) return;
     const st = this.students.find(s => s.id === ls.student_id);
-    const price = st ? (Number(st.price) || 0) : 0;
+    const price = this.getLessonPrice(ls, st);
     const stName = st ? st.name : 'Ученик';
     try {
       await DB.updateLesson(lessonId, { paid: true });
