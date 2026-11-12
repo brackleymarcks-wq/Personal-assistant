@@ -2218,6 +2218,52 @@ async function broadcastInnovationsToStudents(targetStudent = null) {
   return sentTo;
 }
 
+async function buildParentPaymentStatusMessage(st) {
+  if (!st) return { text: 'Ученик не найден.', unpaidCount: 0, totalAmount: 0 };
+  const pricePerLesson = Number(st.price) || 0;
+  const { data: lessons } = await db.from('lessons')
+    .select('id, date, topic, status, paid')
+    .eq('student_id', st.id)
+    .eq('status', 'Проведен')
+    .order('date', { ascending: true });
+
+  const conducted = lessons || [];
+  const unpaid = conducted.filter(l => !l.paid);
+  const totalAmount = unpaid.length * pricePerLesson;
+
+  if (unpaid.length === 0) {
+    return {
+      unpaidCount: 0,
+      totalAmount: 0,
+      text:
+        `💳 *Статус оплаты (${st.name}):*\n\n` +
+        `✅ *Задолженности нет!* Все проведённые занятия (${conducted.length} шт.) полностью оплачены. 🌟\n` +
+        (pricePerLesson > 0 ? `💰 Стоимость 1 занятия: *${pricePerLesson} BYN* (бел. руб.).` : '')
+    };
+  }
+
+  const lines = unpaid.map((l, idx) => {
+    const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const topicPart = l.topic ? ` — _${l.topic}_` : '';
+    const pricePart = pricePerLesson > 0 ? ` (*${pricePerLesson} BYN*)` : '';
+    return `  ${idx + 1}. 📅 *${dStr}*${topicPart}${pricePart}`;
+  });
+
+  let text = `💳 *Расчёт по оплате (${st.name}):*\n\n`;
+  text += `📌 *Неоплаченных проведённых уроков:* *${unpaid.length}*\n`;
+  if (pricePerLesson > 0) {
+    text += `💰 *Стоимость 1 урока:* ${pricePerLesson} BYN\n`;
+  }
+  text += `\n🗓 *Даты неоплаченных занятий:*\n${lines.join('\n')}\n\n`;
+  text += `━━━━━━━━━━━━━━\n`;
+  text += pricePerLesson > 0
+    ? `💵 *Итого к оплате:* *${totalAmount} BYN* (бел. руб.)\n\n`
+    : `⚠️ _Стоимость занятия уточните у преподавателя Игоря._\n\n`;
+  text += `_Если вы уже перевели оплату, просто напишите сюда — Игорь отметит в системе!_ 😊`;
+
+  return { unpaidCount: unpaid.length, totalAmount, text };
+}
+
 async function tryAutoBindParentByUsername(chatId, fromUser) {
   const uname = (fromUser?.username || '').toLowerCase().replace(/^@/, '').trim();
   const fname = `${fromUser?.first_name || ''} ${fromUser?.last_name || ''}`.toLowerCase();
@@ -2290,6 +2336,52 @@ async function broadcastInnovationsToParents(targetStudent = null) {
     }
   }
   return sentTo;
+}
+
+async function buildParentPaymentStatusMessage(st) {
+  if (!st) return { text: 'Ученик не найден.', unpaidCount: 0, totalAmount: 0 };
+  const pricePerLesson = Number(st.price) || 0;
+  const { data: lessons } = await db.from('lessons')
+    .select('id, date, topic, status, paid')
+    .eq('student_id', st.id)
+    .eq('status', 'Проведен')
+    .order('date', { ascending: true });
+
+  const conducted = lessons || [];
+  const unpaid = conducted.filter(l => !l.paid);
+  const totalAmount = unpaid.length * pricePerLesson;
+
+  if (unpaid.length === 0) {
+    return {
+      unpaidCount: 0,
+      totalAmount: 0,
+      text:
+        `💳 *Статус оплаты (${st.name}):*\n\n` +
+        `✅ *Задолженности нет!* Все проведённые занятия (${conducted.length} шт.) полностью оплачены. 🌟\n` +
+        (pricePerLesson > 0 ? `💰 Стоимость 1 занятия: *${pricePerLesson} BYN* (бел. руб.).` : '')
+    };
+  }
+
+  const lines = unpaid.map((l, idx) => {
+    const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const topicPart = l.topic ? ` — _${l.topic}_` : '';
+    const pricePart = pricePerLesson > 0 ? ` (*${pricePerLesson} BYN*)` : '';
+    return `  ${idx + 1}. 📅 *${dStr}*${topicPart}${pricePart}`;
+  });
+
+  let text = `💳 *Расчёт по оплате (${st.name}):*\n\n`;
+  text += `📌 *Неоплаченных проведённых уроков:* *${unpaid.length}*\n`;
+  if (pricePerLesson > 0) {
+    text += `💰 *Стоимость 1 урока:* ${pricePerLesson} BYN\n`;
+  }
+  text += `\n🗓 *Даты неоплаченных занятий:*\n${lines.join('\n')}\n\n`;
+  text += `━━━━━━━━━━━━━━\n`;
+  text += pricePerLesson > 0
+    ? `💵 *Итого к оплате:* *${totalAmount} BYN* (бел. руб.)\n\n`
+    : `⚠️ _Стоимость занятия уточните у преподавателя Игоря._\n\n`;
+  text += `_Если вы уже перевели оплату, просто напишите сюда — Игорь отметит в системе!_ 😊`;
+
+  return { unpaidCount: unpaid.length, totalAmount, text };
 }
 
 async function tryAutoBindParentByUsername(chatId, fromUser) {
@@ -2552,6 +2644,52 @@ async function sendWeekendEbbinghausBonus(targetStudentId = null) {
   return sentTo;
 }
 
+async function buildParentPaymentStatusMessage(st) {
+  if (!st) return { text: 'Ученик не найден.', unpaidCount: 0, totalAmount: 0 };
+  const pricePerLesson = Number(st.price) || 0;
+  const { data: lessons } = await db.from('lessons')
+    .select('id, date, topic, status, paid')
+    .eq('student_id', st.id)
+    .eq('status', 'Проведен')
+    .order('date', { ascending: true });
+
+  const conducted = lessons || [];
+  const unpaid = conducted.filter(l => !l.paid);
+  const totalAmount = unpaid.length * pricePerLesson;
+
+  if (unpaid.length === 0) {
+    return {
+      unpaidCount: 0,
+      totalAmount: 0,
+      text:
+        `💳 *Статус оплаты (${st.name}):*\n\n` +
+        `✅ *Задолженности нет!* Все проведённые занятия (${conducted.length} шт.) полностью оплачены. 🌟\n` +
+        (pricePerLesson > 0 ? `💰 Стоимость 1 занятия: *${pricePerLesson} BYN* (бел. руб.).` : '')
+    };
+  }
+
+  const lines = unpaid.map((l, idx) => {
+    const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const topicPart = l.topic ? ` — _${l.topic}_` : '';
+    const pricePart = pricePerLesson > 0 ? ` (*${pricePerLesson} BYN*)` : '';
+    return `  ${idx + 1}. 📅 *${dStr}*${topicPart}${pricePart}`;
+  });
+
+  let text = `💳 *Расчёт по оплате (${st.name}):*\n\n`;
+  text += `📌 *Неоплаченных проведённых уроков:* *${unpaid.length}*\n`;
+  if (pricePerLesson > 0) {
+    text += `💰 *Стоимость 1 урока:* ${pricePerLesson} BYN\n`;
+  }
+  text += `\n🗓 *Даты неоплаченных занятий:*\n${lines.join('\n')}\n\n`;
+  text += `━━━━━━━━━━━━━━\n`;
+  text += pricePerLesson > 0
+    ? `💵 *Итого к оплате:* *${totalAmount} BYN* (бел. руб.)\n\n`
+    : `⚠️ _Стоимость занятия уточните у преподавателя Игоря._\n\n`;
+  text += `_Если вы уже перевели оплату, просто напишите сюда — Игорь отметит в системе!_ 😊`;
+
+  return { unpaidCount: unpaid.length, totalAmount, text };
+}
+
 async function tryAutoBindParentByUsername(chatId, fromUser) {
   const uname = (fromUser?.username || '').toLowerCase().replace(/^@/, '').trim();
   const fname = `${fromUser?.first_name || ''} ${fromUser?.last_name || ''}`.toLowerCase();
@@ -2624,6 +2762,52 @@ async function broadcastInnovationsToParents(targetStudent = null) {
     }
   }
   return sentTo;
+}
+
+async function buildParentPaymentStatusMessage(st) {
+  if (!st) return { text: 'Ученик не найден.', unpaidCount: 0, totalAmount: 0 };
+  const pricePerLesson = Number(st.price) || 0;
+  const { data: lessons } = await db.from('lessons')
+    .select('id, date, topic, status, paid')
+    .eq('student_id', st.id)
+    .eq('status', 'Проведен')
+    .order('date', { ascending: true });
+
+  const conducted = lessons || [];
+  const unpaid = conducted.filter(l => !l.paid);
+  const totalAmount = unpaid.length * pricePerLesson;
+
+  if (unpaid.length === 0) {
+    return {
+      unpaidCount: 0,
+      totalAmount: 0,
+      text:
+        `💳 *Статус оплаты (${st.name}):*\n\n` +
+        `✅ *Задолженности нет!* Все проведённые занятия (${conducted.length} шт.) полностью оплачены. 🌟\n` +
+        (pricePerLesson > 0 ? `💰 Стоимость 1 занятия: *${pricePerLesson} BYN* (бел. руб.).` : '')
+    };
+  }
+
+  const lines = unpaid.map((l, idx) => {
+    const dStr = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const topicPart = l.topic ? ` — _${l.topic}_` : '';
+    const pricePart = pricePerLesson > 0 ? ` (*${pricePerLesson} BYN*)` : '';
+    return `  ${idx + 1}. 📅 *${dStr}*${topicPart}${pricePart}`;
+  });
+
+  let text = `💳 *Расчёт по оплате (${st.name}):*\n\n`;
+  text += `📌 *Неоплаченных проведённых уроков:* *${unpaid.length}*\n`;
+  if (pricePerLesson > 0) {
+    text += `💰 *Стоимость 1 урока:* ${pricePerLesson} BYN\n`;
+  }
+  text += `\n🗓 *Даты неоплаченных занятий:*\n${lines.join('\n')}\n\n`;
+  text += `━━━━━━━━━━━━━━\n`;
+  text += pricePerLesson > 0
+    ? `💵 *Итого к оплате:* *${totalAmount} BYN* (бел. руб.)\n\n`
+    : `⚠️ _Стоимость занятия уточните у преподавателя Игоря._\n\n`;
+  text += `_Если вы уже перевели оплату, просто напишите сюда — Игорь отметит в системе!_ 😊`;
+
+  return { unpaidCount: unpaid.length, totalAmount, text };
 }
 
 async function tryAutoBindParentByUsername(chatId, fromUser) {
@@ -5061,6 +5245,22 @@ bot.on('photo', async (msg) => {
         } catch (_) {}
       }
 
+      const isPaymentQuery = /(?:сколько\s+(?:я\s+)?долж|к\s+оплат|неоплачен|не\s+оплачен|оплат[аыуе]|долг|сколько\s+за\s+урок|стоимость\s+урок|баланс|расч[её]т)/i.test(parentInput || '');
+      const parentKb = {
+        inline_keyboard: [
+          [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `parent_milestone_card:${pSt.id}` }],
+          [{ text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }, { text: '💳 Оплата и баланс', callback_data: `parent_payment_status:${pSt.id}` }]
+        ]
+      };
+
+      if (isPaymentQuery) {
+        const payInfo = await buildParentPaymentStatusMessage(pSt);
+        await sendCleanMessage(chatId, payInfo.text, { reply_markup: parentKb });
+        await bot.sendMessage(ADMIN_CHAT_ID, `💳 *Запрос по оплате от родителя ученика ${pSt.name}:*\n💬 «${parentInput}»\n\n🤖 *Бот выдал точный расчёт:*\nНеоплаченных уроков: *${payInfo.unpaidCount}* | Итого: *${payInfo.totalAmount} BYN*`, { parse_mode: 'Markdown' }).catch(() => {});
+        await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+        return;
+      }
+
       let smartParentReply = '';
       if (parentInput && parentInput.trim()) {
         try {
@@ -5068,6 +5268,7 @@ bot.on('photo', async (msg) => {
           const lastLsP = await getLatestLessonWithMaterials(pSt.id);
           const { data: nextLsP } = await db.from('lessons').select('date, topic').eq('student_id', pSt.id).eq('status', 'Запланирован').order('date', { ascending: true }).limit(1).maybeSingle();
           const hwSumP = getHwCompletionSummary(pSt, lastLsP);
+          const payInfoP = await buildParentPaymentStatusMessage(pSt);
           const nextDateP = nextLsP ? new Date(nextLsP.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'по расписанию (уточнит Игорь)';
           const pPrompt = `Ты — умный, вежливый и проактивный ассистент преподавателя английского языка Игоря.
 Тебе написал родитель ученика: ${pSt.name} (${pSt.grade || ''}).
@@ -5076,6 +5277,7 @@ bot.on('photo', async (msg) => {
 - Ближайший запланированный урок: ${nextDateP}
 - Последняя тема урока: "${lastLsP?.topic || 'Практика английского'}"
 - Статус текущего ДЗ: ${hwSumP.pct}% (${hwSumP.canSubmit ? 'сдано/готово ✅' : 'в процессе 🔒'})
+- Оплата: неоплаченных проведённых уроков ${payInfoP.unpaidCount}, сумма к оплате ${payInfoP.totalAmount} BYN (стоимость 1 урока: ${Number(pSt.price) || 0} BYN)
 - Серия активности (Streak): ${pDoss.streak || 0} дн. | Щиты заморозки: ${pDoss.shields ?? 1}/3
 - Типичные ошибки / над чем работаем: ${pDoss.errors || 'грамматика и разговорная практика'}
 
@@ -5084,20 +5286,14 @@ bot.on('photo', async (msg) => {
 ТВОЯ ЗАДАЧА:
 Ответь родителю тепло, на "Вы", по делу и с заботой (до 700 символов, без звёздочек **; ВАЖНО: ты общаешься с РОДИТЕЛЕМ, поэтому НИКОГДА не обращайся к родителю по имени ребёнка — начинай с «Здравствуйте!» без имени):
 - Если спрашивают про ДЗ, тему урока, расписание, успехи или как помочь ребёнку дома — дай точный, полезный ответ и конкретный совет!
-- Если вопрос требует личного решения преподавателя (перенос урока, оплата, индивидуальная просьба) — ответь вежливо, что уже передал информацию Игорю и он скоро ответит лично.
-- Всегда в конце добавь 1 короткое полезное предложение или подсказку (например, предложить посмотреть свежий отчёт или текущее ДЗ по кнопкам ниже).`;
+- Если вопрос требует личного решения преподавателя (перенос урока, индивидуальная просьба) — ответь вежливо, что уже передал информацию Игорю и он скоро ответит лично.
+- Всегда в конце добавь 1 короткое полезное предложение или подсказку (например, предложить посмотреть свежий отчёт или баланс по кнопкам ниже).`;
           const pRes = await executeFunctionCall('generate_lesson_plan', { prompt: pPrompt });
           if (pRes?.generated_plan) smartParentReply = pRes.generated_plan;
         } catch (_) {}
       }
 
       const finalParentMsg = smartParentReply || `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику ${pSt.name}).`;
-      const parentKb = {
-        inline_keyboard: [
-          [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `parent_milestone_card:${pSt.id}` }],
-          [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }]
-        ]
-      };
       await sendCleanMessage(chatId, finalParentMsg, { reply_markup: parentKb });
       await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 «${parentInput || '[Медиа/Голосовое]'}»\n\n🤖 *Как бот ответил родителю:*\n${finalParentMsg}`, { parse_mode: 'Markdown' }).catch(() => {});
       await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
@@ -5468,6 +5664,23 @@ bot.on('callback_query', async (query) => {
       if (cards.length > 0) {
         await sendCardsToChat(chatId, cards, `🖼 Карточка письменного ДЗ в тетрадь (${st.name})`);
       }
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('parent_payment_status:')) {
+    const studentId = data.split(':')[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      await bot.answerCallbackQuery(query.id, { text: '💳 Считаю баланс по урокам...' });
+      const payInfo = await buildParentPaymentStatusMessage(st);
+      await sendCleanMessage(chatId, payInfo.text, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📊 Отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }, { text: '📚 Текущее ДЗ', callback_data: `parent_view_hw:${st.id}` }]
+          ]
+        }
+      });
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
@@ -7757,6 +7970,22 @@ bot.on('message', async (msg) => {
         } catch (_) {}
       }
 
+      const isPaymentQuery = /(?:сколько\s+(?:я\s+)?долж|к\s+оплат|неоплачен|не\s+оплачен|оплат[аыуе]|долг|сколько\s+за\s+урок|стоимость\s+урок|баланс|расч[её]т)/i.test(parentInput || '');
+      const parentKb = {
+        inline_keyboard: [
+          [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `parent_milestone_card:${pSt.id}` }],
+          [{ text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }, { text: '💳 Оплата и баланс', callback_data: `parent_payment_status:${pSt.id}` }]
+        ]
+      };
+
+      if (isPaymentQuery) {
+        const payInfo = await buildParentPaymentStatusMessage(pSt);
+        await sendCleanMessage(chatId, payInfo.text, { reply_markup: parentKb });
+        await bot.sendMessage(ADMIN_CHAT_ID, `💳 *Запрос по оплате от родителя ученика ${pSt.name}:*\n💬 «${parentInput}»\n\n🤖 *Бот выдал точный расчёт:*\nНеоплаченных уроков: *${payInfo.unpaidCount}* | Итого: *${payInfo.totalAmount} BYN*`, { parse_mode: 'Markdown' }).catch(() => {});
+        await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
+        return;
+      }
+
       let smartParentReply = '';
       if (parentInput && parentInput.trim()) {
         try {
@@ -7764,6 +7993,7 @@ bot.on('message', async (msg) => {
           const lastLsP = await getLatestLessonWithMaterials(pSt.id);
           const { data: nextLsP } = await db.from('lessons').select('date, topic').eq('student_id', pSt.id).eq('status', 'Запланирован').order('date', { ascending: true }).limit(1).maybeSingle();
           const hwSumP = getHwCompletionSummary(pSt, lastLsP);
+          const payInfoP = await buildParentPaymentStatusMessage(pSt);
           const nextDateP = nextLsP ? new Date(nextLsP.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'по расписанию (уточнит Игорь)';
           const pPrompt = `Ты — умный, вежливый и проактивный ассистент преподавателя английского языка Игоря.
 Тебе написал родитель ученика: ${pSt.name} (${pSt.grade || ''}).
@@ -7772,6 +8002,7 @@ bot.on('message', async (msg) => {
 - Ближайший запланированный урок: ${nextDateP}
 - Последняя тема урока: "${lastLsP?.topic || 'Практика английского'}"
 - Статус текущего ДЗ: ${hwSumP.pct}% (${hwSumP.canSubmit ? 'сдано/готово ✅' : 'в процессе 🔒'})
+- Оплата: неоплаченных проведённых уроков ${payInfoP.unpaidCount}, сумма к оплате ${payInfoP.totalAmount} BYN (стоимость 1 урока: ${Number(pSt.price) || 0} BYN)
 - Серия активности (Streak): ${pDoss.streak || 0} дн. | Щиты заморозки: ${pDoss.shields ?? 1}/3
 - Типичные ошибки / над чем работаем: ${pDoss.errors || 'грамматика и разговорная практика'}
 
@@ -7780,20 +8011,14 @@ bot.on('message', async (msg) => {
 ТВОЯ ЗАДАЧА:
 Ответь родителю тепло, на "Вы", по делу и с заботой (до 700 символов, без звёздочек **; ВАЖНО: ты общаешься с РОДИТЕЛЕМ, поэтому НИКОГДА не обращайся к родителю по имени ребёнка — начинай с «Здравствуйте!» без имени):
 - Если спрашивают про ДЗ, тему урока, расписание, успехи или как помочь ребёнку дома — дай точный, полезный ответ и конкретный совет!
-- Если вопрос требует личного решения преподавателя (перенос урока, оплата, индивидуальная просьба) — ответь вежливо, что уже передал информацию Игорю и он скоро ответит лично.
-- Всегда в конце добавь 1 короткое полезное предложение или подсказку (например, предложить посмотреть свежий отчёт или текущее ДЗ по кнопкам ниже).`;
+- Если вопрос требует личного решения преподавателя (перенос урока, индивидуальная просьба) — ответь вежливо, что уже передал информацию Игорю и он скоро ответит лично.
+- Всегда в конце добавь 1 короткое полезное предложение или подсказку (например, предложить посмотреть свежий отчёт или баланс по кнопкам ниже).`;
           const pRes = await executeFunctionCall('generate_lesson_plan', { prompt: pPrompt });
           if (pRes?.generated_plan) smartParentReply = pRes.generated_plan;
         } catch (_) {}
       }
 
       const finalParentMsg = smartParentReply || `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику ${pSt.name}).`;
-      const parentKb = {
-        inline_keyboard: [
-          [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `parent_milestone_card:${pSt.id}` }],
-          [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }]
-        ]
-      };
       await sendCleanMessage(chatId, finalParentMsg, { reply_markup: parentKb });
       await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 «${parentInput || '[Медиа/Голосовое]'}»\n\n🤖 *Как бот ответил родителю:*\n${finalParentMsg}`, { parse_mode: 'Markdown' }).catch(() => {});
       await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
