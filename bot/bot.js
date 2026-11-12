@@ -2218,6 +2218,49 @@ async function broadcastInnovationsToStudents(targetStudent = null) {
   return sentTo;
 }
 
+async function tryAutoBindParentByUsername(chatId, fromUser) {
+  const uname = (fromUser?.username || '').toLowerCase().replace(/^@/, '').trim();
+  const fname = `${fromUser?.first_name || ''} ${fromUser?.last_name || ''}`.toLowerCase();
+  const { data: allStudents } = await db.from('students').select('*');
+  let matched = null;
+
+  for (const st of (allStudents || [])) {
+    const doss = parseStudentDossierBot(st);
+    const expectedUname = (doss.parentTgUser || '').toLowerCase().replace(/^@/, '').trim();
+    if (uname && expectedUname && uname === expectedUname) {
+      matched = st;
+      break;
+    }
+    if (!doss.parentTgId && (uname.includes('kuroch') || fname.includes('курочк')) && st.name.toLowerCase().includes('курочкин')) {
+      matched = st;
+      break;
+    }
+    if (!doss.parentTgId && (uname.includes('korshuk') || fname.includes('коршук')) && st.name.toLowerCase().includes('коршук')) {
+      matched = st;
+      break;
+    }
+  }
+  if (!matched) return null;
+
+  const doss = parseStudentDossierBot(matched);
+  doss.parentTgId = String(chatId);
+  doss.parentTgUser = fromUser?.username ? '@' + fromUser.username : (fromUser?.first_name || doss.parentTgUser || 'Родитель');
+  const newSched = serializeStudentDossierBot(doss);
+  await db.from('students').update({ schedule: newSched }).eq('id', matched.id);
+  matched.schedule = newSched;
+
+  const pMsg = buildParentInnovationsMessage(matched);
+  const pKb = {
+    inline_keyboard: [
+      [{ text: '🏆 Паспорт прогресса (PNG + отчёт)', callback_data: `parent_milestone_card:${matched.id}` }],
+      [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${matched.id}` }, { text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${matched.id}` }]
+    ]
+  };
+  await sendCleanMessage(chatId, pMsg, { reply_markup: pKb });
+  await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Родитель ученика ${matched.name} (${doss.parentTgUser}) подключился к боту!*\nTelegram ID привязан автоматически, а приветствие с принципом ДЗ и нововведениями уже доставлено! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+  return matched;
+}
+
 async function broadcastInnovationsToParents(targetStudent = null) {
   const students = targetStudent
     ? [targetStudent]
@@ -2247,6 +2290,49 @@ async function broadcastInnovationsToParents(targetStudent = null) {
     }
   }
   return sentTo;
+}
+
+async function tryAutoBindParentByUsername(chatId, fromUser) {
+  const uname = (fromUser?.username || '').toLowerCase().replace(/^@/, '').trim();
+  const fname = `${fromUser?.first_name || ''} ${fromUser?.last_name || ''}`.toLowerCase();
+  const { data: allStudents } = await db.from('students').select('*');
+  let matched = null;
+
+  for (const st of (allStudents || [])) {
+    const doss = parseStudentDossierBot(st);
+    const expectedUname = (doss.parentTgUser || '').toLowerCase().replace(/^@/, '').trim();
+    if (uname && expectedUname && uname === expectedUname) {
+      matched = st;
+      break;
+    }
+    if (!doss.parentTgId && (uname.includes('kuroch') || fname.includes('курочк')) && st.name.toLowerCase().includes('курочкин')) {
+      matched = st;
+      break;
+    }
+    if (!doss.parentTgId && (uname.includes('korshuk') || fname.includes('коршук')) && st.name.toLowerCase().includes('коршук')) {
+      matched = st;
+      break;
+    }
+  }
+  if (!matched) return null;
+
+  const doss = parseStudentDossierBot(matched);
+  doss.parentTgId = String(chatId);
+  doss.parentTgUser = fromUser?.username ? '@' + fromUser.username : (fromUser?.first_name || doss.parentTgUser || 'Родитель');
+  const newSched = serializeStudentDossierBot(doss);
+  await db.from('students').update({ schedule: newSched }).eq('id', matched.id);
+  matched.schedule = newSched;
+
+  const pMsg = buildParentInnovationsMessage(matched);
+  const pKb = {
+    inline_keyboard: [
+      [{ text: '🏆 Паспорт прогресса (PNG + отчёт)', callback_data: `parent_milestone_card:${matched.id}` }],
+      [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${matched.id}` }, { text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${matched.id}` }]
+    ]
+  };
+  await sendCleanMessage(chatId, pMsg, { reply_markup: pKb });
+  await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Родитель ученика ${matched.name} (${doss.parentTgUser}) подключился к боту!*\nTelegram ID привязан автоматически, а приветствие с принципом ДЗ и нововведениями уже доставлено! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+  return matched;
 }
 
 async function generateMilestonePassportPng(st, actor = null) {
@@ -2466,6 +2552,49 @@ async function sendWeekendEbbinghausBonus(targetStudentId = null) {
   return sentTo;
 }
 
+async function tryAutoBindParentByUsername(chatId, fromUser) {
+  const uname = (fromUser?.username || '').toLowerCase().replace(/^@/, '').trim();
+  const fname = `${fromUser?.first_name || ''} ${fromUser?.last_name || ''}`.toLowerCase();
+  const { data: allStudents } = await db.from('students').select('*');
+  let matched = null;
+
+  for (const st of (allStudents || [])) {
+    const doss = parseStudentDossierBot(st);
+    const expectedUname = (doss.parentTgUser || '').toLowerCase().replace(/^@/, '').trim();
+    if (uname && expectedUname && uname === expectedUname) {
+      matched = st;
+      break;
+    }
+    if (!doss.parentTgId && (uname.includes('kuroch') || fname.includes('курочк')) && st.name.toLowerCase().includes('курочкин')) {
+      matched = st;
+      break;
+    }
+    if (!doss.parentTgId && (uname.includes('korshuk') || fname.includes('коршук')) && st.name.toLowerCase().includes('коршук')) {
+      matched = st;
+      break;
+    }
+  }
+  if (!matched) return null;
+
+  const doss = parseStudentDossierBot(matched);
+  doss.parentTgId = String(chatId);
+  doss.parentTgUser = fromUser?.username ? '@' + fromUser.username : (fromUser?.first_name || doss.parentTgUser || 'Родитель');
+  const newSched = serializeStudentDossierBot(doss);
+  await db.from('students').update({ schedule: newSched }).eq('id', matched.id);
+  matched.schedule = newSched;
+
+  const pMsg = buildParentInnovationsMessage(matched);
+  const pKb = {
+    inline_keyboard: [
+      [{ text: '🏆 Паспорт прогресса (PNG + отчёт)', callback_data: `parent_milestone_card:${matched.id}` }],
+      [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${matched.id}` }, { text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${matched.id}` }]
+    ]
+  };
+  await sendCleanMessage(chatId, pMsg, { reply_markup: pKb });
+  await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Родитель ученика ${matched.name} (${doss.parentTgUser}) подключился к боту!*\nTelegram ID привязан автоматически, а приветствие с принципом ДЗ и нововведениями уже доставлено! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+  return matched;
+}
+
 async function broadcastInnovationsToParents(targetStudent = null) {
   const students = targetStudent
     ? [targetStudent]
@@ -2495,6 +2624,49 @@ async function broadcastInnovationsToParents(targetStudent = null) {
     }
   }
   return sentTo;
+}
+
+async function tryAutoBindParentByUsername(chatId, fromUser) {
+  const uname = (fromUser?.username || '').toLowerCase().replace(/^@/, '').trim();
+  const fname = `${fromUser?.first_name || ''} ${fromUser?.last_name || ''}`.toLowerCase();
+  const { data: allStudents } = await db.from('students').select('*');
+  let matched = null;
+
+  for (const st of (allStudents || [])) {
+    const doss = parseStudentDossierBot(st);
+    const expectedUname = (doss.parentTgUser || '').toLowerCase().replace(/^@/, '').trim();
+    if (uname && expectedUname && uname === expectedUname) {
+      matched = st;
+      break;
+    }
+    if (!doss.parentTgId && (uname.includes('kuroch') || fname.includes('курочк')) && st.name.toLowerCase().includes('курочкин')) {
+      matched = st;
+      break;
+    }
+    if (!doss.parentTgId && (uname.includes('korshuk') || fname.includes('коршук')) && st.name.toLowerCase().includes('коршук')) {
+      matched = st;
+      break;
+    }
+  }
+  if (!matched) return null;
+
+  const doss = parseStudentDossierBot(matched);
+  doss.parentTgId = String(chatId);
+  doss.parentTgUser = fromUser?.username ? '@' + fromUser.username : (fromUser?.first_name || doss.parentTgUser || 'Родитель');
+  const newSched = serializeStudentDossierBot(doss);
+  await db.from('students').update({ schedule: newSched }).eq('id', matched.id);
+  matched.schedule = newSched;
+
+  const pMsg = buildParentInnovationsMessage(matched);
+  const pKb = {
+    inline_keyboard: [
+      [{ text: '🏆 Паспорт прогресса (PNG + отчёт)', callback_data: `parent_milestone_card:${matched.id}` }],
+      [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${matched.id}` }, { text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${matched.id}` }]
+    ]
+  };
+  await sendCleanMessage(chatId, pMsg, { reply_markup: pKb });
+  await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Родитель ученика ${matched.name} (${doss.parentTgUser}) подключился к боту!*\nTelegram ID привязан автоматически, а приветствие с принципом ДЗ и нововведениями уже доставлено! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+  return matched;
 }
 
 async function handleTeacherVoiceLessonDebrief(chatId, rawText) {
@@ -4698,18 +4870,17 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     const newSched = serializeStudentDossierBot(doss);
     await db.from('students').update({ schedule: newSched }).eq('id', st.id);
 
-    const welcomeParent = `Здравствуйте! 👋\nВы подключились к электронному дневнику успеваемости ученика *${st.name}* по английскому языку (преподаватель — Игорь) 🇬🇧\n\nСюда я буду автоматически присылать:\n• 📝 *Отчёты после каждого проведённого урока* (тема, успехи, домашнее задание)\n• 📊 *Аналитику прогресса и выученных тем*\n\nВы также можете в любой момент нажать кнопки ниже, чтобы посмотреть актуальное домашнее задание или запросить свежий отчёт об успеваемости:`;
-    await bot.sendMessage(incomingChatId, welcomeParent, {
-      parse_mode: 'Markdown',
+    const welcomeParent = buildParentInnovationsMessage(st);
+    await sendCleanMessage(incomingChatId, welcomeParent, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }],
-          [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
+          [{ text: '🏆 Паспорт прогресса (PNG + отчёт)', callback_data: `parent_milestone_card:${st.id}` }],
+          [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }, { text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
         ]
       }
-    }).catch(() => bot.sendMessage(incomingChatId, welcomeParent));
+    });
 
-    await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Родитель подключился к боту!*\nРодитель ученика *${st.name}* (${doss.parentTgUser || 'ID: ' + incomingChatId}) нажал Start.\nТеперь отчёты после проведённых уроков будут уходить родителю автоматически! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+    await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Родитель подключился к боту!*\nРодитель ученика *${st.name}* (${doss.parentTgUser || 'ID: ' + incomingChatId}) нажал Start.\nЕму сразу отправлена инструкция по ДЗ и нововведения, а отчёты после уроков будут уходить автоматически! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
     return;
   }
 
@@ -4934,24 +5105,8 @@ bot.on('photo', async (msg) => {
     }
     const found = await findStudentByTgChatId(chatId);
     if (!found) {
-      // Auto-match for Kurochkina's mom if she wrote without referral
-      const rawUname = (msg.from?.username || '').toLowerCase();
-      const rawFname = `${msg.from?.first_name || ''} ${msg.from?.last_name || ''}`.toLowerCase();
-      if (rawUname.includes('kuroch') || rawFname.includes('курочк')) {
-        const { data: stKuroch } = await db.from('students').select('*').ilike('name', '%Курочкин%').maybeSingle();
-        if (stKuroch) {
-          const doss = parseStudentDossierBot(stKuroch);
-          doss.parentTgId = String(chatId);
-          doss.parentTgUser = msg.from?.username ? '@' + msg.from.username : (msg.from?.first_name || 'Мама Сони');
-          const newSched = serializeStudentDossierBot(doss);
-          await db.from('students').update({ schedule: newSched }).eq('id', stKuroch.id);
-          stKuroch.schedule = newSched;
-
-          await bot.sendMessage(chatId, `Здравствуйте! 👋\nВы успешно подключены к электронному дневнику успеваемости ученика *${stKuroch.name}* по английскому языку! 🇬🇧\n\nСюда я буду присылать отчёты после каждого проведённого урока.`, { parse_mode: 'Markdown' });
-          await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Мама Сони Курочкиной (@${msg.from?.username || 'ilkuroch'}) написала в бот и автоматически привязана!*\nТеперь отчёты после уроков будут уходить ей в Telegram автоматически! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
-          return;
-        }
-      }
+      const autoParent = await tryAutoBindParentByUsername(chatId, msg.from);
+      if (autoParent) return;
       return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
     }
     // Фото от ученика обрабатывается комплексно (с ИИ-проверкой рукописи, 75% прогрессом и копией учителю) в едином обработчике bot.on('message') ниже
@@ -7634,24 +7789,8 @@ bot.on('message', async (msg) => {
     }
     const found = await findStudentByTgChatId(chatId);
     if (!found) {
-      // Auto-match for Kurochkina's mom if she wrote without referral
-      const rawUname = (msg.from?.username || '').toLowerCase();
-      const rawFname = `${msg.from?.first_name || ''} ${msg.from?.last_name || ''}`.toLowerCase();
-      if (rawUname.includes('kuroch') || rawFname.includes('курочк')) {
-        const { data: stKuroch } = await db.from('students').select('*').ilike('name', '%Курочкин%').maybeSingle();
-        if (stKuroch) {
-          const doss = parseStudentDossierBot(stKuroch);
-          doss.parentTgId = String(chatId);
-          doss.parentTgUser = msg.from?.username ? '@' + msg.from.username : (msg.from?.first_name || 'Мама Сони');
-          const newSched = serializeStudentDossierBot(doss);
-          await db.from('students').update({ schedule: newSched }).eq('id', stKuroch.id);
-          stKuroch.schedule = newSched;
-
-          await bot.sendMessage(chatId, `Здравствуйте! 👋\nВы успешно подключены к электронному дневнику успеваемости ученика *${stKuroch.name}* по английскому языку! 🇬🇧\n\nСюда я буду присылать отчёты после каждого проведённого урока.`, { parse_mode: 'Markdown' });
-          await bot.sendMessage(ADMIN_CHAT_ID, `🎉 *Мама Сони Курочкиной (@${msg.from?.username || 'ilkuroch'}) написала в бот и автоматически привязана!*\nТеперь отчёты после уроков будут уходить ей в Telegram автоматически! 🚀`, { parse_mode: 'Markdown' }).catch(() => {});
-          return;
-        }
-      }
+      const autoParent = await tryAutoBindParentByUsername(chatId, msg.from);
+      if (autoParent) return;
       return bot.sendMessage(chatId, '🔒 Доступ только по ссылке-приглашению преподавателя.');
     }
     const st = found.student;
