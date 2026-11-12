@@ -1144,6 +1144,244 @@ function extractAllLessonMaterials(lesson, st) {
   return block.trim();
 }
 
+const academicGrammarCache = new Map();
+
+function identifyAcademicGrammarUrls(queryText = '') {
+  const q = String(queryText || '').toLowerCase();
+  const candidates = [];
+  const add = (sourceName, url) => {
+    if (!candidates.some(c => c.url === url)) candidates.push({ sourceName, url });
+  };
+
+  if (/present\s*perfect\s*continuous|present\s*perfect\s*progressive/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/b1-b2-grammar/present-perfect-simple-and-continuous');
+    add('Perfect English Grammar', 'https://www.perfect-english-grammar.com/present-perfect-continuous-use.html');
+  }
+  if (/present\s*perfect/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/present-perfect');
+    add('Perfect English Grammar', 'https://www.perfect-english-grammar.com/present-perfect-use.html');
+  }
+  if (/past\s*simple|прошедш/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/past-simple');
+    add('Perfect English Grammar', 'https://www.perfect-english-grammar.com/past-simple-use.html');
+  }
+  if (/past\s*continuous|past\s*progressive/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/past-continuous');
+    add('Perfect English Grammar', 'https://www.perfect-english-grammar.com/past-continuous-use.html');
+  }
+  if (/present\s*continuous|present\s*progressive/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/present-continuous');
+    add('Perfect English Grammar', 'https://www.perfect-english-grammar.com/present-continuous-use.html');
+  }
+  if (/present\s*simple/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/present-simple');
+    add('Perfect English Grammar', 'https://www.perfect-english-grammar.com/present-simple-use.html');
+  }
+  if (/future|going\s*to|\bwill\b|будущ/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/talking-about-the-future');
+    add('Perfect English Grammar', 'https://www.perfect-english-grammar.com/will-or-be-going-to.html');
+  }
+  if (/compar|superlat|степен|сравнен/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/comparative-and-superlative-adjectives');
+    add('Perfect English Grammar', 'https://www.perfect-english-grammar.com/comparative-adjectives.html');
+  }
+  if (/possess|pronoun|whose|местоимен|притяжательн|'s\b/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/possessives-nouns');
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/possessives-adjectives');
+  }
+  if (/article|артикл|\bthe\b/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/a1-a2-grammar/articles-a-an-the');
+    add('Perfect English Grammar', 'https://www.perfect-english-grammar.com/a-an-the.html');
+  }
+  if (/modal|must|have\s*to|should|can|could|may|might|модальн/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/modal-verbs');
+  }
+  if (/passive|страдательн|пассив/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/active-and-passive-voice');
+  }
+  if (/conditional|условн/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/b1-b2-grammar/conditionals-zero-first-and-second');
+  }
+  if (/preposition|предлог/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/a1-a2-grammar/prepositions-of-time-at-in-on');
+  }
+  if (/countable|uncountable|much|many|some|any|исчисл/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/a1-a2-grammar/nouns-countable-and-uncountable');
+  }
+  if (/used\s*to/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/b1-b2-grammar/past-habits-used-to-would-and-the-past-simple');
+  }
+  if (/irregular|неправильн|глагол/.test(q)) {
+    add('British Council Grammar', 'https://learnenglish.britishcouncil.org/grammar/english-grammar-reference/irregular-verbs');
+  }
+  if (/shopping|магазин|покупк/.test(q)) {
+    add('British Council LearnEnglish', 'https://learnenglish.britishcouncil.org/skills/speaking/a2-speaking/shopping-clothes');
+  }
+  return candidates;
+}
+
+async function fetchCleanAcademicPage(url, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9,ru;q=0.8'
+      }
+    });
+    if (!resp.ok) return '';
+    const html = await resp.text();
+    const $ = cheerio.load(html);
+    $('script, style, nav, header, footer, aside, noscript, iframe, .cookie, .cookies, .advertisement, .ads, .menu, .breadcrumb, .sidebar, #sidebar, .comments').remove();
+    const mainSelectors = ['main', 'article', '.field--name-body', '.entry-content', '.post-content', '#main-content', '.content', 'body'];
+    let extracted = '';
+    for (const sel of mainSelectors) {
+      const txt = $(sel).first().text();
+      if (txt && txt.trim().length > 250) {
+        extracted = txt;
+        break;
+      }
+    }
+    if (!extracted) extracted = $('body').text() || '';
+    return extracted
+      .replace(/\r/g, '')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s*\n+/g, '\n')
+      .trim()
+      .slice(0, 3200);
+  } catch (e) {
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function searchAcademicGrammarWeb(queryText) {
+  const cleanQ = String(queryText || '').replace(/[^\w\sа-яА-ЯёЁ'-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90);
+  if (!cleanQ) return null;
+  const searchQuery = `(${cleanQ}) english grammar rules site:learnenglish.britishcouncil.org OR site:perfect-english-grammar.com OR site:dictionary.cambridge.org OR site:oxfordlearnersdictionaries.com`;
+  const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4500);
+  try {
+    const resp = await fetch(ddgUrl, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    if (!resp.ok) return null;
+    const html = await resp.text();
+    const $ = cheerio.load(html);
+    const links = [];
+    $('a.result__a, a.result__url').each((_, el) => {
+      let href = $(el).attr('href') || '';
+      if (href.includes('uddg=')) {
+        try {
+          const u = new URL('https://duckduckgo.com' + href);
+          href = u.searchParams.get('uddg') || href;
+        } catch (_) {}
+      }
+      if (href.startsWith('http') && /(britishcouncil\.org|perfect-english-grammar\.com|cambridge\.org|oxfordlearnersdictionaries\.com|bbc\.co\.uk)/i.test(href)) {
+        if (!links.includes(href)) links.push(href);
+      }
+    });
+    for (const url of links.slice(0, 2)) {
+      const excerpt = await fetchCleanAcademicPage(url, 4000);
+      if (excerpt && excerpt.length > 250) {
+        const sourceName = url.includes('britishcouncil')
+          ? 'British Council Grammar'
+          : (url.includes('cambridge')
+              ? 'Cambridge Dictionary Grammar'
+              : (url.includes('oxford') ? "Oxford Learner's Grammar" : 'Perfect English Grammar'));
+        return { sourceName, url, excerpt };
+      }
+    }
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+  return null;
+}
+
+async function fetchAcademicGrammarReference(topicQuery = '', extraContext = '') {
+  const combined = `${topicQuery || ''} ${extraContext || ''}`.trim();
+  const cacheKey = combined.toLowerCase().slice(0, 120);
+  if (!cacheKey) return null;
+
+  const cached = academicGrammarCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts) < 24 * 60 * 60 * 1000) {
+    return cached.data;
+  }
+
+  let result = null;
+  const directCandidates = identifyAcademicGrammarUrls(combined);
+  for (const cand of directCandidates.slice(0, 2)) {
+    const excerpt = await fetchCleanAcademicPage(cand.url, 4000);
+    if (excerpt && excerpt.length > 250) {
+      result = { sourceName: cand.sourceName, url: cand.url, excerpt };
+      break;
+    }
+  }
+
+  if (!result) {
+    result = await searchAcademicGrammarWeb(topicQuery || combined);
+  }
+
+  if (result) {
+    academicGrammarCache.set(cacheKey, { ts: Date.now(), data: result });
+  }
+  return result;
+}
+
+async function generateFullAcademicRuleExplanation(st, actor, lastLs, studentQuestion = '', focusHint = '') {
+  const materialsText = extractAllLessonMaterials(lastLs, st);
+  const topicText = lastLs?.topic || lastLs?._mergedTopic || 'English Grammar';
+  const academicRef = await fetchAcademicGrammarReference(
+    `${topicText} ${focusHint} ${studentQuestion}`,
+    materialsText.slice(0, 600)
+  ).catch(() => null);
+
+  const academicBlock = academicRef
+    ? `\nМИРОВОЙ АКАДЕМИЧЕСКИЙ ИСТОЧНИК (${academicRef.sourceName}, ${academicRef.url}):\n"""\n${academicRef.excerpt.slice(0, 2600)}\n"""\nВАЖНО: В презентации урока правило могло быть дано кратко. Обязательно дополни его ПОЛНЫМИ академическими деталями из этого пособия и мировой грамматики (все случаи употребления, исключения, правила правописания окончаний/форм глагола, разница со смежными темами), но переложи это простым и понятным ребёнку языком!\n`
+    : `\nВАЖНО: В презентации урока правило могло быть дано кратко. Обязательно опирайся на ПОЛНУЮ мировую академическую грамматику (уровня Cambridge / Oxford / British Council): раскрой ВСЕ случаи употребления, исключения, правописание окончаний/форм и отличия от смежных времён/правил, но объясни это простым и понятным ребёнку языком!\n`;
+
+  const prompt = `Ты — добрый, харизматичный и эрудированный детский преподаватель английского языка для ученика ${actor.name} (${st.grade || '4-6 класс'}).
+Тема урока: "${topicText}".
+${focusHint ? `Грамматический фокус: ${focusHint}.\n` : ''}${studentQuestion ? `Конкретный вопрос ученика: "${studentQuestion}".\n` : ''}
+Материалы урока (слайды презентации, конспект и типичные ошибки ученика):
+"""
+${materialsText.slice(0, 3800)}
+"""
+${academicBlock}
+ТВОЯ ЗАДАЧА — рассказать ребёнку правило ПОЛНОСТЬЮ (как в хорошем учебнике, без пробелов!), но живо, структурно и «на пальцах»:
+1. 🧠 ПОЛНАЯ СУТЬ ПРАВИЛА И КОГДА ОНО РАБОТАЕТ:
+   - Объясни простыми словами все основные случаи употребления правила (и когда его НЕЛЬЗЯ путать с другими правилами).
+   - Перечисли слова-маячки (если они есть для этой темы) и где они стоят в предложении.
+2. 📐 ПОЛНАЯ ШПАРГАЛКА-ФОРМУЛА (+ / - / ? / краткие ответы):
+   - Наглядно покажи, как строятся утверждения (+), отрицания (-) и вопросы (?).
+   - Укажи важные правила написания (например: -s/-es, -ed, удвоение согласной, V3, притяжательное 's / s' и т.п., если относится к теме).
+3. ⚠️ ИСКЛЮЧЕНИЯ И ГЛАВНЫЕ ЛОВУШКИ:
+   - На чём чаще всего ловятся ребята (включая ошибки из досье этого ученика) и как легко это запомнить.
+4. 🇬🇧 3 ПРИМЕРА ИЗ НАШЕГО УРОКА (с переводом на русский и коротким пояснением, почему именно так):
+   1) [Английское предложение] — [Перевод] ([почему так])
+   2) [Английское предложение] — [Перевод] ([почему так])
+   3) [Английское предложение] — [Перевод] ([почему так])
+5. 🎯 МИНИ-ПРОВЕРКА НА 10 СЕКУНД: попроси ${actor.name} перевести или исправить 1 короткое предложение прямо в ответном сообщении в чате!
+
+ПРАВИЛА ОФОРМЛЕНИЯ (СТРОГО):
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)!
+- Пиши чистым, структурным текстом с эмодзи и удобными отступами (до 2400 символов, чтобы всё было удобно читать в Telegram)!`;
+
+  const genRes = await executeFunctionCall('generate_lesson_plan', { prompt });
+  let ruleText = genRes.generated_plan || `Повтори материалы урока «${topicText}» и попробуй составить свой пример!`;
+  if (academicRef) {
+    ruleText += `\n\n📚 Источник академической базы: ${academicRef.sourceName}`;
+  }
+  return { ruleText, academicRef };
+}
+
 const studentPracticeProgress = {};
 function getPracticeProgress(studentId, lessonId, actorTagKey = '') {
   const suffix = actorTagKey ? `_${actorTagKey}` : '';
@@ -4908,7 +5146,7 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
 
       const actor = resolveStudentActor(st, chatId, query.from);
-      await bot.answerCallbackQuery(query.id, { text: `📖 Объясняю правило урока для ${actor.name}...` });
+      await bot.answerCallbackQuery(query.id, { text: `📖 Ищу полное правило в академических пособиях для ${actor.name}...` });
       const doss = parseStudentDossierBot(st);
       const lastLs = await getLatestLessonWithMaterials(st.id);
       const materialsText = extractAllLessonMaterials(lastLs, st);
@@ -4919,48 +5157,25 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
       let ruleFocus = lastLs?.topic ? `тема урока "${lastLs.topic}" и грамматические правила со слайдов презентации/сценария` : 'ключевое грамматическое правило прошедшего урока';
       if (topic.includes('present perfect') || textContent.includes('present perfect')) {
         ruleTitle = '📖 Правило урока: Present Perfect (have/has + V3) и слова-маячки';
-        ruleFocus = 'Present Perfect (have/has + 3-я форма глагола V3), разница have vs has, слова-спутники already, just, yet, ever, never';
+        ruleFocus = 'Present Perfect (have/has + 3-я форма глагола V3), разница have vs has, слова-спутники already, just, yet, ever, never, since, for и отличие от Past Simple';
       } else if (topic.includes('past simple') || textContent.includes('past simple')) {
         ruleTitle = '📖 Правило урока: Past Simple (прошедшее время: V2 / -ed и did)';
-        ruleFocus = 'Past Simple: правильные (-ed) и неправильные (2-я форма) глаголы, вопросы и отрицания с did/didn\'t + V1';
+        ruleFocus = 'Past Simple: правильные (-ed и правила правописания) и неправильные (2-я форма) глаголы, глагол was/were, вопросы и отрицания с did/didn\'t + V1';
       } else if (topic.includes('местоимен') || topic.includes('pronoun') || topic.includes('whose') || topic.includes('owner') || topic.includes("'s") || textContent.includes('притяжательн')) {
         ruleTitle = '📖 Чей это предмет? Притяжательные местоимения (my, your, his, her, its, our, their) и \'s';
-        ruleFocus = 'притяжательные местоимения (my, your, his, her, its, our, their), вопрос Whose is it? и притяжательный падеж \'s (например: Tom\'s dog, Emma\'s cat)';
+        ruleFocus = 'притяжательные местоимения (my/mine, your/yours, his, her/hers, its, our/ours, their/theirs), вопрос Whose is it? и притяжательный падеж \'s / s\' (единственное и множественное число)';
       } else if (topic.includes('сравнен') || topic.includes('compar')) {
         ruleTitle = '📖 Степени сравнения прилагательных (Degrees of Comparison)';
-        ruleFocus = 'степени сравнения: fast - faster - the fastest, interesting - more interesting - the most interesting, исключения good - better - the best';
+        ruleFocus = 'степени сравнения: короткие (-er / the -est + правописание), длинные (more / the most), исключения (good-better-best, bad-worse-worst, far)';
       } else if (topic.includes('артикл') || topic.includes('article') || topic.includes(' the ')) {
-        ruleTitle = '📖 Артикли (the vs a/an vs без артикля)';
-        ruleFocus = 'употребление артиклей the и a/an по материалам урока';
+        ruleTitle = '📖 Артикли (the vs a/an vs нулевой артикль)';
+        ruleFocus = 'употребление артиклей a/an, the и нулевого артикля (включая географические названия, первое/повторное упоминание, неисчисляемые существительные)';
       } else if (topic.includes('shopping') || topic.includes('магазин')) {
         ruleTitle = '📖 Правила и разговорные фразы в магазине (Shopping)';
-        ruleFocus = 'фразы и грамматика в магазине: How much is/are...?, Can I have...?, I would like..., try it/them on';
+        ruleFocus = 'фразы и грамматика в магазине: How much is/are...?, Can I have...?, I would like..., try it/them on, one/ones, исчисляемые/неисчисляемые';
       }
 
-      const prompt = `Ты — добрый, харизматичный и супер-понятный детский преподаватель английского для ученика ${actor.name} (${st.grade || '4-6 класс'}).
-Тема урока: "${lastLs?.topic || 'English'}".
-Грамматический фокус: ${ruleFocus}.
-Полные материалы урока (слайды презентации, конспект и типичные ошибки ученика):
-"""
-${materialsText.slice(0, 4800)}
-"""
-
-ТВОЯ ЗАДАЧА — рассказать и объяснить ребёнку правило этого урока «на пальцах», живо и увлекательно:
-1. 🧠 ГЛАВНЫЙ СЕКРЕТ ПРАВИЛА (3-4 предложения простыми детскими словами: зачем нужно это правило и какие слова-маячки сразу его выдают).
-2. 📐 ШПАРГАЛКА-ФОРМУЛА (наглядно покажи схему: как строятся утверждения (+), отрицания (-) и вопросы (?) по материалам презентации урока).
-3. ⚠️ ГЛАВНАЯ ЛОВУШКА (на чём чаще всего ловятся ребята по этой теме и как не ошибиться).
-4. 🇬🇧 3 ПРИМЕРА ИЗ НАШЕГО УРОКА (с переводом на русский и коротким пояснением, почему именно так):
-   1) [Английское предложение] — [Перевод] ([почему так])
-   2) [Английское предложение] — [Перевод] ([почему так])
-   3) [Английское предложение] — [Перевод] ([почему так])
-5. 🎯 МИНИ-ПРОВЕРКА НА 10 СЕКУНД: попроси ${actor.name} перевести или исправить 1 короткое предложение прямо в ответном сообщении в чате!
-
-ПРАВИЛА ОФОРМЛЕНИЯ (СТРОГО):
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)!
-- Пиши чистым, структурным текстом с эмодзи и удобными отступами!`;
-
-      const genRes = await executeFunctionCall('generate_lesson_plan', { prompt });
-      const rawText = genRes.generated_plan || `${ruleTitle}\n\nПовтори материалы урока и составь предложение!`;
+      const { ruleText: rawText, academicRef } = await generateFullAcademicRuleExplanation(st, actor, lastLs, '', ruleFocus);
 
       const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
       prog.completedSteps.grammar = true;
@@ -4993,7 +5208,7 @@ ${materialsText.slice(0, 4800)}
       }
 
       await sendCleanMessage(ADMIN_CHAT_ID,
-        `👀 [Копия для преподавателя — ${actor.displayLabel} изучил(а) «📖 Правило урока» (+10 XP)]:\n` +
+        `👀 [Копия для преподавателя — ${actor.displayLabel} изучил(а) «📖 Правило урока» (+10 XP)${academicRef ? ` • 🌐 ${academicRef.sourceName}` : ''}]:\n` +
         `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% + 📸 фото 🔒'})\n` +
         `${hwStatus.groupBreakdownText ? `👥 В группе:\n${hwStatus.groupBreakdownText}\n` : ''}` +
         `✅ Что уже сделано:\n• ${hwStatus.doneText}\n` +
@@ -5693,32 +5908,34 @@ ${materialsText.slice(0, 3000)}
     }
 
     if (action === 'approve_shw') {
-      await bot.answerCallbackQuery(query.id, { text: '✅ Одобрено! Генерирую разбор правил...' });
+      await bot.answerCallbackQuery(query.id, { text: '✅ Одобрено! Подгружаю академическое правило...' });
       await bot.editMessageReplyMarkup({ inline_keyboard: [[{ text: '✅ Одобрено (ИИ объяснил правила)', callback_data: 'noop' }]] }, { chat_id: chatId, message_id: query.message.message_id }).catch(() => {});
 
+      const shwAcademic = await fetchAcademicGrammarReference(`${req.text || ''} ${req.caption || ''}`).catch(() => null);
       const explainPrompt = `Ты — добрый, понятный и первоклассный преподаватель английского языка для ученика ${req.studentName} (${req.student.grade || '6 класс'}).
 Ученик попросил помочь со ШКОЛЬНЫМ домашним заданием.
 Преподаватель Игорь посмотрел задание и разрешил объяснить.
 ЗАДАНИЕ УЧЕНИКА:
 "${req.text || req.caption || 'Школьное упражнение'}"
-
+${shwAcademic ? `\nАКАДЕМИЧЕСКАЯ СПРАВКА (${shwAcademic.sourceName}):\n"""\n${shwAcademic.excerpt.slice(0, 2000)}\n"""\nОпирайся на это полное правило, объясняя тему ребёнку!\n` : ''}
 ТВОЯ ЗАДАЧА:
-Объясни ученику всё максимально наглядно, просто и поддерживающе:
+Объясни ученику всё максимально наглядно, полно, просто и поддерживающе:
 1. 💡 В чём суть задания и перевод (если есть незнакомые слова).
-2. 📖 Правило простыми словами (на русском): формулы, подсказки-маркеры (почему именно это время/форма/артикль, а не другое).
+2. 📖 Полное правило простыми словами (на русском): все случаи употребления, формулы (+ / - / ?), исключения и подсказки-маркеры (почему именно это время/форма/артикль, а не другое).
 3. ✏️ Пошаговый разбор и готовое решение каждого пункта с кратким объяснением в скобках.
 4. 🎯 Лайфхак или совет, как легко запомнить это правило.
 
-Пиши дружелюбно (обращайся на "ты"), без сложных академических терминов, используй эмодзи для наглядности.
+Пиши дружелюбно (обращайся на "ты"), без заумных терминов, используй эмодзи для наглядности.
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)! Пиши чистый текст без звездочек!`;
 
       const planRes = await executeFunctionCall('generate_lesson_plan', { prompt: explainPrompt });
-      const explanation = planRes.generated_plan || 'Не удалось составить разбор.';
+      let explanation = planRes.generated_plan || 'Не удалось составить разбор.';
+      if (shwAcademic) explanation += `\n\n📚 Источник правила: ${shwAcademic.sourceName}`;
 
       const studentMsg = `🎓 *Игорь одобрил разбор твоего школьного задания!* 🌟\n\n${explanation}\n\n_Если что-то осталось непонятным — напиши мне, разберём подробнее!_ 💪`;
       await sendCleanMessage(req.chatId, studentMsg);
 
-      const adminCopy = `👀 *[Копия ответа ученику ${req.studentName} по школьному ДЗ]:*\n\n${explanation}`;
+      const adminCopy = `👀 *[Копия ответа ученику ${req.studentName} по школьному ДЗ${shwAcademic ? ` • 🌐 ${shwAcademic.sourceName}` : ''}]:*\n\n${explanation}`;
       await sendCleanMessage(ADMIN_CHAT_ID, adminCopy);
       return;
     }
@@ -7041,31 +7258,16 @@ ${vcObj.challengeText}
     // 1б. Быстрый перехват: Ученик просит объяснить правило урока («объясни правило», «расскажи правило», «какое правило»)
     const isAskingForGrammarRule = /(?:объясни|расскажи|напомни|покажи|какое)\s*(?:мне\s*)?(?:правил[оа]|грамматик[уи])|не\s*понял[а]?\s*(?:правил|тему)|правило\s*урока/i.test(lower);
     if (isAskingForGrammarRule && !isVoiceSubmission) {
-      const materialsText = extractAllLessonMaterials(lastLs, st);
-      const rulePrompt = `Ты — добрый, понятный детский преподаватель английского для ${actor.name} (${st.grade || '4-6 класс'}).
-Тема урока: "${lastLs?.topic || 'English'}".
-Материалы урока (презентация и конспект):
-"""
-${materialsText.slice(0, 4800)}
-"""
-Ученик написал: "${studentText}".
-Объясни правило этого урока максимально просто «на пальцах»:
-1. 🧠 Главный секрет правила и слова-маячки.
-2. 📐 Короткая шпаргалка-формула (+ / - / ?).
-3. ⚠️ Главная ловушка (где чаще всего путаются).
-4. 🇬🇧 3 примера из урока с переводом на русский.
-5. 🎯 1 короткий вопрос на проверку.
-Пиши БЕЗ символов звездочек **!`;
-      const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: rulePrompt });
-      const ruleExplanation = genRes.generated_plan || `📖 Давай разберём правило урока «${lastLs?.topic || 'English'}»!`;
+      bot.sendChatAction(chatId, 'typing');
+      const { ruleText: ruleExplanation, academicRef } = await generateFullAcademicRuleExplanation(st, actor, lastLs, studentText, '');
       const rawProg = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
       rawProg.completedSteps.grammar = true;
       const updatedProg = getHwCompletionSummary(st, lastLs, chatId, msg.from);
       if (lastLs) await persistHwProgressPercent(lastLs, updatedProg.pct, actor, st);
-      await sendCleanMessage(chatId, `📖 Правило урока: ${lastLs?.topic || 'English'}\n\n${ruleExplanation}`, {
+      await sendCleanMessage(chatId, `📖 Правило: ${lastLs?.topic || 'English'}\n\n${ruleExplanation}`, {
         reply_markup: buildStudentKeyboard(st, lastLs, chatId)
       });
-      await sendCleanMessage(ADMIN_CHAT_ID, `📖 [Копия для преподавателя]: ${actor.displayLabel} попросил(а) объяснить правило («${studentText}»):\n\n${ruleExplanation}`).catch(() => {});
+      await sendCleanMessage(ADMIN_CHAT_ID, `📖 [Копия для преподавателя${academicRef ? ` • 🌐 ${academicRef.sourceName}` : ''}]: ${actor.displayLabel} попросил(а) объяснить правило («${studentText}»):\n\n${ruleExplanation}`).catch(() => {});
       return;
     }
 
@@ -7101,6 +7303,11 @@ ${materialsText.slice(0, 4800)}
 
     let aiAnalysis = null;
     try {
+      const looksLikeGrammarQ = /\?|почему|зачем|когда|какая\s+разница|отлича|перевод|как\s+сказать|артикл|время|глагол|местоимен|present|past|future|have|has|did|does|yet|already|just|ever|never/i.test(studentText);
+      const routerAcademic = looksLikeGrammarQ
+        ? await fetchAcademicGrammarReference(`${lastLs?.topic || ''} ${studentText}`).catch(() => null)
+        : null;
+
       const routerPrompt = `Ты — умный, добрый и внимательный ИИ-помощник преподавателя английского языка Игоря.
 Тебе написал ученик: ${actor.displayLabel} (${st.grade || 'школьник'}).
 Тема последнего урока: "${lastLs?.topic || 'Английский язык'}".
@@ -7108,6 +7315,7 @@ ${materialsText.slice(0, 4800)}
 "${cleanHw || 'повторить слова и правила урока'}"
 Материалы/сценарий урока:
 "${scenario ? scenario.slice(0, 1200) : 'по программе'}"
+${routerAcademic ? `АКАДЕМИЧЕСКАЯ СПРАВКА ПО ГРАММАТИКЕ (${routerAcademic.sourceName}):\n"${routerAcademic.excerpt.slice(0, 1600)}"\n` : ''}
 Следующий запланированный урок: ${nextLessonInfo}.
 Текущий прогресс выполнения ДЗ учеником: ${currentProg.pct}% (Сделано: ${currentProg.doneList.join(', ') || 'пока ничего'}; Осталось: ${currentProg.todoList.join(', ') || 'всё готово'}).
 
