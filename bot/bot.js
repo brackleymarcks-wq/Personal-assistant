@@ -2218,6 +2218,25 @@ async function broadcastInnovationsToStudents(targetStudent = null) {
   return sentTo;
 }
 
+function isChatAuthorizedForStudent(chatId, st) {
+  if (!st) return false;
+  const cid = String(chatId).trim();
+  if (cid === ADMIN_CHAT_ID) return true;
+  const doss = parseStudentDossierBot(st);
+  const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  const studentIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  return parentIds.includes(cid) || studentIds.includes(cid);
+}
+
+function isChatAuthorizedForParentBilling(chatId, st) {
+  if (!st) return false;
+  const cid = String(chatId).trim();
+  if (cid === ADMIN_CHAT_ID) return true;
+  const doss = parseStudentDossierBot(st);
+  const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  return parentIds.includes(cid);
+}
+
 async function buildParentPaymentStatusMessage(st) {
   if (!st) return { text: 'Ученик не найден.', unpaidCount: 0, totalAmount: 0 };
   const defaultPrice = Number(st.price) || 0;
@@ -2341,6 +2360,25 @@ async function broadcastInnovationsToParents(targetStudent = null) {
     }
   }
   return sentTo;
+}
+
+function isChatAuthorizedForStudent(chatId, st) {
+  if (!st) return false;
+  const cid = String(chatId).trim();
+  if (cid === ADMIN_CHAT_ID) return true;
+  const doss = parseStudentDossierBot(st);
+  const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  const studentIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  return parentIds.includes(cid) || studentIds.includes(cid);
+}
+
+function isChatAuthorizedForParentBilling(chatId, st) {
+  if (!st) return false;
+  const cid = String(chatId).trim();
+  if (cid === ADMIN_CHAT_ID) return true;
+  const doss = parseStudentDossierBot(st);
+  const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  return parentIds.includes(cid);
 }
 
 async function buildParentPaymentStatusMessage(st) {
@@ -2654,6 +2692,25 @@ async function sendWeekendEbbinghausBonus(targetStudentId = null) {
   return sentTo;
 }
 
+function isChatAuthorizedForStudent(chatId, st) {
+  if (!st) return false;
+  const cid = String(chatId).trim();
+  if (cid === ADMIN_CHAT_ID) return true;
+  const doss = parseStudentDossierBot(st);
+  const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  const studentIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  return parentIds.includes(cid) || studentIds.includes(cid);
+}
+
+function isChatAuthorizedForParentBilling(chatId, st) {
+  if (!st) return false;
+  const cid = String(chatId).trim();
+  if (cid === ADMIN_CHAT_ID) return true;
+  const doss = parseStudentDossierBot(st);
+  const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  return parentIds.includes(cid);
+}
+
 async function buildParentPaymentStatusMessage(st) {
   if (!st) return { text: 'Ученик не найден.', unpaidCount: 0, totalAmount: 0 };
   const defaultPrice = Number(st.price) || 0;
@@ -2777,6 +2834,25 @@ async function broadcastInnovationsToParents(targetStudent = null) {
     }
   }
   return sentTo;
+}
+
+function isChatAuthorizedForStudent(chatId, st) {
+  if (!st) return false;
+  const cid = String(chatId).trim();
+  if (cid === ADMIN_CHAT_ID) return true;
+  const doss = parseStudentDossierBot(st);
+  const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  const studentIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  return parentIds.includes(cid) || studentIds.includes(cid);
+}
+
+function isChatAuthorizedForParentBilling(chatId, st) {
+  if (!st) return false;
+  const cid = String(chatId).trim();
+  if (cid === ADMIN_CHAT_ID) return true;
+  const doss = parseStudentDossierBot(st);
+  const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  return parentIds.includes(cid);
 }
 
 async function buildParentPaymentStatusMessage(st) {
@@ -5304,7 +5380,7 @@ bot.on('photo', async (msg) => {
 СООБЩЕНИЕ РОДИТЕЛЯ: "${parentInput}"
 
 ТВОЯ ЗАДАЧА:
-Ответь родителю тепло, на "Вы", по делу и с заботой (до 700 символов, без звёздочек **; ВАЖНО: ты общаешься с РОДИТЕЛЕМ, поэтому НИКОГДА не обращайся к родителю по имени ребёнка — начинай с «Здравствуйте!» без имени):
+Ответь родителю тепло, на "Вы", по делу и с заботой (до 700 символов, без звёздочек **; ВАЖНО: ты общаешься с РОДИТЕЛЕМ, поэтому НИКОГДА не обращайся к родителю по имени ребёнка — начинай с «Здравствуйте!» без имени; КОНФИДЕНЦИАЛЬНОСТЬ: ты знаешь информацию ТОЛЬКО об этом одном ученике и НИКОГДА не обсуждаешь других учеников или их оплаты):
 - Если спрашивают про ДЗ, тему урока, расписание, успехи или как помочь ребёнку дома — дай точный, полезный ответ и конкретный совет!
 - Если вопрос требует личного решения преподавателя (перенос урока, индивидуальная просьба) — ответь вежливо, что уже передал информацию Игорю и он скоро ответит лично.
 - Всегда в конце добавь 1 короткое полезное предложение или подсказку (например, предложить посмотреть свежий отчёт или баланс по кнопкам ниже).`;
@@ -5587,6 +5663,7 @@ bot.on('callback_query', async (query) => {
     try {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       pendingTeacherReplyToStudent.set(String(chatId), {
         studentId: st.id,
         studentName: st.name,
@@ -5640,6 +5717,7 @@ bot.on('callback_query', async (query) => {
     try {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       await bot.answerCallbackQuery(query.id, { text: '📊 Формирую полный отчёт об успеваемости и ДЗ...' });
       const rep = await buildStudentAnalyticsAndProgressReport(st, { forParent: true });
       await sendCleanMessage(chatId, rep.text, {
@@ -5658,6 +5736,7 @@ bot.on('callback_query', async (query) => {
     try {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       const lastLs = await getLatestLessonWithMaterials(st.id);
       await bot.answerCallbackQuery(query.id, { text: '📚 Загружаю данные о ДЗ...' });
       if (!lastLs) return bot.sendMessage(chatId, `По ученику *${st.name}* пока нет записанных уроков.`, { parse_mode: 'Markdown' });
@@ -5692,6 +5771,8 @@ bot.on('callback_query', async (query) => {
     try {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
+      if (!isChatAuthorizedForParentBilling(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к оплатам другого ученика запрещён', show_alert: true });
       await bot.answerCallbackQuery(query.id, { text: '💳 Считаю баланс по урокам...' });
       const payInfo = await buildParentPaymentStatusMessage(st);
       await sendCleanMessage(chatId, payInfo.text, {
@@ -5709,6 +5790,7 @@ bot.on('callback_query', async (query) => {
     try {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       await bot.answerCallbackQuery(query.id, { text: `📊 Загружаю полный отчёт по ${st.name}...` });
       const rep = await buildStudentAnalyticsAndProgressReport(st, { forParent: false });
       await sendCleanMessage(chatId, rep.text, {
@@ -5728,6 +5810,7 @@ bot.on('callback_query', async (query) => {
     try {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       await bot.answerCallbackQuery(query.id, { text: `🔔 Отправляю напоминание ${st.name}...` });
       const res = await nudgeStudentAboutHomework(st, true);
       if (res.sent) {
@@ -5765,6 +5848,7 @@ bot.on('callback_query', async (query) => {
     try {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       const doss = parseStudentDossierBot(st);
       const targetParentId = doss.parentTgId || doss.tgId;
       if (!targetParentId) {
@@ -5792,6 +5876,7 @@ bot.on('callback_query', async (query) => {
       const { data: ls } = await db.from('lessons').select('*, students(*)').eq('id', lessonId).maybeSingle();
       const st = ls?.students;
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       const doss = parseStudentDossierBot(st);
       if (!doss.parentTgId) {
         const botUser = BOT_USERNAME || (await bot.getMe().then(m => m.username).catch(() => ''));
@@ -5823,6 +5908,7 @@ bot.on('callback_query', async (query) => {
       const { data: ls } = await db.from('lessons').select('*, students(*)').eq('id', lessonId).maybeSingle();
       const st = ls?.students;
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       const doss = parseStudentDossierBot(st);
       if (!doss.parentTgId && doss.tgId) {
         // Привязываем общий семейный контакт и как родительский
@@ -6630,6 +6716,7 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
         st = pFound?.student;
       }
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
 
       const actor = resolveStudentActor(st, chatId, query.from);
       await bot.answerCallbackQuery(query.id, { text: '🏆 Рисую PNG-Паспорт прогресса и достижений...' });
@@ -6791,6 +6878,7 @@ ${materialsText.slice(0, 3000)}
     try {
       const { data: st } = await db.from('students').select('*').eq('id', stId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       await bot.answerCallbackQuery(query.id, { text: `📋 Готовлю 5-минутку для ${st.name}...` });
       const doss = parseStudentDossierBot(st);
       const lastLs = await getLatestLessonWithMaterials(st.id);
@@ -6815,6 +6903,7 @@ ${materialsText.slice(0, 3000)}
       if (!ls) return bot.answerCallbackQuery(query.id, { text: 'Урок не найден', show_alert: true });
       const { data: st } = await db.from('students').select('*').eq('id', ls.student_id).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       await bot.answerCallbackQuery(query.id, { text: '🚀 Отправляю в Telegram...' });
       const stRes = await sendHomeworkToStudentBot(st, ls);
       let pNote = '';
@@ -6839,6 +6928,7 @@ ${materialsText.slice(0, 3000)}
     try {
       const { data: st } = await db.from('students').select('*').eq('id', stId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       const res = await nudgeStudentAboutHomework(st, true);
       if (res.sent) {
         await bot.answerCallbackQuery(query.id, { text: `🔔 Напоминание отправлено ${st.name}!` });
@@ -6855,6 +6945,7 @@ ${materialsText.slice(0, 3000)}
     try {
       const { data: st } = await db.from('students').select('*').eq('id', stId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       const doss = parseStudentDossierBot(st);
       if (!doss.parentTgId) {
         return bot.answerCallbackQuery(query.id, { text: 'Родитель ещё не подключён к боту!', show_alert: true });
@@ -7116,6 +7207,7 @@ ${shwAcademic ? `\nАКАДЕМИЧЕСКАЯ СПРАВКА (${shwAcademic.sour
     try {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       const botUser = BOT_USERNAME || (await bot.getMe().then(m => m.username).catch(() => ''));
       const link = `https://t.me/${botUser}?start=st_${st.id}`;
       const doss = parseStudentDossierBot(st);
@@ -7132,6 +7224,7 @@ ${shwAcademic ? `\nАКАДЕМИЧЕСКАЯ СПРАВКА (${shwAcademic.sour
       const { data: ls } = await db.from('lessons').select('*, students(*)').eq('id', lessonId).maybeSingle();
       const st = ls?.students;
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       const doss = parseStudentDossierBot(st);
       if (!doss.tgId) {
         const botUser = BOT_USERNAME || (await bot.getMe().then(m => m.username).catch(() => ''));
@@ -8029,7 +8122,7 @@ bot.on('message', async (msg) => {
 СООБЩЕНИЕ РОДИТЕЛЯ: "${parentInput}"
 
 ТВОЯ ЗАДАЧА:
-Ответь родителю тепло, на "Вы", по делу и с заботой (до 700 символов, без звёздочек **; ВАЖНО: ты общаешься с РОДИТЕЛЕМ, поэтому НИКОГДА не обращайся к родителю по имени ребёнка — начинай с «Здравствуйте!» без имени):
+Ответь родителю тепло, на "Вы", по делу и с заботой (до 700 символов, без звёздочек **; ВАЖНО: ты общаешься с РОДИТЕЛЕМ, поэтому НИКОГДА не обращайся к родителю по имени ребёнка — начинай с «Здравствуйте!» без имени; КОНФИДЕНЦИАЛЬНОСТЬ: ты знаешь информацию ТОЛЬКО об этом одном ученике и НИКОГДА не обсуждаешь других учеников или их оплаты):
 - Если спрашивают про ДЗ, тему урока, расписание, успехи или как помочь ребёнку дома — дай точный, полезный ответ и конкретный совет!
 - Если вопрос требует личного решения преподавателя (перенос урока, индивидуальная просьба) — ответь вежливо, что уже передал информацию Игорю и он скоро ответит лично.
 - Всегда в конце добавь 1 короткое полезное предложение или подсказку (например, предложить посмотреть свежий отчёт или баланс по кнопкам ниже).`;
