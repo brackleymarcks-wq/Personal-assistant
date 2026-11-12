@@ -5662,31 +5662,42 @@ ${materialsText || `Активный словарь: "${doss.vocab || ''}"\nТе
 
       // Parse and track seen words
       const extractedWords = [];
+      const isParentViewer = !!(await findParentByTgChatId(chatId));
       const lines = rawText.split('\n');
       for (const line of lines) {
         const m = line.match(/^\d+\.\s+([A-Za-z\s-]+)(?:\[|$|—)/);
         if (m && m[1]) {
           const w = m[1].trim();
-          if (!prog.seenWords.includes(w)) prog.seenWords.push(w);
+          if (!isParentViewer && !prog.seenWords.includes(w)) prog.seenWords.push(w);
           extractedWords.push(w);
         }
       }
 
-      prog.completedSteps.words = true;
+      if (!isParentViewer) {
+        prog.completedSteps.words = true;
+      }
       const hwStatus = getHwCompletionSummary(st, lastLs, chatId, query.from);
-      await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
+      if (!isParentViewer) {
+        await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
+      }
       const submitBtnLabel = hwStatus.canSubmit
         ? `✅ Я сделал(а) ДЗ! (Готово ${hwStatus.pct}% + 📸 фото)`
         : (!hwStatus.hasNotebookPhoto
             ? `🔒 Сдать ДЗ — пришли 📸 фото тетрадки! (${hwStatus.pct}%)`
             : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`);
 
-      const kb = [
-        [{ text: '📝 Пройти тестик (3 вопроса)', callback_data: `student_poll_quiz:${st.id}` }],
-        [{ text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
-        [{ text: '🔤 Следующие 5 слов урока', callback_data: `student_words:${st.id}` }],
-        [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
-      ];
+      const kb = isParentViewer
+        ? [
+            [{ text: '📝 Посмотреть тестик ребёнка', callback_data: `student_poll_quiz:${st.id}` }],
+            [{ text: '🔤 Следующие 5 слов урока', callback_data: `student_words:${st.id}` }],
+            [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }]
+          ]
+        : [
+            [{ text: '📝 Пройти тестик (3 вопроса)', callback_data: `student_poll_quiz:${st.id}` }],
+            [{ text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${st.id}:0` }],
+            [{ text: '🔤 Следующие 5 слов урока', callback_data: `student_words:${st.id}` }],
+            [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
+          ];
       await sendCleanMessage(chatId, rawText, { reply_markup: { inline_keyboard: kb } });
 
       // Send audio pronunciation via Google TTS
@@ -5696,12 +5707,14 @@ ${materialsText || `Активный словарь: "${doss.vocab || ''}"\nТе
 
       // Full verbatim copy + readiness report to Igor (teacher)
       await sendCleanMessage(ADMIN_CHAT_ID,
-        `👀 [Копия для преподавателя — ${actor.displayLabel} нажал(а) «🔤 Слова урока» (Порция #${prog.wordsBatch})]:\n` +
-        `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% 🔒'})\n` +
-        `${hwStatus.groupBreakdownText ? `👥 В группе:\n${hwStatus.groupBreakdownText}\n` : ''}` +
-        `✅ Что уже сделано:\n• ${hwStatus.doneText}\n` +
-        `⏳ Что ещё осталось:\n• ${hwStatus.leftText}\n\n` +
-        `📩 Полный текст, отправленный ученику:\n${rawText}`
+        (isParentViewer
+          ? `👀 [Родитель ученика ${st.name} посмотрел(а) «🔤 Слова урока» (Порция #${prog.wordsBatch}) — прогресс ДЗ ребёнка не изменён]\n\n`
+          : `👀 [Копия для преподавателя — ${actor.displayLabel} нажал(а) «🔤 Слова урока» (Порция #${prog.wordsBatch})]:\n` +
+            `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% 🔒'})\n` +
+            `${hwStatus.groupBreakdownText ? `👥 В группе:\n${hwStatus.groupBreakdownText}\n` : ''}` +
+            `✅ Что уже сделано:\n• ${hwStatus.doneText}\n` +
+            `⏳ Что ещё осталось:\n• ${hwStatus.leftText}\n\n`) +
+        `📩 Полный текст:\n${rawText}`
       ).catch(() => {});
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
@@ -7133,26 +7146,29 @@ bot.on('poll_answer', async (answer) => {
       lastLs = await getLatestLessonWithMaterials(pollInfo.studentId);
     }
 
+    const isParentPoll = !!(pollInfo.chatId && await findParentByTgChatId(pollInfo.chatId));
     const actor = resolveStudentActor(st, pollInfo.chatId, answer.user);
 
     const prog = getPracticeProgress(pollInfo.studentId || pollInfo.studentName, pollInfo.lessonId || lastLs?.id, actor.tagKey);
-    prog.pollsAnswered = (prog.pollsAnswered || 0) + 1;
-    if (isCorrect) prog.pollsCorrect = (prog.pollsCorrect || 0) + 1;
-    if (prog.pollsAnswered >= 2) {
-      prog.completedSteps.quiz = true;
+    if (!isParentPoll) {
+      prog.pollsAnswered = (prog.pollsAnswered || 0) + 1;
+      if (isCorrect) prog.pollsCorrect = (prog.pollsCorrect || 0) + 1;
+      if (prog.pollsAnswered >= 2) {
+        prog.completedSteps.quiz = true;
+      }
     }
 
     const hwStatus = st ? getHwCompletionSummary(st, lastLs, pollInfo.chatId, answer.user) : { pct: 25, canSubmit: false, doneText: 'Тестик', leftText: 'Письменное задание' };
-    if (lastLs) {
+    if (lastLs && !isParentPoll) {
       await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
     }
 
     // Если ученик ошибся — отправляем ему в чат понятное объяснение правила И сохраняем ошибку в досье (двусторонняя связь с приложением)!
     let studentExplanationSent = '';
     if (!isCorrect && pollInfo.chatId) {
-      studentExplanationSent = `💡 Разбор вопроса:\n«${pollInfo.question}»\n\n❌ Твой ответ: ${chosenText}\n✅ Правильный ответ: ${correctText}\n📖 Почему так: ${pollInfo.explanation || 'Запомни эту конструкцию из нашего урока!'}`;
+      studentExplanationSent = `💡 Разбор вопроса:\n«${pollInfo.question}»\n\n❌ Выбрано: ${chosenText}\n✅ Правильный ответ: ${correctText}\n📖 Почему так: ${pollInfo.explanation || 'Запомни эту конструкцию из нашего урока!'}`;
       await sendCleanMessage(pollInfo.chatId, studentExplanationSent).catch(() => {});
-      if (st) {
+      if (st && !isParentPoll) {
         const cleanQ = (pollInfo.question || '').replace(/^\d+\/\d+\.\s*/, '').trim();
         const errRecord = `Ошибка в тесте: «${cleanQ}» (выбрал(а) "${chosenText}" вместо "${correctText}")`;
         await saveHwWarmupErrorsToDossier(st, errRecord, actor.name, errRecord).catch(() => {});
@@ -7160,7 +7176,7 @@ bot.on('poll_answer', async (answer) => {
     }
 
     // Когда ученик ответил на все 3 вопроса раунда — присылаем обновлённый статус готовности ДЗ и клавиатуру
-    if (prog.pollsAnswered % 3 === 0 && pollInfo.chatId && st) {
+    if (!isParentPoll && prog.pollsAnswered % 3 === 0 && pollInfo.chatId && st) {
       const roundMsg = `🏁 Мини-тест пройден! Верных ответов: ${prog.pollsCorrect} из ${prog.pollsAnswered}.\n📊 Твоя готовность ДЗ сейчас: ${hwStatus.pct}% ${hwStatus.canSubmit ? '— кнопка «✅ Я сделал(а) ДЗ!» разблокирована! 🎉' : '(для сдачи нужно минимум 75% + 📸 фото тетрадки)'}`;
       await sendCleanMessage(pollInfo.chatId, roundMsg, {
         reply_markup: buildStudentKeyboard(st, lastLs, pollInfo.chatId, answer.user)
@@ -7168,15 +7184,12 @@ bot.on('poll_answer', async (answer) => {
     }
 
     const emoji = isCorrect ? '✅' : '❌';
-    const alertMsg = `${emoji} <b>Результат мини-теста ученика:</b>\n\n` +
-      `👤 <b>Ученик:</b> ${actor.displayLabel} (${userDisplay})\n` +
+    const alertMsg = `${emoji} <b>${isParentPoll ? `Родитель (${st?.name || ''}) прошёл вопрос теста (прогресс ребёнка не изменён)` : 'Результат мини-теста ученика'}:</b>\n\n` +
+      `👤 <b>Кто отвечал:</b> ${isParentPoll ? `Родитель (${userDisplay})` : `${actor.displayLabel} (${userDisplay})`}\n` +
       `❓ <b>Вопрос:</b> ${pollInfo.question}\n` +
-      `👉 <b>Ответ ученика:</b> ${chosenText} ${isCorrect ? '✅ (Верно!)' : `❌ (Ошибка! Правильно: ${correctText})`}\n` +
-      (pollInfo.explanation ? `💡 <b>Как бот объяснил ученику:</b> ${pollInfo.explanation}\n` : '') +
-      `\n📊 <b>Готовность ДЗ сейчас:</b> ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Ещё не достиг 75% 🔒'})\n` +
-      `${hwStatus.groupBreakdownText ? `👥 <b>В группе:</b>\n${hwStatus.groupBreakdownText}\n` : ''}` +
-      `✅ <b>Что сделано:</b>\n• ${hwStatus.doneText}\n` +
-      `⏳ <b>Что осталось:</b>\n• ${hwStatus.leftText}`;
+      `👉 <b>Ответ:</b> ${chosenText} ${isCorrect ? '✅ (Верно!)' : `❌ (Ошибка! Правильно: ${correctText})`}\n` +
+      (pollInfo.explanation ? `💡 <b>Объяснение:</b> ${pollInfo.explanation}\n` : '') +
+      `\n📊 <b>Готовность ДЗ ученика:</b> ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Ещё не достиг 75% 🔒'})`;
 
     await bot.sendMessage(ADMIN_CHAT_ID, alertMsg, { parse_mode: 'HTML' }).catch(() => {});
   } catch (err) {
