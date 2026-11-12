@@ -4405,16 +4405,60 @@ bot.on('photo', async (msg) => {
     const parentFound = await findParentByTgChatId(chatId);
     if (parentFound) {
       const pSt = parentFound.student;
-      await bot.sendMessage(chatId, `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику *${pSt.name}*).`, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }],
-            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }]
-          ]
-        }
-      }).catch(() => {});
-      await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 "${msg.text || '[Медиа/Голосовое]'}"`, { parse_mode: 'Markdown' }).catch(() => {});
+      const pDoss = parseStudentDossierBot(pSt);
+      let parentInput = msg.text || '';
+      if (!parentInput && (msg.voice || msg.video_note)) {
+        try {
+          const fId = msg.voice ? msg.voice.file_id : msg.video_note.file_id;
+          const fExt = msg.voice ? 'ogg' : 'mp4';
+          const fLink = await bot.getFileLink(fId);
+          const fRes = await fetch(fLink);
+          if (fRes.ok) {
+            const fBuf = await fRes.arrayBuffer();
+            parentInput = (await transcribeAudio(fBuf, `parent_${pSt.id}.${fExt}`)) || '';
+          }
+        } catch (_) {}
+      }
+
+      let smartParentReply = '';
+      if (parentInput && parentInput.trim()) {
+        try {
+          bot.sendChatAction(chatId, 'typing');
+          const lastLsP = await getLatestLessonWithMaterials(pSt.id);
+          const { data: nextLsP } = await db.from('lessons').select('date, topic').eq('student_id', pSt.id).eq('status', 'Запланирован').order('date', { ascending: true }).limit(1).maybeSingle();
+          const hwSumP = getHwCompletionSummary(pSt, lastLsP);
+          const nextDateP = nextLsP ? new Date(nextLsP.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'по расписанию (уточнит Игорь)';
+          const pPrompt = `Ты — умный, вежливый и проактивный ассистент преподавателя английского языка Игоря.
+Тебе написал родитель ученика: ${pSt.name} (${pSt.grade || ''}).
+КОНТЕКСТ ПО УЧЕНИКУ:
+- Постоянное расписание: ${pDoss.schedule || 'по договорённости'}
+- Ближайший запланированный урок: ${nextDateP}
+- Последняя тема урока: "${lastLsP?.topic || 'Практика английского'}"
+- Статус текущего ДЗ: ${hwSumP.pct}% (${hwSumP.canSubmit ? 'сдано/готово ✅' : 'в процессе 🔒'})
+- Серия активности (Streak): ${pDoss.streak || 0} дн. | Щиты заморозки: ${pDoss.shields ?? 1}/3
+- Типичные ошибки / над чем работаем: ${pDoss.errors || 'грамматика и разговорная практика'}
+
+СООБЩЕНИЕ РОДИТЕЛЯ: "${parentInput}"
+
+ТВОЯ ЗАДАЧА:
+Ответь родителю тепло, на "Вы", по делу и с заботой (до 700 символов, без звёздочек **):
+- Если спрашивают про ДЗ, тему урока, расписание, успехи или как помочь ребёнку дома — дай точный, полезный ответ и конкретный совет!
+- Если вопрос требует личного решения преподавателя (перенос урока, оплата, индивидуальная просьба) — ответь вежливо, что уже передал информацию Игорю и он скоро ответит лично.
+- Всегда в конце добавь 1 короткое полезное предложение или подсказку (например, предложить посмотреть свежий отчёт или текущее ДЗ по кнопкам ниже).`;
+          const pRes = await executeFunctionCall('generate_lesson_plan', { prompt: pPrompt });
+          if (pRes?.generated_plan) smartParentReply = pRes.generated_plan;
+        } catch (_) {}
+      }
+
+      const finalParentMsg = smartParentReply || `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику ${pSt.name}).`;
+      const parentKb = {
+        inline_keyboard: [
+          [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `parent_milestone_card:${pSt.id}` }],
+          [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }]
+        ]
+      };
+      await sendCleanMessage(chatId, finalParentMsg, { reply_markup: parentKb });
+      await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 «${parentInput || '[Медиа/Голосовое]'}»\n\n🤖 *Как бот ответил родителю:*\n${finalParentMsg}`, { parse_mode: 'Markdown' }).catch(() => {});
       await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
       return;
     }
@@ -6931,16 +6975,60 @@ bot.on('message', async (msg) => {
     const parentFound = await findParentByTgChatId(chatId);
     if (parentFound) {
       const pSt = parentFound.student;
-      await bot.sendMessage(chatId, `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику *${pSt.name}*).`, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }],
-            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }]
-          ]
-        }
-      }).catch(() => {});
-      await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 "${msg.text || '[Медиа/Голосовое]'}"`, { parse_mode: 'Markdown' }).catch(() => {});
+      const pDoss = parseStudentDossierBot(pSt);
+      let parentInput = msg.text || '';
+      if (!parentInput && (msg.voice || msg.video_note)) {
+        try {
+          const fId = msg.voice ? msg.voice.file_id : msg.video_note.file_id;
+          const fExt = msg.voice ? 'ogg' : 'mp4';
+          const fLink = await bot.getFileLink(fId);
+          const fRes = await fetch(fLink);
+          if (fRes.ok) {
+            const fBuf = await fRes.arrayBuffer();
+            parentInput = (await transcribeAudio(fBuf, `parent_${pSt.id}.${fExt}`)) || '';
+          }
+        } catch (_) {}
+      }
+
+      let smartParentReply = '';
+      if (parentInput && parentInput.trim()) {
+        try {
+          bot.sendChatAction(chatId, 'typing');
+          const lastLsP = await getLatestLessonWithMaterials(pSt.id);
+          const { data: nextLsP } = await db.from('lessons').select('date, topic').eq('student_id', pSt.id).eq('status', 'Запланирован').order('date', { ascending: true }).limit(1).maybeSingle();
+          const hwSumP = getHwCompletionSummary(pSt, lastLsP);
+          const nextDateP = nextLsP ? new Date(nextLsP.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'по расписанию (уточнит Игорь)';
+          const pPrompt = `Ты — умный, вежливый и проактивный ассистент преподавателя английского языка Игоря.
+Тебе написал родитель ученика: ${pSt.name} (${pSt.grade || ''}).
+КОНТЕКСТ ПО УЧЕНИКУ:
+- Постоянное расписание: ${pDoss.schedule || 'по договорённости'}
+- Ближайший запланированный урок: ${nextDateP}
+- Последняя тема урока: "${lastLsP?.topic || 'Практика английского'}"
+- Статус текущего ДЗ: ${hwSumP.pct}% (${hwSumP.canSubmit ? 'сдано/готово ✅' : 'в процессе 🔒'})
+- Серия активности (Streak): ${pDoss.streak || 0} дн. | Щиты заморозки: ${pDoss.shields ?? 1}/3
+- Типичные ошибки / над чем работаем: ${pDoss.errors || 'грамматика и разговорная практика'}
+
+СООБЩЕНИЕ РОДИТЕЛЯ: "${parentInput}"
+
+ТВОЯ ЗАДАЧА:
+Ответь родителю тепло, на "Вы", по делу и с заботой (до 700 символов, без звёздочек **):
+- Если спрашивают про ДЗ, тему урока, расписание, успехи или как помочь ребёнку дома — дай точный, полезный ответ и конкретный совет!
+- Если вопрос требует личного решения преподавателя (перенос урока, оплата, индивидуальная просьба) — ответь вежливо, что уже передал информацию Игорю и он скоро ответит лично.
+- Всегда в конце добавь 1 короткое полезное предложение или подсказку (например, предложить посмотреть свежий отчёт или текущее ДЗ по кнопкам ниже).`;
+          const pRes = await executeFunctionCall('generate_lesson_plan', { prompt: pPrompt });
+          if (pRes?.generated_plan) smartParentReply = pRes.generated_plan;
+        } catch (_) {}
+      }
+
+      const finalParentMsg = smartParentReply || `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику ${pSt.name}).`;
+      const parentKb = {
+        inline_keyboard: [
+          [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `parent_milestone_card:${pSt.id}` }],
+          [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }]
+        ]
+      };
+      await sendCleanMessage(chatId, finalParentMsg, { reply_markup: parentKb });
+      await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 «${parentInput || '[Медиа/Голосовое]'}»\n\n🤖 *Как бот ответил родителю:*\n${finalParentMsg}`, { parse_mode: 'Markdown' }).catch(() => {});
       await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
       return;
     }
@@ -7338,7 +7426,8 @@ ${routerAcademic ? `АКАДЕМИЧЕСКАЯ СПРАВКА ПО ГРАММА�
   "errors_made": "Конкретные ошибки ученика с правильным вариантом (или 'Ошибок нет')",
   "warmup_next_lesson": "2-3 коротких предложения для 5-минутки на следующий урок по ошибкам ученика (или пустая строка)",
   "explanation_given": "Краткое резюме для учителя Игоря: какие рекомендации ты дал и как объяснил ошибки/вопрос ученику",
-  "student_reply": "Твой прямой ответ ученику ${actor.name} (на 'ты', дружелюбно, понятно, с эмодзи). Если это homework_submission — похвали, разбери каждый пункт, объясни ошибки простыми словами и дай рекомендации. Если topic_question — понятно объясни правило или подскажи решение (но не решай всё ДЗ за него целиком). Если off_topic_or_chat — ответь тепло и естественно по смыслу сообщения (если спрашивает про урок — назови время следующего урока; если предупреждает об опоздании/переносе — скажи, что уже передал информацию Игорю; мягко напомни про ДЗ, если оно ещё не сдано)."
+  "tts_phrase": "Если ученик спрашивает, как читается/произносится/говорится английское слово или фраза — укажи здесь эту английскую фразу (иначе пустая строка)",
+  "student_reply": "Твой прямой ответ ученику ${actor.name} (на 'ты', дружелюбно, живо, с эмодзи и проактивно). Если это homework_submission — похвали, разбери каждый пункт, объясни ошибки простыми словами и дай рекомендации. Если topic_question — понятно и полно объясни правило (опираясь на академическую справку), приведи 2 примера и предложи 1 мини-задание для закрепления. Если off_topic_or_chat — ответь тепло, с юмором и по смыслу любого свободного вопроса (если спрашивает про урок — назови время; если спрашивает про фильмы/игры/лайфхаки в английском — дай классный совет и идею; если предупреждает об опоздании/переносе — скажи, что передал Игорю; мягко напомни про ДЗ, если оно ещё не сдано)."
 }`;
 
       const routeRes = await executeFunctionCall('generate_lesson_plan', { prompt: routerPrompt });
@@ -7354,13 +7443,28 @@ ${routerAcademic ? `АКАДЕМИЧЕСКАЯ СПРАВКА ПО ГРАММА�
         : 'off_topic_or_chat'
     );
 
-    // СЦЕНАРИЙ А: Вопрос ученика по теме урока / правилу / ДЗ ИЛИ сообщение не по теме / организационное
+    // СЦЕНАРИЙ А: Вопрос ученика по теме урока / правилу / ДЗ ИЛИ любое свободное сообщение
     if (detectedIntent === 'topic_question' || detectedIntent === 'off_topic_or_chat') {
-      const replyToStudent = aiAnalysis?.student_reply || `👍 Принял твоё сообщение, *${actor.name}*! Я уже передал его преподавателю Игорю.`;
-      await bot.sendMessage(chatId, replyToStudent, {
-        parse_mode: 'Markdown',
+      let replyToStudent = aiAnalysis?.student_reply || '';
+      if (!replyToStudent) {
+        try {
+          const fallbackFreePrompt = `Ты — добрый, умный и вдохновляющий ИИ-наставник по английскому для ученика ${actor.name} (${st.grade || 'школьник'}).
+Последняя тема урока: "${lastLs?.topic || 'Английский язык'}". Следующий урок: ${nextLessonInfo}.
+Ученик написал: "${studentText}".
+Ответь живо, понятно и проактивно на "ты" (до 900 символов, без звёздочек **): ответь на любой вопрос, предложи идею или мини-лайфхак, а если это орг. вопрос — скажи, что передал Игорю.`;
+          const freeRes = await executeFunctionCall('generate_lesson_plan', { prompt: fallbackFreePrompt });
+          replyToStudent = freeRes?.generated_plan || '';
+        } catch (_) {}
+      }
+      if (!replyToStudent) {
+        replyToStudent = `👍 Принял твоё сообщение, *${actor.name}*! Я уже передал его преподавателю Игорю.`;
+      }
+      await sendCleanMessage(chatId, replyToStudent, {
         reply_markup: buildStudentKeyboard(st, lastLs, chatId)
-      }).catch(() => bot.sendMessage(chatId, replyToStudent));
+      });
+      if (aiAnalysis?.tts_phrase && aiAnalysis.tts_phrase.trim()) {
+        await sendTtsAudio(chatId, aiAnalysis.tts_phrase.trim(), 'Произношение', '🔊 Послушай, как это звучит по-английски');
+      }
 
       const intentBadge = detectedIntent === 'topic_question'
         ? '❓ *Вопрос ученика ПО ТЕМЕ УРОКА / ДЗ*'
