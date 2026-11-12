@@ -2620,21 +2620,23 @@ function getLeaderboardText(studentId, lessonId) {
 function formatToTelegramHtml(text) {
   if (!text) return '';
   let str = String(text);
+  // 0. Unescape markdown-escaped underscores/asterisks (e.g. \_\_\_\_\_ -> _____)
+  str = str.replace(/\\_/g, '_').replace(/\\\*/g, '*');
   // 1. Convert bullet lists at line starts (* item or - item) to bullet emoji •
   str = str.replace(/^(\s*)[*-]\s+/gm, '$1• ');
   // 2. Escape HTML special characters
   str = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   // 3. Convert headers: ### Header or ## Header -> <b>Header</b>
   str = str.replace(/^#{1,6}\s*(.+)$/gm, '<b>$1</b>');
-  // 4. Convert bold: **text** or __text__ -> <b>text</b>
+  // 4. Convert bold: **text** or __text__ -> <b>text</b> (skip fill-in-the-blank lines like _____)
   str = str.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-  str = str.replace(/__(.*?)__/g, '<b>$1</b>');
-  // 5. Convert italic: *text* or _text_ -> <i>text</i>
+  str = str.replace(/(?<!_)__([^_\n]+)__(?!_)/g, '<b>$1</b>');
+  // 5. Convert italic: *text* or _text_ -> <i>text</i> (preserve fill-in-the-blank _____)
   str = str.replace(/\*([^*\n]+)\*/g, '<i>$1</i>');
-  str = str.replace(/_([^_\n]+)_/g, '<i>$1</i>');
+  str = str.replace(/(?<![_a-zA-Z0-9])_([^_\n]+)_(?![_a-zA-Z0-9])/g, '<i>$1</i>');
   // 6. Monospace: `code`
   str = str.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // 7. Strip ANY remaining stray asterisks or markdown table pipes so text is pristine
+  // 7. Strip ANY remaining stray asterisks so text is pristine
   str = str.replace(/\*+/g, '');
   return str.trim();
 }
