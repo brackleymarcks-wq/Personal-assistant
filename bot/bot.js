@@ -5265,7 +5265,7 @@ bot.on('photo', async (msg) => {
         } catch (_) {}
       }
 
-      const isPaymentQuery = /(?:сколько\s+(?:я\s+)?долж|к\s+оплат|неоплачен|не\s+оплачен|оплат[аыуе]|долг|сколько\s+за\s+урок|стоимость\s+урок|баланс|расч[её]т)/i.test(parentInput || '');
+      const isPaymentQuery = /(?:сколько\s+(?:я\s+|мы\s+|нам\s+)?долж|к\s+оплат|неоплачен|не\s+оплачен|оплат[аыуеи]|долг|сколько\s+(?:за|по)\s+урок|стоимость|баланс|расч[её]т|перевест[иь]|на\s+карт|сумм[ауе]|рубл|\bруб\b|\bbyn\b|вышло\s+за|за\s+какие\s+(?:числ|дат|дн))/i.test(parentInput || '');
       const parentKb = {
         inline_keyboard: [
           [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `parent_milestone_card:${pSt.id}` }],
@@ -7990,7 +7990,7 @@ bot.on('message', async (msg) => {
         } catch (_) {}
       }
 
-      const isPaymentQuery = /(?:сколько\s+(?:я\s+)?долж|к\s+оплат|неоплачен|не\s+оплачен|оплат[аыуе]|долг|сколько\s+за\s+урок|стоимость\s+урок|баланс|расч[её]т)/i.test(parentInput || '');
+      const isPaymentQuery = /(?:сколько\s+(?:я\s+|мы\s+|нам\s+)?долж|к\s+оплат|неоплачен|не\s+оплачен|оплат[аыуеи]|долг|сколько\s+(?:за|по)\s+урок|стоимость|баланс|расч[её]т|перевест[иь]|на\s+карт|сумм[ауе]|рубл|\bруб\b|\bbyn\b|вышло\s+за|за\s+какие\s+(?:числ|дат|дн))/i.test(parentInput || '');
       const parentKb = {
         inline_keyboard: [
           [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `parent_milestone_card:${pSt.id}` }],
