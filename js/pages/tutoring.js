@@ -900,14 +900,14 @@ const TutoringPage = {
         lessonsThisMonth++;
         if (isConducted) {
           const st = this.students.find(s => s.id === ls.student_id);
-          const price = st ? (st.price || 0) : 0;
+          const price = this.getLessonPrice(ls, st);
           if (ls.paid) { monthlyIncome += price; }
           else { unpaidLessonsAmount += price; }
         }
       }
       if (isConducted && !ls.paid) {
         const st = this.students.find(s => s.id === ls.student_id);
-        totalUnpaidAllTime += st ? (st.price || 0) : 0;
+        totalUnpaidAllTime += this.getLessonPrice(ls, st);
       }
     });
 
@@ -1989,7 +1989,7 @@ const TutoringPage = {
     let createTx = false;
     if (!wasPaid && isPaidNow && isConductedNow) {
       const st = this.students.find(s => s.id === student_id);
-      const price = st ? (st.price || 0) : 0;
+      const price = this.getLessonPrice(data, st);
       if (price > 0) {
         if (confirm(`Зачислить оплату за урок (${price} BYN) в Финансы (Доходы)?`)) {
           createTx = { amount: price, name: st.name };
