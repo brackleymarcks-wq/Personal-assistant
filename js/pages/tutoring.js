@@ -3994,19 +3994,20 @@ const TutoringPage = {
     const combined = `${presentationText || ''}\n${scenarioText || ''}`;
     const lower = combined.toLowerCase();
 
-    // 1. Очищаем базовое имя файла только для поиска Unit / Lesson
+    // 1. Очищаем имя файла от имени ученика без багов с границами кириллицы
     let cleanFile = (filename || '').replace(/\.[^/.]+$/, '').trim();
+    const cleanWord = (text, word) => {
+      if (!word || word.length < 2) return text;
+      const escaped = word.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+      return text.replace(new RegExp(`(^|[^а-яА-ЯёЁa-zA-Z0-9])${escaped}(?=[^а-яА-ЯёЁa-zA-Z0-9]|$)`, 'gi'), '$1').trim();
+    };
     if (studentName) {
-      for (const p of studentName.split(/\s+/)) {
-        if (p.length > 2) cleanFile = cleanFile.replace(new RegExp(`\\b${p}\\b`, 'gi'), '');
-      }
+      for (const p of studentName.split(/\s+/)) cleanFile = cleanWord(cleanFile, p);
     }
     if (this.students && Array.isArray(this.students)) {
       for (const s of this.students) {
         if (s?.name) {
-          for (const p of s.name.split(/\s+/)) {
-            if (p.length > 2) cleanFile = cleanFile.replace(new RegExp(`\\b${p}\\b`, 'gi'), '');
-          }
+          for (const p of s.name.split(/\s+/)) cleanFile = cleanWord(cleanFile, p);
         }
       }
     }
@@ -4015,14 +4016,27 @@ const TutoringPage = {
       .replace(/\b\d{1,2}[._]\d{1,2}(?:[._]\d{2,4})?\b/g, '')
       .replace(/\b\d{6,14}\b/g, '')
       .replace(/\b\d+\s*(?:класс|кл)\b/gi, '')
-      .replace(/[_\-]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
 
-    const unitMatch = combined.match(/Unit\s*\d+(?:\s*[·.,:]?\s*Lesson\s*[\d\-–]+)?/i) || cleanFile.match(/Unit\s*\d+(?:\s*Lesson\s*[\d\-–]+)?/i);
-    const unitTag = unitMatch ? unitMatch[0].replace(/\s+/g, ' ').trim() : '';
+    // 2. Извлекаем Unit и Lesson из имени файла или текста (с поддержкой диапазонов типа 5-6)
+    const unitMatch = cleanFile.match(/Unit\s*\d+(?:\s*[·.,:\-_–]?\s*Lesson\s*[\d\-–/]+)?/i) || 
+                      combined.match(/Unit\s*\d+(?:\s*[·.,:\-_–]?\s*Lesson\s*[\d\-–/]+)?/i);
+    const unitTag = unitMatch ? unitMatch[0].replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
 
-    // 2. Распознаём ключевые грамматические темы по сути контента
+    // 3. Извлекаем смысловую тему из названия файла, если она там указана
+    let fileTopic = cleanFile;
+    if (unitTag) {
+      fileTopic = fileTopic.replace(new RegExp(unitTag.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i'), '').trim();
+    }
+    fileTopic = fileTopic.replace(/^[_\-\s–]+/, '').replace(/[_\-\s–]+$/, '').trim();
+    if (fileTopic.length >= 3 && !/^\d+$/.test(fileTopic)) {
+      fileTopic = fileTopic.charAt(0).toUpperCase() + fileTopic.slice(1);
+    } else {
+      fileTopic = '';
+    }
+
+    // 4. Распознаём ключевые грамматические темы по сути контента
     const grammarPoints = [];
     if (lower.includes('present perfect continuous') || lower.includes('have been ') || lower.includes('has been ') && lower.includes('ing')) {
       if (lower.includes('процесс или результат') || lower.includes('has chosen') || lower.includes('present perfect')) {
@@ -4048,7 +4062,18 @@ const TutoringPage = {
       }
     }
 
-    if (lower.includes('притяжательн') || (lower.includes('whose') && lower.includes('his') && lower.includes('their'))) {
+    // Present Simple (I / you / we / they / he / she / it) — домашние дела, распорядок дня
+    if (lower.includes('present simple') || (lower.includes("don't") && lower.includes('do you') && (lower.includes('every day') || lower.includes('usually') || lower.includes('bed') || lower.includes('teeth')))) {
+      if (lower.includes('housework') || lower.includes('home jobs') || lower.includes('дела по дому') || lower.includes('tidy') || cleanFile.toLowerCase().includes('about my day')) {
+        grammarPoints.push('Present Simple (I/you/we/they) — Дела по дому');
+      } else {
+        grammarPoints.push('Present Simple (I / you / we / they)');
+      }
+    }
+
+    // Притяжательные местоимения — только если это реальная основная грамматическая тема урока
+    if ((lower.includes('притяжательн') && (lower.includes('местоимен') || lower.includes('падеж') || lower.includes('чей') || lower.includes('чья'))) || 
+        (lower.includes('whose') && lower.includes('possessive') && !lower.includes('present simple'))) {
       grammarPoints.push("Притяжательные местоимения (my, his, her, their) и падеж 's");
     }
 
@@ -4064,7 +4089,7 @@ const TutoringPage = {
       grammarPoints.push('Артикль the с географическими названиями');
     }
 
-    // 3. Распознаём лексические блоки со слайдов ("Лексика: ...", "Слова 1-5: ...")
+    // 5. Распознаём лексические блоки со слайдов ("Лексика: ...", "Слова 1-5: ...")
     const lexThemes = [];
     const lexMatches = combined.matchAll(/Лексика\s*[·:]?\s*([а-яА-ЯёЁa-zA-Z\s,]{3,35}?)(?=\s+Слова|\s+ВЫРАЖЕНИЕ|\s+СЛОВО|·|\n|$)/gi);
     for (const lm of lexMatches) {
@@ -4074,7 +4099,9 @@ const TutoringPage = {
       }
     }
     if (lexThemes.length === 0) {
-      if (lower.includes('fitting room') || lower.includes('try on') || lower.includes('discount') || lower.includes('customer')) {
+      if (lower.includes('housework') || lower.includes('home jobs') || lower.includes('дела по дому') || lower.includes('wash the dishes') || lower.includes('tidy my room') || cleanFile.toLowerCase().includes('about my day')) {
+        lexThemes.push('дела по дому (Home jobs: housework, tidy room, wash dishes)');
+      } else if (lower.includes('fitting room') || lower.includes('try on') || lower.includes('discount') || lower.includes('customer')) {
         lexThemes.push('покупки и магазин (sale, customer, try on, fitting room)');
       } else if (lower.includes('complete') && lower.includes('achieve') && lower.includes('experience')) {
         lexThemes.push('достижения и опыт (complete, achieve, find, lose)');
@@ -4085,23 +4112,33 @@ const TutoringPage = {
       }
     }
 
-    // 4. Извлекаем слова и игровые миры/интересы
+    // 6. Извлекаем слова и игровые миры/интересы
     const vocabList = this.extractVocabFromPresentationAndScenario(presentationText, scenarioText);
     const worlds = [];
     if (lower.includes('skyrim')) worlds.push('Арина — волшебница мира Skyrim');
     if (lower.includes('spore')) worlds.push('Матвей — исследователь мира Spore');
     if (lower.includes('genshin')) worlds.push('Genshin Impact');
 
-    // 5. Ищем смысловой подзаголовок урока на Слайде 1–2 (например: «Что уже сделано — и что важно сейчас?» или «Распродажа Академии: процесс или результат?»)
+    // 7. Ищем смысловой подзаголовок урока на Слайде 1–2
     let subtitle = '';
     const quoteMatch = combined.match(/«([^»]{6,65})»/) || combined.match(/(?:Что уже сделано[^?.!]*\?|Распродажа Академии:\s*[^?.!]*\?)/i);
     if (quoteMatch) {
       subtitle = (quoteMatch[1] || quoteMatch[0]).trim();
     }
 
-    // 6. Собираем умную тему урока по СУТИ И КОНТЕКСТУ (а не просто по названию файла!)
+    // 8. Собираем умную тему урока по СУТИ И КОНТЕКСТУ (приоритет смыслу из файла и слайдов!)
     let smartTopic = '';
-    if (grammarPoints.length > 0) {
+    if (fileTopic) {
+      smartTopic = fileTopic;
+      if (grammarPoints.length > 0 && !smartTopic.toLowerCase().includes(grammarPoints[0].toLowerCase().slice(0, 10))) {
+        smartTopic += ` (${grammarPoints[0]})`;
+      } else if (lexThemes.length > 0 && !smartTopic.toLowerCase().includes('housework') && !smartTopic.toLowerCase().includes('дел')) {
+        smartTopic += ` + Лексика: ${lexThemes[0]}`;
+      }
+      if (unitTag && !smartTopic.toLowerCase().includes('unit')) {
+        smartTopic = `${unitTag}: ${smartTopic}`;
+      }
+    } else if (grammarPoints.length > 0) {
       smartTopic = grammarPoints[0];
       if (lexThemes.length > 0 && !smartTopic.toLowerCase().includes(lexThemes[0].toLowerCase())) {
         smartTopic += ` + Лексика: ${lexThemes.slice(0, 2).join(', ')}`;
@@ -4125,7 +4162,7 @@ const TutoringPage = {
       }
     }
 
-    // Очистка висячих слов из fallback-названия файла
+    // Fallback очистка
     if (!smartTopic) {
       const noiseWords = ['и', 'с', 'со', 'для', 'от', 'к', 'по', 'в', 'на', 'and', 'with', 'for', 'to', 'lesson', 'урок', 'класс', '7', '6', '5', '4'];
       let parts = cleanFile.split(/\s+/).filter(Boolean);
