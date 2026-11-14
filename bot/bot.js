@@ -9279,9 +9279,12 @@ cron.schedule('* * * * *', async () => {
           const hwWarmupErrors = extractHwWarmupErrorsFromDossier(doss);
           const { data: prevList } = await db.from('lessons').select('*').eq('student_id', ls.student_id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1);
           const prev = prevList?.[0];
-          const prevHwRaw = prev ? ((prev.homework || '').split('\\n[МАТЕРИАЛЫ]:')[0].trim()) : '';
+          const prevHwRaw = prev ? ((prev.homework || '').split('\n[МАТЕРИАЛЫ]:')[0].trim()) : '';
           const isHwChecked = prevHwRaw.includes('[ДЗ_ПРОВЕРЕНО]');
-          const prevHwClean = prevHwRaw.replace('[ДЗ_ПРОВЕРЕНО]', '').trim();
+          const prevHwClean = prevHwRaw
+            .replace(/\[(ДЗ_ПРОВЕРЕНО[A-ZА-Я0-9_]*|ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ФАЙЛ[A-ZА-Я0-9_]*:[^\]]+|ПРОГРЕСС[A-ZА-Я0-9_]*:[^\]]+|НАПОМИНАНИЕ_ДЗ_ДАТА:[^\]]+|ЦЕНА_УРОКА:[^\]]+|ОТПРАВИТЬ_[А-ЯA-Z_]+|ПЕРЕНЕСЕН_В_ТГ)\]/gi, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
           let briefMsg = `👨‍🏫 *ТВОЯ ШПАРГАЛКА ПЕРЕД УРОКОМ (Видно ТОЛЬКО тебе!)*\n` +
             `🔔 *Урок через 15 минут:* *${stName}* (${st.grade || 'уровень не указан'})\n` +
             `🔒 _(Ученик это сообщение НЕ видит — это твоё закрытое методическое досье)_\n\n`;
