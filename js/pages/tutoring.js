@@ -4038,7 +4038,7 @@ const TutoringPage = {
 
     // 4. Распознаём ключевые грамматические темы по сути контента
     const grammarPoints = [];
-    if (lower.includes('present perfect continuous') || lower.includes('have been ') || lower.includes('has been ') && lower.includes('ing')) {
+    if (lower.includes('present perfect continuous') || /\b(?:have|has)\s+been\s+[a-z]{2,}ing\b/i.test(lower) || ((lower.includes('have been') || lower.includes('has been')) && lower.includes('v-ing'))) {
       if (lower.includes('процесс или результат') || lower.includes('has chosen') || lower.includes('present perfect')) {
         grammarPoints.push('Present Perfect Continuous vs Present Perfect (процесс и результат)');
       } else {
@@ -4046,9 +4046,10 @@ const TutoringPage = {
       }
     } else if (lower.includes('present perfect')) {
       const markers = [];
+      if (lower.includes('past simple') || (lower.includes('last summer') && lower.includes('have visited'))) markers.push('vs Past Simple');
       if (lower.includes('already') && lower.includes('yet')) markers.push('already/just/yet');
       if (lower.includes('ever') && lower.includes('never')) markers.push('ever/never');
-      if (lower.includes('for') && lower.includes('since') && (lower.includes('период') || lower.includes('начальная точка') || lower.includes('for two years'))) markers.push('for/since');
+      if (lower.includes('for') && lower.includes('since') && (lower.includes('период') || lower.includes('начальная точка') || lower.includes('for two years') || lower.includes('for, since'))) markers.push('for/since');
       if (lower.includes('been') && lower.includes('gone') && (lower.includes('вернулся') || lower.includes('been to') || lower.includes('gone to'))) markers.push('been/gone');
       const markerSuffix = markers.length > 0 ? `: ${markers.join(', ')}` : ' (результат и опыт)';
       grammarPoints.push(`Present Perfect${markerSuffix}`);
