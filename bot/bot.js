@@ -774,6 +774,7 @@ async function getStudentVocabularyBank(st) {
 }
 
 const activeStudentQuizzes = new Map();
+const activeFlashcardsMap = new Map(); // `${chatId}_${studentId}` -> Array<{en, ipa, ru, ex}>
 const activeSchoolHwRequests = new Map(); // chatId -> { studentId, studentName, timestamp }
 const pendingSchoolHwApprovals = new Map(); // reqId -> { chatId, student, studentName, photoUrl, photoFileId, text, caption, createdAt }
 const pendingTeacherReplyToStudent = new Map(); // adminChatId -> { studentId, studentName, expiresAt }
@@ -2759,32 +2760,34 @@ async function sendTtsAudio(chatId, phrase, title = 'Произношение с
 
 function getLessonFlashcards(scenarioText, hwText = '', topicText = '', dossVocab = '') {
   const cards = [];
-  const text = (hwText || '') + '\n' + (scenarioText || '') + '\n' + (dossVocab || '');
+  // Приоритет — материалам конкретного урока, а не старому общему словарю досье
+  const text = (scenarioText || '') + '\n' + (hwText || '') + '\n' + (dossVocab || '');
 
   const addCard = (enRaw, ipaRaw, ruRaw, exRaw = '') => {
-    const en = (enRaw || '').replace(/\*\*/g, '').trim();
+    const en = (enRaw || '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
     const ipa = ipaRaw ? ('[' + ipaRaw.replace(/^[\[\/]|[\]\/]$/g, '').trim() + ']') : '';
-    let ru = (ruRaw || '').replace(/\*\*/g, '').replace(/\s*[—–-]\s*.*$/, '').trim();
+    let ru = (ruRaw || '').replace(/\*\*/g, '').replace(/\s*[—–-]\s*.*$/, '').replace(/[·•|].*$/, '').trim();
     const ex = (exRaw || '').trim();
     if (!/[а-яА-ЯёЁ]/.test(ru)) return;
-    if (!/^[A-Za-z][A-Za-z\s'\/-]{1,28}$/.test(en)) return;
+    if (ru.length < 2 || ru.length > 55) return;
+    if (!/^[A-Za-z][A-Za-z\s'\/-]{1,32}$/.test(en)) return;
     if (en.split(/\s+/).length > 4) return;
     const lowerEn = en.toLowerCase();
-    if (['mistakes', 'words', 'prepositions', 'checklist', 'places', 'trees', 'animals', 'birds', 'grammar', 'practice', 'step', 'shag', 'slide', 'unit', 'lesson', 'mission', 'rule', 'trap', 'skyrim', 'spore'].includes(lowerEn)) return;
+    if (['mistakes', 'words', 'prepositions', 'checklist', 'places', 'trees', 'animals', 'birds', 'grammar', 'practice', 'step', 'shag', 'slide', 'unit', 'lesson', 'mission', 'rule', 'trap', 'skyrim', 'spore', 'example', 'word', 'expression', 'translation'].includes(lowerEn)) return;
     if (!cards.find(c => c.en.toLowerCase() === lowerEn)) {
       cards.push({ en, ipa, ru, ex });
     }
   };
 
-  // 1. Extract from presentation slides & text: word /ipa/ russian translation
-  const ipaRegex = /\b([A-Za-z][A-Za-z\s'-]{1,24}?)\s+\/([^\/\n]{1,28})\/\s+([а-яА-ЯёЁ][а-яА-ЯёЁ\s,()\/-]{1,35}?)(?=\s+[A-ZА-ЯЁ0-9•|]|\n|$)/g;
+  // 1. Extract from presentation slides & text: word [ipa] / /ipa/ (with or without dash) russian translation
+  const ipaRegex = /\b([A-Za-z][A-Za-z\s'-]{1,26}?)\s+[\[\/]([^\]\/\n]{1,32})[\]\/]\s*(?:[—–-]\s*)?([а-яА-ЯёЁ][а-яА-ЯёЁ\s,()\/-]{1,42}?)(?=\s+[A-ZА-ЯЁ0-9•|·]|\n|\.|\;|$)/g;
   let im;
   while ((im = ipaRegex.exec(text)) !== null) {
     addCard(im[1], im[2], im[3]);
   }
 
   // 2. Extract from Perplexity markdown tables: | word | /ipa/ | перевод | пример |
-  const mdRegex = /\|\s*\*\*?([A-Za-z][A-Za-z\s'\/-]{1,24}?)\*\*?\s*\|\s*(?:\/([^\/|]+)\/\s*\|)?\s*([а-яА-ЯёЁ][^|\n]{1,40}?)\s*\|(?:\s*([^|\n]{0,60}?)\s*\|)?/g;
+  const mdRegex = /\|\s*\*\*?([A-Za-z][A-Za-z\s'\/-]{1,26}?)\*\*?\s*\|\s*(?:[\[\/]([^\]\/|]+)[\]\/]\s*\|)?\s*([а-яА-ЯёЁ][^|\n]{1,45}?)\s*\|(?:\s*([^|\n]{0,70}?)\s*\|)?/g;
   let mm;
   while ((mm = mdRegex.exec(text)) !== null) {
     addCard(mm[1], mm[2] || '', mm[3], mm[4] || '');
@@ -2796,48 +2799,96 @@ function getLessonFlashcards(scenarioText, hwText = '', topicText = '', dossVoca
     const trimmed = l.replace(/^Слайд\s*\d+\s*:\s*/i, '').trim();
     if (!trimmed || trimmed.startsWith('Unit') || trimmed.startsWith('Today') || trimmed.startsWith('Mission') || trimmed.startsWith('Checklist')) continue;
 
-    const m = trimmed.match(/^[•\d\s\-\*.]*([A-Za-z][A-Za-z\s'-]*?)\s*(?:[\[\/]([^\/\]]+)[\]\/])?\s+[—–-]\s+([^(\n]+)(?:\((.*?)\))?/);
+    const m = trimmed.match(/^[•\d\s\-\*.]*([A-Za-z][A-Za-z\s'-]*?)\s*(?:[\[\/]([^\]\/]+)[\]\/])?\s+[—–-]\s+([^(\n]+)(?:\((.*?)\))?/);
     if (m && m[1] && m[3]) {
       addCard(m[1], m[2] || '', m[3], m[4] || '');
     }
   }
 
+  return cards;
+}
+
+function shuffleFlashcardsArray(arr) {
+  const copy = [...(arr || [])];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+async function getLessonFlashcardsDynamic(st, lastLs, materialsText, dossVocab = '', forceAiRefresh = false) {
+  let cards = forceAiRefresh
+    ? []
+    : getLessonFlashcards(materialsText, lastLs?.homework || '', lastLs?._mergedTopic || lastLs?.topic || '', dossVocab);
+
+  if (cards.length < 4 || forceAiRefresh) {
+    const topicLabel = lastLs?._mergedTopic || lastLs?.topic || 'English practice';
+    const contextSnippet = (materialsText || lastLs?.homework || dossVocab || topicLabel).slice(0, 3500);
+    const aiPrompt = `Ты — методист английского языка для ученика ${st?.name || 'ученик'} (${st?.grade || '5-7 класс'}).
+Тема урока: "${topicLabel}"
+Материалы урока:
+${contextSnippet}
+
+Сгенерируй РОВНО 8 РАЗНЫХ, живых и полезных флеш-карточек (слов или устойчивых выражений) СТРОГО по теме и материалам ЭТОГО урока.
+${forceAiRefresh ? 'Обязательно подбери ДРУГИЕ новые слова или словосочетания по этой же теме, чтобы они не повторялись с предыдущим набором!' : ''}
+Формат — СТРОГО по одной карточке в строке, без звёздочек и без лишнего текста:
+english word | [transcription] | русский перевод | Short example sentence in English.`;
+
+    try {
+      const genRes = await executeFunctionCall('generate_lesson_plan', { prompt: aiPrompt });
+      const raw = genRes?.generated_plan || '';
+      const aiCards = [];
+      for (const line of raw.split('\n')) {
+        const clean = line.replace(/^\d+[\.\)]\s*/, '').replace(/\*\*/g, '').trim();
+        const parts = clean.split('|').map(p => p.trim());
+        if (parts.length >= 3 && /^[A-Za-z]/.test(parts[0]) && /[а-яА-ЯёЁ]/.test(parts[2])) {
+          aiCards.push({
+            en: parts[0],
+            ipa: parts[1] ? ('[' + parts[1].replace(/^[\[\/]|[\]\/]$/g, '').trim() + ']') : '',
+            ru: parts[2],
+            ex: parts[3] || ''
+          });
+        }
+      }
+      if (aiCards.length > 0) {
+        cards = aiCards;
+      }
+    } catch (e) {
+      console.warn('getLessonFlashcardsDynamic AI fallback error:', e.message);
+    }
+  }
+
   if (cards.length === 0) {
-    const topLow = (topicText || '').toLowerCase();
+    const topLow = (lastLs?._mergedTopic || lastLs?.topic || '').toLowerCase();
     if (topLow.includes('shop') || topLow.includes('магазин')) {
-      return [
+      cards = [
         { en: 'department store', ipa: '[dɪˈpɑːtmənt stɔː]', ru: 'универмаг', ex: 'We bought clothes at the department store.' },
         { en: 'fitting room', ipa: '[ˈfɪtɪŋ ruːm]', ru: 'примерочная', ex: 'Where is the fitting room?' },
         { en: 'try on', ipa: '[traɪ ɒn]', ru: 'примерять (одежду)', ex: 'Can I try this jacket on?' },
         { en: 'customer', ipa: '[ˈkʌstəmə]', ru: 'покупатель', ex: 'The customer is choosing a sweater.' },
-        { en: 'shop assistant', ipa: '[ʃɒp əˈsɪstənt]', ru: 'продавец-консультант', ex: 'Ask the shop assistant for your size.' },
-        { en: 'receipt', ipa: '[rɪˈsiːt]', ru: 'чек', ex: 'Keep the receipt after shopping.' },
-        { en: 'size', ipa: '[saɪz]', ru: 'размер', ex: 'What size do you wear?' },
-        { en: 'expensive / cheap', ipa: '[ɪkˈspensɪv / tʃiːp]', ru: 'дорогой / дешёвый', ex: 'This T-shirt is cheap, not expensive.' }
+        { en: 'receipt', ipa: '[rɪˈsiːt]', ru: 'чек', ex: 'Keep the receipt after shopping.' }
+      ];
+    } else if (topLow.includes('day') || topLow.includes('housework') || topLow.includes('дела')) {
+      cards = [
+        { en: 'do housework', ipa: '[duː ˈhaʊswɜːk]', ru: 'делать дела по дому', ex: 'We do housework together on Saturday.' },
+        { en: 'wash the dishes', ipa: '[wɒʃ ðə ˈdɪʃɪz]', ru: 'мыть посуду', ex: 'I usually wash the dishes after dinner.' },
+        { en: 'tidy my room', ipa: '[ˈtaɪdi maɪ ruːm]', ru: 'убирать свою комнату', ex: 'I tidy my room every weekend.' },
+        { en: 'make my bed', ipa: '[meɪk maɪ bed]', ru: 'заправлять постель', ex: 'I make my bed every morning.' },
+        { en: 'take a shower', ipa: '[teɪk ə ˈʃaʊə]', ru: 'принимать душ', ex: 'I take a shower before breakfast.' }
+      ];
+    } else {
+      cards = [
+        { en: 'experience', ipa: '[ɪkˈspɪərɪəns]', ru: 'опыт', ex: 'It was an unforgettable experience.' },
+        { en: 'achieve', ipa: '[əˈtʃiːv]', ru: 'достигать', ex: 'You can achieve great results!' },
+        { en: 'explore', ipa: '[ɪkˈsplɔː]', ru: 'исследовать', ex: 'Let us explore new places.' },
+        { en: 'improve', ipa: '[ɪmˈpruːv]', ru: 'улучшать', ex: 'Practice helps you improve your English.' },
+        { en: 'recently', ipa: '[ˈriːsntli]', ru: 'недавно', ex: 'I have read an interesting book recently.' }
       ];
     }
-    if (topLow.includes('местоимен') || topLow.includes('pronoun') || topLow.includes('family') || topLow.includes('семь')) {
-      return [
-        { en: 'my / your', ipa: '[maɪ / jɔː]', ru: 'мой / твой (ваш)', ex: 'This is my family and your friend.' },
-        { en: 'his / her', ipa: '[hɪz / hɜː]', ru: 'его / её', ex: 'Tom loves his dog, Anna loves her cat.' },
-        { en: 'our / their', ipa: '[ˈaʊə / ðeə]', ru: 'наш / их', ex: 'We love our city, they love their school.' },
-        { en: 'aunt / uncle', ipa: '[ɑːnt / ˈʌŋkl]', ru: 'тётя / дядя', ex: 'My aunt and uncle live in Minsk.' },
-        { en: 'cousin', ipa: '[ˈkʌzn]', ru: 'двоюродный брат или сестра', ex: 'She is my favourite cousin.' },
-        { en: 'parents / relatives', ipa: '[ˈpeərənts / ˈrelətɪvz]', ru: 'родители / родственники', ex: 'We visit our relatives on Sunday.' }
-      ];
-    }
-    return [
-      { en: 'danger', ipa: '[ˈdeɪndʒə]', ru: 'опасность', ex: 'Many animals are in danger.' },
-      { en: 'dangerous', ipa: '[ˈdeɪndʒərəs]', ru: 'опасный', ex: 'A wild wolf can be dangerous.' },
-      { en: 'endangered', ipa: '[ɪnˈdeɪndʒəd]', ru: 'под угрозой исчезновения', ex: 'The bison is an endangered animal.' },
-      { en: 'wildlife', ipa: '[ˈwaɪldlaɪf]', ru: 'дикая природа', ex: 'We must protect wildlife.' },
-      { en: 'suitcase', ipa: '[ˈsuːtkeɪs]', ru: 'чемодан', ex: 'She has just packed her suitcase.' },
-      { en: 'to rescue', ipa: '[ˈreskjuː]', ru: 'спасать', ex: 'He has rescued a kitten.' },
-      { en: 'species', ipa: '[ˈspiːʃiːz]', ru: 'вид / виды животных', ex: 'There are rare species in the forest.' },
-      { en: 'recently', ipa: '[ˈriːsntli]', ru: 'недавно', ex: 'I have seen a bison recently.' }
-    ];
   }
-  return cards;
+
+  return shuffleFlashcardsArray(cards);
 }
 
 function extractLessonScenario(homeworkText) {
@@ -6094,7 +6145,7 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
-  } else if (data && (data.startsWith('student_flashcards:') || data.startsWith('flip_card:') || data.startsWith('card_known:'))) {
+  } else if (data && (data.startsWith('student_flashcards:') || data.startsWith('flip_card:') || data.startsWith('card_known:') || data.startsWith('refresh_cards:'))) {
     const parts = data.split(':');
     const action = parts[0];
     const studentId = parts[1];
@@ -6115,7 +6166,17 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
       const lastLs = await getLatestLessonWithMaterials(st.id);
       const doss = parseStudentDossierBot(st);
       const materialsText = extractAllLessonMaterials(lastLs, st);
-      const cards = getLessonFlashcards(materialsText, lastLs?.homework || '', lastLs?._mergedTopic || lastLs?.topic || '', doss.vocab || '');
+      const deckKey = `${chatId}_${st.id}_${lastLs?.id || 'none'}`;
+      let cards = activeFlashcardsMap.get(deckKey);
+
+      if (!cards || cards.length === 0 || action === 'refresh_cards' || (action === 'student_flashcards' && idx === 0)) {
+        if (action === 'refresh_cards') {
+          await bot.answerCallbackQuery(query.id, { text: '🔀 Подбираю новые карточки по уроку...' });
+        }
+        cards = await getLessonFlashcardsDynamic(st, lastLs, materialsText, doss.vocab || '', action === 'refresh_cards');
+        activeFlashcardsMap.set(deckKey, cards);
+        idx = 0;
+      }
       if (idx >= cards.length) idx = 0;
       if (idx < 0) idx = 0;
       const c = cards[idx];
@@ -6144,7 +6205,7 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
             `⏳ Осталось:\n• ${hwStatus.leftText}`
           ).catch(() => {});
         }
-      } else {
+      } else if (action !== 'refresh_cards') {
         await bot.answerCallbackQuery(query.id);
       }
 
@@ -6164,6 +6225,9 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
           ],
           [
             { text: '🔊 Озвучить слово', callback_data: `say_word:${st.id}:${encodeURIComponent(c.en)}` },
+            { text: '🔀 Другие слова', callback_data: `refresh_cards:${st.id}:0` }
+          ],
+          [
             { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }
           ],
           [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
@@ -6187,6 +6251,9 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
           [{ text: '👀 Перевернуть карточку', callback_data: `flip_card:${st.id}:${idx}` }],
           [
             { text: '➡️ Следующая', callback_data: `student_flashcards:${st.id}:${(idx + 1) % cards.length}` },
+            { text: '🔀 Другие слова', callback_data: `refresh_cards:${st.id}:0` }
+          ],
+          [
             { text: '🔤 5 слов урока', callback_data: `student_words:${st.id}` }
           ],
           [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
@@ -9058,9 +9125,14 @@ cron.schedule('* * * * *', async () => {
       }
     }
     await processLessonQueues();
+    const minskHourNow = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Minsk', hour: '2-digit', hour12: false }).format(now));
+    const isAllowedStudentNotifyHours = minskHourNow >= 9 && minskHourNow < 22;
+
     const future3hMax = new Date(now.getTime() + 185 * 60000);
     const future3hMin = new Date(now.getTime() + 115 * 60000); // 2–3 часа до начала урока
-    const { data: lessons3h } = await db.from('lessons').select('*, students(*)').eq('status', 'Запланирован').gte('date', future3hMin.toISOString()).lte('date', future3hMax.toISOString());
+    const { data: lessons3h } = isAllowedStudentNotifyHours
+      ? await db.from('lessons').select('*, students(*)').eq('status', 'Запланирован').gte('date', future3hMin.toISOString()).lte('date', future3hMax.toISOString())
+      : { data: [] };
     for (const ls3 of (lessons3h || [])) {
       const key3h = `hw3h_${ls3.id}`;
       if (!notifiedEvents.has(key3h) && ls3.students) {
@@ -9084,13 +9156,15 @@ cron.schedule('* * * * *', async () => {
                 ];
                 await bot.sendMessage(tid, warmMsg, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: warmKb } }).catch(() => {});
               } else {
-                const streakAlert = `🔥⚠️ *ВНИМАНИЕ, ${(actor.shortName || ls3.students.name).toUpperCase()}! ТВОЙ СТРИК ПОД УГРОЗОЙ!* ⚠️🔥\n\nДо нашего урока осталось меньше 3 часов (*начало сегодня в ${timeStr}*), а домашнее задание ещё не сдано (сейчас выполнено ${actorHwSum.pct}%)!\n\n🔥 Твой ударный режим: *${curStreak} ДЗ подряд!*\n⏳ Задание рассчитано всего на *10–15 минут* — перепиши упражнение с карточки в тетрадь и пришли 📸 фото тетрадки до *${timeStr}*, чтобы спасти свой стрик! 💪🚀`;
-                await bot.sendMessage(tid, streakAlert, { parse_mode: 'Markdown' }).catch(() => {});
+                const streakAlert = `⏰ *Привет, ${actor.shortName || ls3.students.name}!*\nСегодня в *${timeStr}* у нас урок английского! 🇬🇧\n\nЕсли ещё не успел(а) сдать прошлое ДЗ — захвати тетрадку на занятие или пришли фото. А пока можно размяться с карточками ниже! 👇`;
+                const alertKb = [
+                  [{ text: '🔤 5 слов урока', callback_data: `student_words:${ls3.students.id}` }, { text: '🃏 Флеш-карточки', callback_data: `student_flashcards:${ls3.students.id}:0` }]
+                ];
+                await bot.sendMessage(tid, streakAlert, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: alertKb } }).catch(() => {});
               }
             }
-            await sendHomeworkToStudentBot(ls3.students, prev, true, `сегодня в ${timeStr}`);
             if (CHAT_ID) {
-              bot.sendMessage(CHAT_ID, `🔥 Отправил *${ls3.students.name}* триггер «Сгорающий стрик 🔥 ${curStreak}» и ДЗ за 3 часа до сегодняшнего урока в *${timeStr}*!`, { parse_mode: 'Markdown' }).catch(() => {});
+              bot.sendMessage(CHAT_ID, `⏰ Отправил *${ls3.students.name}* мягкое напоминание о сегодняшнем уроке в *${timeStr}* (без спама старой карточкой ДЗ).`, { parse_mode: 'Markdown' }).catch(() => {});
             }
           } else {
             const remindMsg = `⏰ *Привет, ${ls3.students.name}!*\nСегодня в *${timeStr}* у нас урок английского с Игорем! 🇬🇧\n\n💡 Повтори 5 слов перед занятием, чтобы размяться и заработать баллы:`;
@@ -9113,14 +9187,13 @@ cron.schedule('* * * * *', async () => {
       }
     }
 
-    // 2б. Авто-напоминание перед уроком (за 15-45 минут до начала, даже если урок был создан в последний момент)
+    // 2б. Авто-напоминание перед уроком (за 15-45 минут до начала, только в дневные часы 08:00–22:00)
+    const isAllowedSoonHours = minskHourNow >= 8 && minskHourNow < 22;
     const futureSoonMax = new Date(now.getTime() + 45 * 60000);
     const futureSoonMin = new Date(now.getTime() - 5 * 60000);
-    const { data: lessonsSoon } = await db.from('lessons')
-      .select('*, students(*)')
-      .eq('status', 'Запланирован')
-      .gte('date', futureSoonMin.toISOString())
-      .lte('date', futureSoonMax.toISOString());
+    const { data: lessonsSoon } = isAllowedSoonHours
+      ? await db.from('lessons').select('*, students(*)').eq('status', 'Запланирован').gte('date', futureSoonMin.toISOString()).lte('date', futureSoonMax.toISOString())
+      : { data: [] };
 
     for (const lsSoon of (lessonsSoon || [])) {
       const keySoon = `soon_${lsSoon.id}`;
