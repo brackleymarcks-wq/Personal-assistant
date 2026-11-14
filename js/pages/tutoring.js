@@ -1718,13 +1718,16 @@ const TutoringPage = {
           document.getElementById('ls-topic').value = effectiveTopic;
         }
 
+        const ebb = this.getEbbinghausLesson(st.id, ls?.date);
         const homework = await Gemini.generateTutoringAI('homework', 
           {
             name: st.name,
             grade: st.grade,
             ...mem.enrichedDossier,
             vocab: combinedVocab || mem.enrichedDossier.vocab,
-            historySummary: mem.aiHistorySummary
+            historySummary: mem.aiHistorySummary,
+            ebbinghausTopic: ebb?.topic || '',
+            ebbinghausDate: ebb?.date ? new Date(ebb.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' }) : ''
           }, 
           {
             topic: effectiveTopic,
@@ -2271,7 +2274,7 @@ const TutoringPage = {
     const dateStr = ls?.date
       ? new Date(ls.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' })
       : 'сегодня';
-    const cleanTopic = (topic || ls?.topic || 'Практика английского языка').trim();
+    const cleanTopic = (topic || ls?.topic || 'Практика английского языка').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
 
     const debMatch = (ls?.homework || '').match(/\[ДЕБРИФИНГ\]:([\s\S]*?)\[\/ДЕБРИФИНГ\]/);
     const debText = debMatch ? debMatch[1].replace(/\s+/g, ' ').trim() : '';
@@ -2510,7 +2513,7 @@ const TutoringPage = {
     const timeNow = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
     if (type === 'parent') {
-      const parentBody = customReportText || `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${recipientName}*.\n\n📚 *Тема урока:* ${topic || 'Практика'}\n${vocab ? `🔤 *Слова урока:* ${vocab}\n` : ''}${cleanHw ? `📌 *Домашнее задание:* ${cleanHw}\n` : ''}🔥 *Серия занятий:* ${streak || 0} ДЗ подряд!\nСпасибо за поддержку! 🌟`;
+      const parentBody = customReportText || `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${recipientName}*.\n\n📚 *Тема урока:* ${(topic || 'Практика').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim()}\n✅ *Что получилось хорошо:* активно поработали по теме урока и потренировали ключевую лексику.\n${cleanHw ? `📌 *Домашнее задание:* короткая практика на 10–15 минут (слова + тетрадь).\n` : ''}${streak ? `🔥 *Серия выполненных ДЗ:* ${streak} подряд!\n` : ''}Спасибо за поддержку! 🌟`;
       return `
         <div style="background:#18222d;border-radius:12px;padding:12px;color:#e1e3e6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.45;box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:100%;">
           <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:8px;margin-bottom:10px;">
@@ -3349,8 +3352,7 @@ const TutoringPage = {
     if (parentSection && parentContainer) {
       if (sendParentChecked) {
         parentSection.classList.remove('hidden');
-        const stNameWith = this.formatStudentNameWith(st.name);
-        const parentDraft = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${stNameWith}*.\n\n📚 *Тема урока:* ${topic || 'Практика'}\n${cleanVocab ? `🔤 *Слова урока:* ${cleanVocab}\n` : ''}${cleanHw ? `📌 *Домашнее задание:*\n${cleanHw}\n` : ''}\n🔥 *Серия занятий:* ${dossier.streak || 0} ДЗ подряд!\nСпасибо за поддержку! 🌟`;
+        const parentDraft = this.buildParentReportDraft(st, dossier, null, topic, cleanHw);
         parentContainer.innerHTML = this.renderTelegramPreviewBubble({
           type: 'parent',
           recipientName: 'Родитель',
@@ -3512,8 +3514,15 @@ const TutoringPage = {
           const presText = presTextMatch ? presTextMatch[1].trim() : (this.attachedPresentationText || '');
           const presFileMatch = ls?.homework?.match(/\[ПРЕЗЕНТАЦИЯ\]:([\s\S]*?)\[\/ПРЕЗЕНТАЦИЯ\]/i);
           const presLink = presFileMatch ? presFileMatch[1].trim() : (this.attachedPresentation || '');
+          const ebb = this.getEbbinghausLesson(st.id, ls?.date);
           const hw = await Gemini.generateTutoringAI('homework', 
-            { name: st.name, grade: st.grade, ...dossier }, 
+            {
+              name: st.name,
+              grade: st.grade,
+              ...dossier,
+              ebbinghausTopic: ebb?.topic || '',
+              ebbinghausDate: ebb?.date ? new Date(ebb.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' }) : ''
+            }, 
             { 
               topic, 
               scenario, 
@@ -3737,7 +3746,14 @@ const TutoringPage = {
     if (!initialReport) {
       const existingMatch = (ls?.homework || '').match(/\[КАСТОМНЫЙ_ОТЧЕТ\]:([\s\S]*?)\[\/КАСТОМНЫЙ_ОТЧЕТ\]/) || (ls?.homework || '').match(/\[ОТЧЕТ_РОДИТЕЛЮ\]:([\s\S]*?)\[\/ОТЧЕТ_РОДИТЕЛЮ\]/);
       if (existingMatch && existingMatch[1].trim()) {
-        initialReport = existingMatch[1].trim();
+        const candidate = existingMatch[1].trim();
+        const childFirstName = (st.name || '').trim().split(/\s+/)[0];
+        const looksLikeOldChildHwDump = /Шаг\s*1\./i.test(candidate)
+          || /🔤\s*\*?Слова урока/i.test(candidate)
+          || (childFirstName && new RegExp(`Привет,\\s*${childFirstName}`, 'i').test(candidate));
+        if (!looksLikeOldChildHwDump) {
+          initialReport = candidate;
+        }
       }
     }
 

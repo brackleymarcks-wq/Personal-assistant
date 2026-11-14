@@ -836,12 +836,14 @@ async function incrementStudentStreakBot(st, actor = null) {
 }
 
 async function findStudentByTgChatId(chatIdStr) {
+  const cid = String(chatIdStr).trim();
   const { data: sts } = await db.from('students').select('*');
   for (const st of (sts || [])) {
     const doss = parseStudentDossierBot(st);
-    if (doss.parentTgId && String(doss.parentTgId).trim() === String(chatIdStr).trim()) continue;
+    const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (parentIds.includes(cid)) continue;
     const tgIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (tgIds.includes(String(chatIdStr).trim())) {
+    if (tgIds.includes(cid)) {
       return { student: st, dossier: doss };
     }
   }
@@ -849,14 +851,39 @@ async function findStudentByTgChatId(chatIdStr) {
 }
 
 async function findParentByTgChatId(chatIdStr) {
+  const cid = String(chatIdStr).trim();
   const { data: sts } = await db.from('students').select('*');
   for (const st of (sts || [])) {
     const doss = parseStudentDossierBot(st);
-    if (doss.parentTgId && String(doss.parentTgId).trim() === String(chatIdStr).trim()) {
+    const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (parentIds.includes(cid)) {
       return { student: st, dossier: doss };
     }
   }
   return null;
+}
+
+function getParentDisplayNameBot(st, doss = null) {
+  const d = doss || parseStudentDossierBot(st || {});
+  if (d.parentName && d.parentName.trim()) return d.parentName.trim();
+  const tgUserNorm = (d.parentTgUser || '').replace(/^@/, '').trim().toLowerCase();
+  const stNameNorm = (st?.name || '').trim().toLowerCase();
+  if (tgUserNorm === 'ilkuroch' || stNameNorm.includes('курочкин')) return 'Евгения';
+  if (tgUserNorm === 'korshukanastasiya' || stNameNorm.includes('коршук')) return 'Анастасия';
+  return '';
+}
+
+function getParentGreetingBot(st, doss = null) {
+  const name = getParentDisplayNameBot(st, doss);
+  return name ? `Здравствуйте, ${name}! 👋` : 'Здравствуйте! 👋';
+}
+
+function buildParentKeyboard(studentId) {
+  return [
+    [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${studentId}` }, { text: '📝 Все отчёты по урокам', callback_data: `parent_all_reports:${studentId}` }],
+    [{ text: '📚 Свежее ДЗ и прогресс', callback_data: `parent_view_hw:${studentId}` }, { text: '💳 Оплата и баланс', callback_data: `parent_payment_status:${studentId}` }],
+    [{ text: '🏆 Паспорт прогресса (PNG)', callback_data: `parent_milestone_card:${studentId}` }]
+  ];
 }
 
 function cleanHomeworkTextBot(rawHw) {
@@ -974,10 +1001,7 @@ async function sendParentLessonReportBot(st, lesson) {
     lines.push('', 'Спасибо за поддержку! 🌟');
     aiReport = lines.join('\n');
   }
-  const kb = [
-    [{ text: '📊 Запросить сводный отчёт о прогрессе', callback_data: `parent_req_report:${st.id}` }],
-    [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
-  ];
+  const kb = buildParentKeyboard(st.id);
   try {
     for (const pid of parentIds) {
       await bot.sendMessage(pid, aiReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
@@ -1092,7 +1116,8 @@ async function getLatestLessonWithMaterials(studentId) {
   let bestCleanHw = '';
   let bestPresText = '';
 
-  for (const l of recentLessons) {
+  const searchPool = conducted.length > 0 ? conducted : recentLessons;
+  for (const l of searchPool) {
     if (l.topic && l.topic.trim() && !topicsList.includes(l.topic.trim())) {
       topicsList.push(l.topic.trim());
     }
@@ -2979,11 +3004,34 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
         ? `📚 *Привет, ${st.name}!*\nМатериалы и задания к предстоящему уроку:`
         : `🇬🇧 *Привет, ${st.name}!*\nИтоги нашего урока и домашнее задание на следующий раз:`);
 
+  let grammarCard = '';
+  const hasGrammarInHw = /главн\w*\s+правил|шпаргалк|📖\s*правило/i.test(rawHw || '');
+  if (!hasGrammarInHw && lesson?.topic) {
+    try {
+      const presSnap = extractPresentationText(lesson?.homework || '') || '';
+      const scenSnap = extractLessonScenario(lesson?.homework || '') || '';
+      const gPrompt = `Ты — добрый преподаватель английского. Для ученика ${st.name} (${st.grade || ''}) по теме урока "${lesson.topic}" напиши КОРОТКУЮ, супер-понятную карточку-объяснение главного грамматического правила (4–6 строк, без звёздочек **):
+1) Суть правила простыми словами и формула;
+2) 2 коротких примера с переводом;
+3) Главная частая ошибка, на которую обратить внимание.
+${scenSnap ? 'Сценарий урока: ' + scenSnap.slice(0, 1200) : ''}
+${presSnap ? 'Презентация: ' + presSnap.slice(0, 1200) : ''}`;
+      const gRes = await Promise.race([
+        executeFunctionCall('generate_lesson_plan', { prompt: gPrompt }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+      ]);
+      const gText = (gRes?.generated_plan || '').replace(/\*\*/g, '').replace(/\*/g, '').trim();
+      if (gText && gText.length > 20) {
+        grammarCard = `\n📖 *Шпаргалка по главному правилу урока:*\n${gText}\n`;
+      }
+    } catch (_) {}
+  }
+
   let msg = `${header}\n\n`;
   if (lesson?.topic) msg += `📚 *Тема:* ${lesson.topic}\n`;
-  if (cleanVocab) msg += `🔤 *Полезные слова (Vocabulary):* ${cleanVocab}\n`;
+  if (grammarCard) msg += `${grammarCard}`;
   if (rawHw) msg += `\n📌 *Домашнее задание:*\n${rawHw}\n`;
-  if (cards.length > 0) msg += `\n🖼 *Прикреплено карточек к уроку:* ${cards.length} шт. (отправлены выше)`;
+  if (cards.length > 0) msg += `\n🖼 *Прикреплено карточек к уроку:* ${cards.length} шт. (отправлены выше)\n`;
   // Calculate progress bar & HW completion readiness
   const hwStatus = getHwCompletionSummary(st, lesson);
   const pct = hwStatus.pct;
@@ -2994,8 +3042,12 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
   msg += `🔥 *Твоя серия (Streak):* ${doss.streak || 0} ДЗ подряд | 🛡️ *Щиты заморозки:* ${doss.shields ?? 1}/3\n`;
   const lbText = getLeaderboardText(st.id, lesson?.id);
   if (lbText) msg += lbText;
-  msg += `\n📖 *Забыл(а) правило урока?* Нажми кнопку *«📖 Правило урока»* внизу — я объясню тему простыми словами с примерами и озвучкой!\n`;
-  msg += `📸 *ОБЯЗАТЕЛЬНО ДЛЯ СДАЧИ ДЗ:* Выполни письменное упражнение с карточки от руки в тетради и пришли сюда *фото своей тетрадки*! Только после проверки фото тетрадки откроется кнопка «✅ Я сделал(а) ДЗ!» 💪`;
+  msg += `\n🧭 *КАК СДЕЛАТЬ И СДАТЬ ДЗ (ПОШАГОВО):*\n`;
+  msg += `1️⃣ Нажми кнопки *«🔤 5 слов урока»* и *«🃏 Флеш-карточки»* под этим сообщением — повтори слова и послушай произношение.\n`;
+  msg += `2️⃣ Если забыл(а) правило — нажми *«📖 Правило урока»*, я объясню тему простыми словами с примерами.\n`;
+  msg += `3️⃣ Пройди короткий *«📝 Тестик по уроку»* (это займёт 2 минуты).\n`;
+  msg += `4️⃣ Выполни письменное задание (из Шага 2 и Шага 3 / с карточки) от руки в тетради и отправь *📸 ФОТО своей тетрадки* прямо сюда в чат — я сразу проверю и подскажу, если есть ошибки!\n`;
+  msg += `5️⃣ После проверки фото нажми *«✅ Я сделал(а) ДЗ!»* — и твой огонёк Streak вырастет! 💪🚀`;
 
   const kbMarkup = buildStudentKeyboard(st, lesson);
   try {
@@ -3057,13 +3109,11 @@ async function processLessonQueues() {
         if (pls.students) {
           const doss = parseStudentDossierBot(pls.students);
           if (customReport) {
-            const kb = [
-              [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pls.students.id}` }],
-              [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pls.students.id}` }]
-            ];
-            if (doss.parentTgId) {
-              await bot.sendMessage(doss.parentTgId, customReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
-                return bot.sendMessage(doss.parentTgId, customReport, { reply_markup: { inline_keyboard: kb } });
+            const kb = buildParentKeyboard(pls.students.id);
+            const pIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+            for (const pid of pIds) {
+              await bot.sendMessage(pid, customReport, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: kb } }).catch(() => {
+                return bot.sendMessage(pid, customReport, { reply_markup: { inline_keyboard: kb } });
               });
             }
             if (adminId) {
@@ -4871,10 +4921,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     const welcomeParent = buildParentInnovationsMessage(st);
     await sendCleanMessage(incomingChatId, welcomeParent, {
       reply_markup: {
-        inline_keyboard: [
-          [{ text: '🏆 Паспорт прогресса (PNG + отчёт)', callback_data: `parent_milestone_card:${st.id}` }],
-          [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }, { text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
-        ]
+        inline_keyboard: buildParentKeyboard(st.id)
       }
     });
 
@@ -4938,13 +4985,11 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
   if (incomingChatId !== ADMIN_CHAT_ID) {
     const parentFound = await findParentByTgChatId(incomingChatId);
     if (parentFound) {
-      return bot.sendMessage(incomingChatId, `Здравствуйте! 👋 Это электронный дневник успеваемости ученика *${parentFound.student.name}* по английскому языку (преподаватель — Игорь) 🇬🇧.\n\nВыберите действие ниже:`, {
+      const pGreeting = getParentGreetingBot(parentFound.student, parentFound.dossier);
+      return bot.sendMessage(incomingChatId, `${pGreeting} Это электронный дневник успеваемости ученика *${parentFound.student.name}* по английскому языку (преподаватель — Игорь) 🇬🇧.\n\nВы можете задать мне *любой вопрос* текстом или голосом (про отчёты, свежее ДЗ, прогресс ребёнка, ошибки или оплату) либо выбрать действие ниже:`, {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [
-            [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${parentFound.student.id}` }],
-            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${parentFound.student.id}` }]
-          ]
+          inline_keyboard: buildParentKeyboard(parentFound.student.id)
         }
       });
     }
@@ -5061,10 +5106,7 @@ bot.on('photo', async (msg) => {
 
       const isPaymentQuery = /(?:сколько\s+(?:я\s+|мы\s+|нам\s+)?долж|к\s+оплат|неоплачен|не\s+оплачен|оплат[аыуеи]|долг|сколько\s+(?:за|по)\s+урок|стоимость|баланс|расч[её]т|перевест[иь]|на\s+карт|сумм[ауе]|рубл|\bруб\b|\bbyn\b|вышло\s+за|за\s+какие\s+(?:числ|дат|дн))/i.test(parentInput || '');
       const parentKb = {
-        inline_keyboard: [
-          [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `parent_milestone_card:${pSt.id}` }],
-          [{ text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }, { text: '💳 Оплата и баланс', callback_data: `parent_payment_status:${pSt.id}` }]
-        ]
+        inline_keyboard: buildParentKeyboard(pSt.id)
       };
 
       if (isPaymentQuery) {
@@ -5075,22 +5117,38 @@ bot.on('photo', async (msg) => {
         return;
       }
 
+      const pGreeting = getParentGreetingBot(pSt, pDoss);
       let smartParentReply = '';
       if (parentInput && parentInput.trim()) {
         try {
           bot.sendChatAction(chatId, 'typing');
-          const lastLsP = await getLatestLessonWithMaterials(pSt.id);
+          const { data: recentConducted } = await db.from('lessons').select('*').eq('student_id', pSt.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(8);
+          const lastLsP = (recentConducted || []).find(l => cleanHomeworkTextBot(l.homework || '').length > 5) || (recentConducted || [])[0] || await getLatestLessonWithMaterials(pSt.id);
           const { data: nextLsP } = await db.from('lessons').select('date, topic').eq('student_id', pSt.id).eq('status', 'Запланирован').order('date', { ascending: true }).limit(1).maybeSingle();
           const hwSumP = getHwCompletionSummary(pSt, lastLsP);
           const payInfoP = await buildParentPaymentStatusMessage(pSt);
           const nextDateP = nextLsP ? new Date(nextLsP.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'по расписанию (уточнит Игорь)';
-          const pPrompt = `Ты — умный, вежливый и проактивный ассистент преподавателя английского языка Игоря.
-Тебе написал родитель ученика: ${pSt.name} (${pSt.grade || ''}).
+          const freshHwClean = cleanHomeworkTextBot(lastLsP?.homework || '').slice(0, 700);
+          const reportsHistory = (recentConducted || []).map(l => {
+            const ds = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' });
+            const hs = getHwCompletionSummary(pSt, l);
+            const debM = (l.homework || '').match(/\[ДЕБРИФИНГ\]:([\s\S]*?)\[\/ДЕБРИФИНГ\]/);
+            const repM = (l.homework || '').match(/\[ОТЧЕТ_РОДИТЕЛЮ\]:([\s\S]*?)\[\/ОТЧЕТ_РОДИТЕЛЮ\]/);
+            const note = (debM?.[1] || (!/Шаг\s*1\./i.test(repM?.[1] || '') ? repM?.[1] : '') || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+            return `- ${ds}: "${(l.topic || 'Практика').replace(/_+/g, ' ')}" | ДЗ: ${hs.canSubmit ? 'сдано 100%' : hs.pct + '%'}${note ? ' | Итог: ' + note : ''}`;
+          }).join('\n');
+
+          const pPrompt = `Ты — умный, вежливый и внимательный ассистент преподавателя английского языка Игоря.
+Тебе написал РОДИТЕЛЬ ученика: ${pSt.name} (${pSt.grade || ''}).
+ОБРАЩЕНИЕ К РОДИТЕЛЮ: "${pGreeting}" (НИКОГДА не обращайся к родителю именем ребёнка!).
 КОНТЕКСТ ПО УЧЕНИКУ:
 - Постоянное расписание: ${pDoss.schedule || 'по договорённости'}
 - Ближайший запланированный урок: ${nextDateP}
-- Последняя тема урока: "${lastLsP?.topic || 'Практика английского'}"
-- Статус текущего ДЗ: ${hwSumP.pct}% (${hwSumP.canSubmit ? 'сдано/готово ✅' : 'в процессе 🔒'})
+- Последняя тема проведённого урока: "${(lastLsP?.topic || 'Практика английского').replace(/_+/g, ' ')}"
+- Текст свежего ДЗ: "${freshHwClean || 'не задавалось'}"
+- Прогресс ребёнка по свежему ДЗ: ${hwSumP.pct}% (${hwSumP.canSubmit ? 'сдано/готово ✅' : 'в процессе 🔒'}). Сделано: ${hwSumP.doneText}. Осталось: ${hwSumP.leftText}. ${hwSumP.groupBreakdownText || ''}
+- История последних проведённых уроков и отчётов:
+${reportsHistory || 'пока нет проведённых уроков'}
 - Оплата: неоплаченных проведённых уроков ${payInfoP.unpaidCount}, сумма к оплате ${payInfoP.totalAmount} BYN (стоимость 1 урока: ${Number(pSt.price) || 0} BYN)
 - Серия активности (Streak): ${pDoss.streak || 0} дн. | Щиты заморозки: ${pDoss.shields ?? 1}/3
 - Типичные ошибки / над чем работаем: ${pDoss.errors || 'грамматика и разговорная практика'}
@@ -5098,16 +5156,16 @@ bot.on('photo', async (msg) => {
 СООБЩЕНИЕ РОДИТЕЛЯ: "${parentInput}"
 
 ТВОЯ ЗАДАЧА:
-Ответь родителю тепло, на "Вы", по делу и с заботой (до 700 символов, без звёздочек **; ВАЖНО: ты общаешься с РОДИТЕЛЕМ, поэтому НИКОГДА не обращайся к родителю по имени ребёнка — начинай с «Здравствуйте!» без имени; КОНФИДЕНЦИАЛЬНОСТЬ: ты знаешь информацию ТОЛЬКО об этом одном ученике и НИКОГДА не обсуждаешь других учеников или их оплаты):
-- Если спрашивают про ДЗ, тему урока, расписание, успехи или как помочь ребёнку дома — дай точный, полезный ответ и конкретный совет!
+Ответь родителю тепло, на "Вы", по делу и с заботой (до 900 символов, без звёздочек **; начинай строго с «${pGreeting}»; говори о ребёнке в 3-м лице; КОНФИДЕНЦИАЛЬНОСТЬ: ты знаешь информацию ТОЛЬКО об этом одном ученике и НИКОГДА не обсуждаешь других учеников):
+- Если спрашивают про все отчёты, прошлые уроки, свежее ДЗ, прогресс ребёнка, расписание, успехи, ошибки или как помочь дома — дай точный, развёрнутый ответ на основе реальных данных выше!
 - Если вопрос требует личного решения преподавателя (перенос урока, индивидуальная просьба) — ответь вежливо, что уже передал информацию Игорю и он скоро ответит лично.
-- Всегда в конце добавь 1 короткое полезное предложение или подсказку (например, предложить посмотреть свежий отчёт или баланс по кнопкам ниже).`;
+- В конце напомни, что полные отчёты, свежее ДЗ и баланс всегда доступны по кнопкам ниже.`;
           const pRes = await executeFunctionCall('generate_lesson_plan', { prompt: pPrompt });
           if (pRes?.generated_plan) smartParentReply = pRes.generated_plan;
         } catch (_) {}
       }
 
-      const finalParentMsg = smartParentReply || `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику ${pSt.name}).`;
+      const finalParentMsg = smartParentReply || `${pGreeting} Я передал ваше сообщение преподавателю Игорю (по ученику ${pSt.name}).`;
       await sendCleanMessage(chatId, finalParentMsg, { reply_markup: parentKb });
       await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 «${parentInput || '[Медиа/Голосовое]'}»\n\n🤖 *Как бот ответил родителю:*\n${finalParentMsg}`, { parse_mode: 'Markdown' }).catch(() => {});
       await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
@@ -5416,14 +5474,12 @@ bot.on('callback_query', async (query) => {
       const newSched = serializeStudentDossierBot(doss);
       await db.from('students').update({ schedule: newSched }).eq('id', st.id);
       await bot.answerCallbackQuery(query.id, { text: '👨‍👩‍👧 Переключено в режим Родителя!' });
-      const welcomeParent = `Здравствуйте! 👋\nРежим успешно переключён: теперь вы подключены как *Родитель* к электронному дневнику успеваемости ученика *${st.name}* по английскому языку (преподаватель — Игорь) 🇬🇧\n\nСюда я буду автоматически присылать:\n• 📝 *Отчёты после каждого проведённого урока* (тема, успехи, домашнее задание)\n• 📊 *Аналитику прогресса и выученных тем*\n\nВы можете в любой момент нажать кнопки ниже, чтобы посмотреть актуальное домашнее задание ребёнка или запросить свежий отчёт об успеваемости:`;
+      const pGreeting = getParentGreetingBot(st, doss);
+      const welcomeParent = `${pGreeting}\nРежим успешно переключён: теперь вы подключены как *Родитель* к электронному дневнику успеваемости ученика *${st.name}* по английскому языку (преподаватель — Игорь) 🇬🇧\n\nСюда я буду автоматически присылать:\n• 📝 *Отчёты после каждого проведённого урока* (тема, успехи, домашнее задание)\n• 📊 *Аналитику прогресса и выученных тем*\n\nВы можете в любой момент нажать кнопки ниже или задать любой вопрос прямо в чат:`;
       await bot.sendMessage(chatId, welcomeParent, {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [
-            [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }],
-            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }]
-          ]
+          inline_keyboard: buildParentKeyboard(st.id)
         }
       }).catch(() => bot.sendMessage(chatId, welcomeParent));
       await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 Аккаунт (${doss.parentTgUser || 'ID: ' + chatId}) переключился в режим *Родителя* ученика *${st.name}*!`, { parse_mode: 'Markdown' }).catch(() => {});
@@ -5440,11 +5496,54 @@ bot.on('callback_query', async (query) => {
       const rep = await buildStudentAnalyticsAndProgressReport(st, { forParent: true });
       await sendCleanMessage(chatId, rep.text, {
         reply_markup: {
-          inline_keyboard: [
-            [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${st.id}` }],
-            [{ text: '🔄 Обновить отчёт', callback_data: `parent_req_report:${st.id}` }]
-          ]
+          inline_keyboard: buildParentKeyboard(st.id)
         }
+      });
+    } catch (e) {
+      bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  } else if (data && data.startsWith('parent_all_reports:')) {
+    const studentId = data.split(':')[1];
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
+      if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
+      await bot.answerCallbackQuery(query.id, { text: '📝 Собираю все отчёты по урокам...' });
+      const doss = parseStudentDossierBot(st);
+      const pGreeting = getParentGreetingBot(st, doss);
+      const { data: condLessons } = await db.from('lessons')
+        .select('*')
+        .eq('student_id', st.id)
+        .eq('status', 'Проведен')
+        .order('date', { ascending: false })
+        .limit(12);
+
+      if (!condLessons || condLessons.length === 0) {
+        return sendCleanMessage(chatId, `${pGreeting}\nПо ученику *${st.name}* пока нет проведённых уроков с отчётами.`, {
+          reply_markup: { inline_keyboard: buildParentKeyboard(st.id) }
+        });
+      }
+
+      const blocks = [`${pGreeting}\n📝 *Все отчёты по проведённым урокам (${st.name}, последние ${condLessons.length}):*\n`];
+      for (const ls of condLessons) {
+        const dStr = new Date(ls.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' });
+        const rawHw = ls.homework || '';
+        const topicClean = (ls.topic || 'Практика английского').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+        const hwSum = getHwCompletionSummary(st, ls);
+        const repMatch = rawHw.match(/\[КАСТОМНЫЙ_ОТЧЕТ\]:([\s\S]*?)\[\/КАСТОМНЫЙ_ОТЧЕТ\]/) || rawHw.match(/\[ОТЧЕТ_РОДИТЕЛЮ\]:([\s\S]*?)\[\/ОТЧЕТ_РОДИТЕЛЮ\]/);
+        const debMatch = rawHw.match(/\[ДЕБРИФИНГ\]:([\s\S]*?)\[\/ДЕБРИФИНГ\]/);
+        let note = '';
+        if (repMatch && repMatch[1].trim() && !/Шаг\s*1\./i.test(repMatch[1])) {
+          note = repMatch[1].trim().replace(/\s+/g, ' ').slice(0, 220);
+        } else if (debMatch && debMatch[1].trim()) {
+          note = debMatch[1].trim().replace(/\s+/g, ' ').slice(0, 220);
+        }
+        const statusIcon = hwSum.canSubmit ? '✅ ДЗ выполнено (100%)' : (hwSum.pct > 0 ? `⏳ В процессе (${hwSum.pct}%)` : (cleanHomeworkTextBot(rawHw).length > 10 ? '📌 ДЗ задано (0%)' : 'ℹ️ Без письменного ДЗ'));
+        blocks.push(`📅 *${dStr}* — *${topicClean}*\n   • Статус ДЗ: ${statusIcon}${note ? `\n   • Итог урока: _${note}${note.length >= 220 ? '...' : ''}_` : ''}`);
+      }
+
+      await sendCleanMessage(chatId, blocks.join('\n\n'), {
+        reply_markup: { inline_keyboard: buildParentKeyboard(st.id) }
       });
     } catch (e) {
       bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
@@ -5455,26 +5554,32 @@ bot.on('callback_query', async (query) => {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
       if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
-      const lastLs = await getLatestLessonWithMaterials(st.id);
+      const { data: condList } = await db.from('lessons')
+        .select('*')
+        .eq('student_id', st.id)
+        .eq('status', 'Проведен')
+        .order('date', { ascending: false })
+        .limit(5);
+      const lastLs = (condList || []).find(l => cleanHomeworkTextBot(l.homework || '').length > 5) || (condList || [])[0] || null;
       await bot.answerCallbackQuery(query.id, { text: '📚 Загружаю данные о ДЗ...' });
-      if (!lastLs) return bot.sendMessage(chatId, `По ученику *${st.name}* пока нет записанных уроков.`, { parse_mode: 'Markdown' });
+      if (!lastLs) return bot.sendMessage(chatId, `По ученику *${st.name}* пока нет проведённых уроков с домашним заданием.`, { parse_mode: 'Markdown' });
+      const doss = parseStudentDossierBot(st);
+      const pGreeting = getParentGreetingBot(st, doss);
       const { cleanHw: noCardsHw, cards } = extractAttachedCards(lastLs.homework || '');
       const hwSum = getHwCompletionSummary(st, lastLs);
       const cleanHw = cleanHomeworkTextBot(noCardsHw);
-      const dStr = new Date(lastLs.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+      const dStr = new Date(lastLs.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' });
+      const topicClean = (lastLs.topic || 'Английский язык').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
       
-      let msg = `📚 *Текущее домашнее задание (${st.name} — на 10–15 минут):*\n📅 Урок от: ${dStr}\n📖 *Тема:* ${lastLs.topic || 'Английский язык'}\n📌 *Задание:*\n${cleanHw || 'Выполнить упражнение на карточке в тетради и нажать кнопки ниже'}`;
+      let msg = `${pGreeting}\n📚 *Свежее домашнее задание (${st.name} — на 10–15 минут):*\n📅 Урок от: ${dStr}\n📖 *Тема:* ${topicClean}\n📌 *Задание для ребёнка:*\n${cleanHw || 'Выполнить упражнение на карточке в тетради и нажать кнопки ниже'}`;
       if (cards.length > 0) msg += `\n\n🖼 *Прикреплено карточек для тетради:* ${cards.length} шт. (отправляю ниже)`;
-      msg += `\n\n📊 *Готовность сейчас:* *${hwSum.pct}%* (${hwSum.canSubmit ? '✅ *Полностью выполнено и фото тетрадки проверено!*' : `⏳ *В процессе (${hwSum.hasNotebookPhoto ? 'фото тетрадки получено ✅' : 'ждём 📸 фото письменного ДЗ в тетради'})*`})`;
+      msg += `\n\n📊 *Прогресс ребёнка сейчас:* *${hwSum.pct}%* (${hwSum.canSubmit ? '✅ *Полностью выполнено и фото тетрадки проверено!*' : `⏳ *В процессе (${hwSum.hasNotebookPhoto ? 'фото тетрадки получено ✅' : 'ждём 📸 фото письменного ДЗ в тетради'})*`})`;
       if (hwSum.groupBreakdownText) msg += `\n${hwSum.groupBreakdownText}`;
       msg += `\n• Уже сделано: ${hwSum.doneText}\n• Осталось: ${hwSum.leftText}`;
       
       await sendCleanMessage(chatId, msg, {
         reply_markup: {
-          inline_keyboard: [
-            [{ text: '📊 Полный отчёт (темы, ДЗ, зоны роста)', callback_data: `parent_req_report:${st.id}` }],
-            [{ text: '🏆 Паспорт прогресса (PNG-график)', callback_data: `parent_milestone_card:${st.id}` }]
-          ]
+          inline_keyboard: buildParentKeyboard(st.id)
         }
       });
 
@@ -5495,9 +5600,7 @@ bot.on('callback_query', async (query) => {
       const payInfo = await buildParentPaymentStatusMessage(st);
       await sendCleanMessage(chatId, payInfo.text, {
         reply_markup: {
-          inline_keyboard: [
-            [{ text: '📊 Отчёт об успеваемости', callback_data: `parent_req_report:${st.id}` }, { text: '📚 Текущее ДЗ', callback_data: `parent_view_hw:${st.id}` }]
-          ]
+          inline_keyboard: buildParentKeyboard(st.id)
         }
       });
     } catch (e) {
@@ -6707,13 +6810,11 @@ ${materialsText.slice(0, 3000)}
     try {
       const pFound = await findParentByTgChatId(chatId);
       if (pFound) {
-        return bot.sendMessage(chatId, `Здравствуйте! 👋 Вы находитесь в режиме *Родителя* ученика *${pFound.student.name}*. Используйте кнопки дневника для родителей:`, {
+        const pGreeting = getParentGreetingBot(pFound.student, pFound.dossier);
+        return bot.sendMessage(chatId, `${pGreeting} Вы находитесь в режиме *Родителя* ученика *${pFound.student.name}*. Используйте кнопки дневника для родителей:`, {
           parse_mode: 'Markdown',
           reply_markup: {
-            inline_keyboard: [
-              [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pFound.student.id}` }],
-              [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pFound.student.id}` }]
-            ]
+            inline_keyboard: buildParentKeyboard(pFound.student.id)
           }
         });
       }
@@ -6812,13 +6913,11 @@ ${shwAcademic ? `\nАКАДЕМИЧЕСКАЯ СПРАВКА (${shwAcademic.sour
     try {
       const pFound = await findParentByTgChatId(chatId);
       if (pFound) {
-        return bot.sendMessage(chatId, `Здравствуйте! 👋 Вы находитесь в режиме *Родителя* ученика *${pFound.student.name}*. Используйте кнопки дневника для родителей:`, {
+        const pGreeting = getParentGreetingBot(pFound.student, pFound.dossier);
+        return bot.sendMessage(chatId, `${pGreeting} Вы находитесь в режиме *Родителя* ученика *${pFound.student.name}*. Используйте кнопки дневника для родителей:`, {
           parse_mode: 'Markdown',
           reply_markup: {
-            inline_keyboard: [
-              [{ text: '📊 Запросить свежий отчёт об успеваемости', callback_data: `parent_req_report:${pFound.student.id}` }],
-              [{ text: '📚 Посмотреть текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pFound.student.id}` }]
-            ]
+            inline_keyboard: buildParentKeyboard(pFound.student.id)
           }
         });
       }
@@ -7819,10 +7918,7 @@ bot.on('message', async (msg) => {
 
       const isPaymentQuery = /(?:сколько\s+(?:я\s+|мы\s+|нам\s+)?долж|к\s+оплат|неоплачен|не\s+оплачен|оплат[аыуеи]|долг|сколько\s+(?:за|по)\s+урок|стоимость|баланс|расч[её]т|перевест[иь]|на\s+карт|сумм[ауе]|рубл|\bруб\b|\bbyn\b|вышло\s+за|за\s+какие\s+(?:числ|дат|дн))/i.test(parentInput || '');
       const parentKb = {
-        inline_keyboard: [
-          [{ text: '📊 Свежий отчёт об успеваемости', callback_data: `parent_req_report:${pSt.id}` }, { text: '🏆 Паспорт прогресса', callback_data: `parent_milestone_card:${pSt.id}` }],
-          [{ text: '📚 Текущее ДЗ ребёнка', callback_data: `parent_view_hw:${pSt.id}` }, { text: '💳 Оплата и баланс', callback_data: `parent_payment_status:${pSt.id}` }]
-        ]
+        inline_keyboard: buildParentKeyboard(pSt.id)
       };
 
       if (isPaymentQuery) {
@@ -7833,22 +7929,38 @@ bot.on('message', async (msg) => {
         return;
       }
 
+      const pGreeting = getParentGreetingBot(pSt, pDoss);
       let smartParentReply = '';
       if (parentInput && parentInput.trim()) {
         try {
           bot.sendChatAction(chatId, 'typing');
-          const lastLsP = await getLatestLessonWithMaterials(pSt.id);
+          const { data: recentConducted } = await db.from('lessons').select('*').eq('student_id', pSt.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(8);
+          const lastLsP = (recentConducted || []).find(l => cleanHomeworkTextBot(l.homework || '').length > 5) || (recentConducted || [])[0] || await getLatestLessonWithMaterials(pSt.id);
           const { data: nextLsP } = await db.from('lessons').select('date, topic').eq('student_id', pSt.id).eq('status', 'Запланирован').order('date', { ascending: true }).limit(1).maybeSingle();
           const hwSumP = getHwCompletionSummary(pSt, lastLsP);
           const payInfoP = await buildParentPaymentStatusMessage(pSt);
           const nextDateP = nextLsP ? new Date(nextLsP.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'по расписанию (уточнит Игорь)';
-          const pPrompt = `Ты — умный, вежливый и проактивный ассистент преподавателя английского языка Игоря.
-Тебе написал родитель ученика: ${pSt.name} (${pSt.grade || ''}).
+          const freshHwClean = cleanHomeworkTextBot(lastLsP?.homework || '').slice(0, 700);
+          const reportsHistory = (recentConducted || []).map(l => {
+            const ds = new Date(l.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' });
+            const hs = getHwCompletionSummary(pSt, l);
+            const debM = (l.homework || '').match(/\[ДЕБРИФИНГ\]:([\s\S]*?)\[\/ДЕБРИФИНГ\]/);
+            const repM = (l.homework || '').match(/\[ОТЧЕТ_РОДИТЕЛЮ\]:([\s\S]*?)\[\/ОТЧЕТ_РОДИТЕЛЮ\]/);
+            const note = (debM?.[1] || (!/Шаг\s*1\./i.test(repM?.[1] || '') ? repM?.[1] : '') || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+            return `- ${ds}: "${(l.topic || 'Практика').replace(/_+/g, ' ')}" | ДЗ: ${hs.canSubmit ? 'сдано 100%' : hs.pct + '%'}${note ? ' | Итог: ' + note : ''}`;
+          }).join('\n');
+
+          const pPrompt = `Ты — умный, вежливый и внимательный ассистент преподавателя английского языка Игоря.
+Тебе написал РОДИТЕЛЬ ученика: ${pSt.name} (${pSt.grade || ''}).
+ОБРАЩЕНИЕ К РОДИТЕЛЮ: "${pGreeting}" (НИКОГДА не обращайся к родителю именем ребёнка!).
 КОНТЕКСТ ПО УЧЕНИКУ:
 - Постоянное расписание: ${pDoss.schedule || 'по договорённости'}
 - Ближайший запланированный урок: ${nextDateP}
-- Последняя тема урока: "${lastLsP?.topic || 'Практика английского'}"
-- Статус текущего ДЗ: ${hwSumP.pct}% (${hwSumP.canSubmit ? 'сдано/готово ✅' : 'в процессе 🔒'})
+- Последняя тема проведённого урока: "${(lastLsP?.topic || 'Практика английского').replace(/_+/g, ' ')}"
+- Текст свежего ДЗ: "${freshHwClean || 'не задавалось'}"
+- Прогресс ребёнка по свежему ДЗ: ${hwSumP.pct}% (${hwSumP.canSubmit ? 'сдано/готово ✅' : 'в процессе 🔒'}). Сделано: ${hwSumP.doneText}. Осталось: ${hwSumP.leftText}. ${hwSumP.groupBreakdownText || ''}
+- История последних проведённых уроков и отчётов:
+${reportsHistory || 'пока нет проведённых уроков'}
 - Оплата: неоплаченных проведённых уроков ${payInfoP.unpaidCount}, сумма к оплате ${payInfoP.totalAmount} BYN (стоимость 1 урока: ${Number(pSt.price) || 0} BYN)
 - Серия активности (Streak): ${pDoss.streak || 0} дн. | Щиты заморозки: ${pDoss.shields ?? 1}/3
 - Типичные ошибки / над чем работаем: ${pDoss.errors || 'грамматика и разговорная практика'}
@@ -7856,16 +7968,16 @@ bot.on('message', async (msg) => {
 СООБЩЕНИЕ РОДИТЕЛЯ: "${parentInput}"
 
 ТВОЯ ЗАДАЧА:
-Ответь родителю тепло, на "Вы", по делу и с заботой (до 700 символов, без звёздочек **; ВАЖНО: ты общаешься с РОДИТЕЛЕМ, поэтому НИКОГДА не обращайся к родителю по имени ребёнка — начинай с «Здравствуйте!» без имени; КОНФИДЕНЦИАЛЬНОСТЬ: ты знаешь информацию ТОЛЬКО об этом одном ученике и НИКОГДА не обсуждаешь других учеников или их оплаты):
-- Если спрашивают про ДЗ, тему урока, расписание, успехи или как помочь ребёнку дома — дай точный, полезный ответ и конкретный совет!
+Ответь родителю тепло, на "Вы", по делу и с заботой (до 900 символов, без звёздочек **; начинай строго с «${pGreeting}»; говори о ребёнке в 3-м лице; КОНФИДЕНЦИАЛЬНОСТЬ: ты знаешь информацию ТОЛЬКО об этом одном ученике и НИКОГДА не обсуждаешь других учеников):
+- Если спрашивают про все отчёты, прошлые уроки, свежее ДЗ, прогресс ребёнка, расписание, успехи, ошибки или как помочь дома — дай точный, развёрнутый ответ на основе реальных данных выше!
 - Если вопрос требует личного решения преподавателя (перенос урока, индивидуальная просьба) — ответь вежливо, что уже передал информацию Игорю и он скоро ответит лично.
-- Всегда в конце добавь 1 короткое полезное предложение или подсказку (например, предложить посмотреть свежий отчёт или баланс по кнопкам ниже).`;
+- В конце напомни, что полные отчёты, свежее ДЗ и баланс всегда доступны по кнопкам ниже.`;
           const pRes = await executeFunctionCall('generate_lesson_plan', { prompt: pPrompt });
           if (pRes?.generated_plan) smartParentReply = pRes.generated_plan;
         } catch (_) {}
       }
 
-      const finalParentMsg = smartParentReply || `Здравствуйте! 👋 Я передал ваше сообщение преподавателю Игорю (по ученику ${pSt.name}).`;
+      const finalParentMsg = smartParentReply || `${pGreeting} Я передал ваше сообщение преподавателю Игорю (по ученику ${pSt.name}).`;
       await sendCleanMessage(chatId, finalParentMsg, { reply_markup: parentKb });
       await bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Сообщение от родителя ученика ${pSt.name}:*\n💬 «${parentInput || '[Медиа/Голосовое]'}»\n\n🤖 *Как бот ответил родителю:*\n${finalParentMsg}`, { parse_mode: 'Markdown' }).catch(() => {});
       await bot.forwardMessage(ADMIN_CHAT_ID, chatId, msg.message_id).catch(() => {});
