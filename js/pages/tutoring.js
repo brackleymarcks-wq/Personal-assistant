@@ -1975,13 +1975,18 @@ const TutoringPage = {
     const isPaidNow = data.paid;
     const isConductedNow = data.status === 'Проведен';
     const wasConducted = ls ? ls.status === 'Проведен' : false;
-    if (isConductedNow && !wasConducted) {
+    const rawUserHwText = (document.getElementById('ls-homework')?.value || '').trim();
+    if (!isConductedNow) {
+      // Строгая защита: никогда не отправлять ДЗ или отчёт, пока урок в статусе «Запланирован»!
+      data.homework = (data.homework || '').replace(/\[ОТПРАВИТЬ_В_ТГ\]/g, '').replace(/\[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ\]/g, '').trim();
+    } else if (isConductedNow && !wasConducted) {
       const stObj = this.students.find(s => s.id === student_id);
       const dossObj = stObj ? this.parseStudentDossier(stObj) : {};
-      if (dossObj.tgId && data.homework && !data.homework.includes('[ОТПРАВИТЬ_В_ТГ]')) {
+      // Отправляем в ТГ только если преподаватель реально сформировал/написал текст ДЗ (а не просто загрузил презентацию!)
+      if (dossObj.tgId && rawUserHwText.length > 0 && !data.homework.includes('[ОТПРАВИТЬ_В_ТГ]')) {
         data.homework = `[ОТПРАВИТЬ_В_ТГ] ${data.homework}`;
       }
-      if (dossObj.parentTgId && !data.homework.includes('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]')) {
+      if (dossObj.parentTgId && rawUserHwText.length > 0 && !data.homework.includes('[ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]')) {
         data.homework = `${data.homework || ''} [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]`.trim();
       }
     }

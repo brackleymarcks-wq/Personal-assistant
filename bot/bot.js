@@ -3074,12 +3074,21 @@ async function processLessonQueues() {
       }
     }
 
-    // 3. Отправка ДЗ ученику
+    // 3. Отправка ДЗ ученику (СТРОГО только для проведённых уроков и с реальным текстом ДЗ!)
     const { data: queuedHwLessons } = await db.from('lessons').select('*, students(*)').ilike('homework', '%[ОТПРАВИТЬ_В_ТГ]%');
     if (queuedHwLessons && queuedHwLessons.length > 0) {
       for (const qls of queuedHwLessons) {
-        const cleanedHw = (qls.homework || '').replace('[ОТПРАВИТЬ_В_ТГ]', '').trim();
+        const cleanedHw = (qls.homework || '').replace(/\[ОТПРАВИТЬ_В_ТГ\]/g, '').trim();
         await db.from('lessons').update({ homework: cleanedHw }).eq('id', qls.id);
+        if (qls.status !== 'Проведен') {
+          console.log(`[Queue] Skipped [ОТПРАВИТЬ_В_ТГ] for lesson ${qls.id} because status is "${qls.status}" (not Проведен).`);
+          continue;
+        }
+        const pureHwText = cleanHomeworkTextBot(cleanedHw);
+        if (!pureHwText || pureHwText.length < 15) {
+          console.log(`[Queue] Skipped [ОТПРАВИТЬ_В_ТГ] for lesson ${qls.id} because pure HW text is empty.`);
+          continue;
+        }
         if (qls.students) {
           const sendRes = await sendHomeworkToStudentBot(qls.students, { ...qls, homework: cleanedHw }, false);
           if (sendRes.sent && adminId) {
