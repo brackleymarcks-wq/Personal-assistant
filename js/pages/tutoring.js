@@ -1269,7 +1269,8 @@ const TutoringPage = {
       document.getElementById('st-parent-tg-id')?.value?.trim() || freshDoss.parentTgId || '',
       document.getElementById('st-parent-tg-user')?.value?.trim() || freshDoss.parentTgUser || '',
       freshDoss.lastActive || (id ? this.parseStudentDossier(this.students.find(s => s.id === id)).lastActive : ''),
-      typeof freshDoss.shields === 'number' ? freshDoss.shields : 1
+      typeof freshDoss.shields === 'number' ? freshDoss.shields : 1,
+      freshDoss.parentName || ''
     );
     if (false) {
     const notes = document.getElementById('st-notes').value.trim();
@@ -2064,7 +2065,8 @@ const TutoringPage = {
               dossier.parentTgId,
               dossier.parentTgUser,
               dossier.lastActive,
-              dossier.shields
+              dossier.shields,
+              dossier.parentName
             );
             await DB.updateStudent(stObj.id, { schedule: newSched });
             stObj.schedule = newSched;
@@ -2206,10 +2208,10 @@ const TutoringPage = {
       const idx = raw.indexOf(tag);
       if (idx === -1) return '';
       const rest = raw.slice(idx + tag.length);
-      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/);
+      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/);
       return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
     };
-    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/);
+    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/);
     const schedule = (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim();
     const rawShields = getSec('[ЩИТЫ_СТРИКА]:');
     const parsedShields = rawShields !== '' ? parseInt(rawShields, 10) : 1;
@@ -2219,6 +2221,7 @@ const TutoringPage = {
       tgUser: getSec('[TG_USER]:'),
       parentTgId: getSec('[PARENT_TG_ID]:'),
       parentTgUser: getSec('[PARENT_TG_USER]:'),
+      parentName: getSec('[PARENT_NAME]:'),
       streak: parseInt(getSec('[СТРИК]:') || '0', 10) || 0,
       shields: Number.isNaN(parsedShields) ? 1 : Math.max(0, Math.min(3, parsedShields)),
       lastActive: getSec('[LAST_ACTIVE]:'),
@@ -2231,12 +2234,13 @@ const TutoringPage = {
     };
   },
 
-  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '', streak = 0, parentTgId = '', parentTgUser = '', lastActive = '', shields = 1) {
+  serializeStudentDossier(schedule, interests, errors, vocab, notes, perplexity = '', unit = '', tgId = '', tgUser = '', streak = 0, parentTgId = '', parentTgUser = '', lastActive = '', shields = 1, parentName = '') {
     let out = schedule || '';
     if (tgId) out += `\\n[TG_ID]:\\n${tgId}`;
     if (tgUser) out += `\\n[TG_USER]:\\n${tgUser}`;
     if (parentTgId) out += `\\n[PARENT_TG_ID]:\\n${parentTgId}`;
     if (parentTgUser) out += `\\n[PARENT_TG_USER]:\\n${parentTgUser}`;
+    if (parentName) out += `\\n[PARENT_NAME]:\\n${parentName}`;
     if (streak) out += `\\n[СТРИК]:\\n${streak}`;
     if (typeof shields === 'number') out += `\\n[ЩИТЫ_СТРИКА]:\\n${shields}`;
     if (lastActive) out += `\\n[LAST_ACTIVE]:\\n${lastActive}`;
@@ -2247,6 +2251,66 @@ const TutoringPage = {
     if (vocab) out += `\\n[СЛОВАРЬ]:\\n${vocab}`;
     if (notes) out += `\\n[ЗАМЕТКИ]:\\n${notes}`;
     return out;
+  },
+
+  getParentDisplayName(st, dossier = null) {
+    const d = dossier || this.parseStudentDossier(st || {});
+    if (d.parentName && d.parentName.trim()) return d.parentName.trim();
+    const tgUser = (d.parentTgUser || '').replace(/^@/, '').trim().toLowerCase();
+    const stName = (st?.name || '').trim().toLowerCase();
+    if (tgUser === 'ilkuroch' || stName.includes('курочкин')) return 'Евгения';
+    if (tgUser === 'korshukanastasiya' || stName.includes('коршук')) return 'Анастасия';
+    return '';
+  },
+
+  buildParentReportDraft(st, dossier, ls, topic, hwClean = '') {
+    const d = dossier || this.parseStudentDossier(st || {});
+    const parentName = this.getParentDisplayName(st, d);
+    const greeting = parentName ? `Здравствуйте, ${parentName}! 👋` : 'Здравствуйте! 👋';
+    const stNameWith = this.formatStudentNameWith(st?.name || '');
+    const dateStr = ls?.date
+      ? new Date(ls.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' })
+      : 'сегодня';
+    const cleanTopic = (topic || ls?.topic || 'Практика английского языка').trim();
+
+    const debMatch = (ls?.homework || '').match(/\[ДЕБРИФИНГ\]:([\s\S]*?)\[\/ДЕБРИФИНГ\]/);
+    const debText = debMatch ? debMatch[1].replace(/\s+/g, ' ').trim() : '';
+
+    const rawErrors = (d.errors || '')
+      .replace(/\[[^\]]+\]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const shortErrors = rawErrors
+      ? rawErrors.split(/[;.\n]/).map(s => s.trim()).filter(Boolean).slice(0, 2).join('; ')
+      : '';
+
+    const goodLine = debText
+      ? debText.slice(0, 220) + (debText.length > 220 ? '...' : '')
+      : `Активно поработали по теме «${cleanTopic}», потренировали ключевую лексику и разговорные конструкции.`;
+
+    const lines = [
+      greeting,
+      `Сегодня (${dateStr}) провели занятие по английскому с *${stNameWith}*.`,
+      '',
+      `📚 *Тема урока:* ${cleanTopic}`,
+      `✅ *Что получилось хорошо:* ${goodLine}`
+    ];
+
+    if (shortErrors) {
+      lines.push(`🎯 *Над чем продолжаем работать:* ${shortErrors.slice(0, 180)}${shortErrors.length > 180 ? '...' : ''}`);
+    }
+
+    if (hwClean && hwClean.trim()) {
+      const hasPhoto = /фото|тетрад/i.test(hwClean);
+      lines.push(`📌 *Домашнее задание:* короткая практика на 10–15 минут (повторение ключевых слов в боте${hasPhoto ? ' и небольшое письменное задание в тетради с фотоотчётом' : ''}).`);
+    }
+
+    if ((d.streak || 0) > 0) {
+      lines.push(`🔥 *Серия выполненных ДЗ:* ${d.streak} подряд!`);
+    }
+
+    lines.push('', 'Спасибо за поддержку! 🌟');
+    return lines.join('\n');
   },
 
   extractPreservedBotTags(rawHw) {
@@ -2764,7 +2828,8 @@ const TutoringPage = {
       dossier.parentTgId,
       dossier.parentTgUser,
       dossier.lastActive,
-      dossier.shields
+      dossier.shields,
+      dossier.parentName
     );
     await DB.updateStudent(st.id, { schedule: newSched });
     st.schedule = newSched;
@@ -3069,7 +3134,7 @@ const TutoringPage = {
       if (parsed.new_vocab) {
         const dossier = this.parseStudentDossier(st);
         const existingVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
-        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser, dossier.lastActive, dossier.shields);
+        const newSchedule = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, existingVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser, dossier.lastActive, dossier.shields, dossier.parentName);
         await DB.updateStudent(st.id, { schedule: newSchedule });
         st.schedule = newSchedule;
       }
@@ -3557,9 +3622,7 @@ const TutoringPage = {
         compositeHw = `[ОТПРАВИТЬ_В_ТГ] ${compositeHw}`;
         if (sendToParent) {
           const dossier = this.parseStudentDossier(st);
-          const cleanVocab = this.cleanVocabulary(dossier.vocab || '');
-          const stNameWith = this.formatStudentNameWith(st.name);
-          const parentReportDraft = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${stNameWith}*.\n\n📚 *Тема урока:* ${topic || 'Практика английского'}\n${cleanVocab ? `🔤 *Слова урока:* ${cleanVocab}\n` : ''}${cleanHwOnly ? `📌 *Домашнее задание:*\n${cleanHwOnly}\n` : ''}\n🔥 *Серия занятий:* ${dossier.streak || 0} ДЗ подряд!\nСпасибо за поддержку! 🌟`;
+          const parentReportDraft = this.buildParentReportDraft(st, dossier, ls, topic, cleanHwOnly);
           compositeHw += `\n[ОТЧЕТ_РОДИТЕЛЮ]:\n${parentReportDraft}\n[/ОТЧЕТ_РОДИТЕЛЮ] [ОТПРАВИТЬ_РОДИТЕЛЮ_В_ТГ]`;
         }
 
@@ -3575,7 +3638,7 @@ const TutoringPage = {
             const parsed = await Gemini.parsePerplexityLesson(scenarioText, st.name);
             if (parsed.new_vocab) {
               const updatedVocab = dossier.vocab ? `${dossier.vocab}, ${parsed.new_vocab}` : parsed.new_vocab;
-              const newSched = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, updatedVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser, dossier.lastActive, dossier.shields);
+              const newSched = this.serializeStudentDossier(dossier.schedule, dossier.interests, dossier.errors, updatedVocab, dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId, dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser, dossier.lastActive, dossier.shields, dossier.parentName);
               await DB.updateStudent(st.id, { schedule: newSched });
             }
           } catch(e) {}
@@ -3681,8 +3744,7 @@ const TutoringPage = {
     if (!initialReport) {
       const topic = currentTopicText || ls?.topic || 'Практика английского языка';
       const hwClean = this.cleanHomeworkText(currentHwText || ls?.homework || '');
-      const dateStr = ls?.date ? new Date(ls.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' }) : 'сегодня';
-      initialReport = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${st.name}* (${dateStr}).\n\n📚 *Тема урока:* ${topic}\n${dossier.vocab ? `🔤 *Слова урока:* ${dossier.vocab}\n` : ''}${hwClean ? `📌 *Домашнее задание:* ${hwClean}\n` : ''}🔥 *Серия занятий (Streak):* ${dossier.streak || 0} ДЗ подряд!\n\nСпасибо за поддержку! 🌟`;
+      initialReport = this.buildParentReportDraft(st, dossier, ls, topic, hwClean);
     }
 
     textarea.value = initialReport;
@@ -3708,7 +3770,8 @@ const TutoringPage = {
         try {
           const topic = currentTopicText || ls?.topic || 'Английский язык';
           const hwClean = this.cleanHomeworkText(currentHwText || ls?.homework || '');
-          const newRep = await Gemini.generateTutoringAI('parent_msg', { name: st.name, grade: st.grade, ...dossier }, { topic, homework: hwClean }, ls);
+          const parentName = this.getParentDisplayName(st, dossier);
+          const newRep = await Gemini.generateTutoringAI('parent_msg', { name: st.name, grade: st.grade, parentName, ...dossier }, { topic, homework: hwClean }, ls);
           textarea.value = newRep;
           updateReportPreview();
           UI.toast('Отчёт сгенерирован!', 'success');
@@ -4867,7 +4930,10 @@ const TutoringPage = {
           dossier.tgUser,
           dossier.streak,
           dossier.parentTgId,
-          dossier.parentTgUser
+          dossier.parentTgUser,
+          dossier.lastActive,
+          dossier.shields,
+          dossier.parentName
         );
         await DB.updateStudent(st.id, { schedule: newSched });
         st.schedule = newSched;
@@ -5000,7 +5066,8 @@ const TutoringPage = {
           const newSched = this.serializeStudentDossier(
             dossier.schedule, dossier.interests, dossier.errors, updatedVocab,
             dossier.notes, dossier.perplexity, dossier.unit, dossier.tgId,
-            dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser
+            dossier.tgUser, dossier.streak, dossier.parentTgId, dossier.parentTgUser,
+            dossier.lastActive, dossier.shields, dossier.parentName
           );
           await DB.updateStudent(st.id, { schedule: newSched });
           st.schedule = newSched;

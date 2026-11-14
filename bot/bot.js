@@ -593,7 +593,7 @@ async function completeTask(taskId) {
 // ============================================
 function parseStudentDossierBot(st) {
   const raw = st?.schedule || '';
-  const TAG_PATTERN = /\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/;
+  const TAG_PATTERN = /\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/;
   const getSec = (tag) => {
     const idx = raw.indexOf(tag);
     if (idx === -1) return '';
@@ -613,6 +613,7 @@ function parseStudentDossierBot(st) {
     tgUser: getSec('[TG_USER]:'),
     parentTgId: getSec('[PARENT_TG_ID]:'),
     parentTgUser: getSec('[PARENT_TG_USER]:'),
+    parentName: getSec('[PARENT_NAME]:'),
     perplexity: getSec('[PERPLEXITY]:'),
     unit: getSec('[УЧЕБНИК]:'),
     interests: getSec('[ИНТЕРЕСЫ]:'),
@@ -628,6 +629,7 @@ function serializeStudentDossierBot(doss) {
   if (doss.tgUser) out += `\\n[TG_USER]:\\n${doss.tgUser}`;
   if (doss.parentTgId) out += `\\n[PARENT_TG_ID]:\\n${doss.parentTgId}`;
   if (doss.parentTgUser) out += `\\n[PARENT_TG_USER]:\\n${doss.parentTgUser}`;
+  if (doss.parentName) out += `\\n[PARENT_NAME]:\\n${doss.parentName}`;
   if (doss.streak) out += `\\n[СТРИК]:\\n${doss.streak}`;
   if (doss.shields !== undefined && doss.shields !== null) out += `\\n[ЩИТЫ_СТРИКА]:\\n${doss.shields}`;
   if (doss.lastActiveDate) out += `\\n[LAST_ACTIVE]:\\n${doss.lastActiveDate}`;
@@ -929,6 +931,12 @@ async function sendParentLessonReportBot(st, lesson) {
   const cleanVocab = cleanVocabularyBot(doss.vocab || '');
   const stNameWith = formatStudentNameWithBot(st.name);
   const dateStr = lesson?.date ? new Date(lesson.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' }) : 'сегодня';
+  const tgUserNorm = (doss.parentTgUser || '').replace(/^@/, '').trim().toLowerCase();
+  const stNameNorm = (st.name || '').trim().toLowerCase();
+  const parentName = (doss.parentName || '').trim()
+    || (tgUserNorm === 'ilkuroch' || stNameNorm.includes('курочкин') ? 'Евгения'
+      : (tgUserNorm === 'korshukanastasiya' || stNameNorm.includes('коршук') ? 'Анастасия' : ''));
+  const greeting = parentName ? `Здравствуйте, ${parentName}! 👋` : 'Здравствуйте! 👋';
   
   // Check if a pre-approved custom report was provided by the teacher
   let aiReport = '';
@@ -938,7 +946,7 @@ async function sendParentLessonReportBot(st, lesson) {
   }
 
   if (!aiReport) {
-    const prompt = `Ты — вежливый, внимательный преподаватель английского языка Игорь. Составь КОРОТКИЙ (до 700 символов) тёплый отчёт для родителей ученика ${st.name} (${st.grade || ''}) по итогам проведённого урока (${dateStr}).\nТема урока: "${lesson?.topic || 'Практика английского по программе'}".\nАктивный словарь: "${cleanVocab || 'по теме урока'}".\nНад какими ошибками/правилами работали: "${doss.errors || 'грамматика и говорение'}".\nДомашнее задание: "${rawHw || 'повторить лексику урока'}".\nУдарный режим (Streak): ${doss.streak || 0} ДЗ подряд.\nСтруктура: Приветствие ("Здравствуйте! 👋"), что сегодня разобрали и за что можно похвалить ${st.name}, над чем работаем и какое задано ДЗ. Пиши сразу готовый текст сообщения для родителей!`;
+    const prompt = `Ты — вежливый преподаватель английского языка Игорь. Составь КОРОТКИЙ (до 700 символов) структурированный отчёт для родителя ученика ${st.name} (${st.grade || ''}) по итогам проведённого урока (${dateStr}).\nОбращение строго: "${greeting}" (НИКОГДА не обращайся к родителю по имени ребёнка!).\nТема урока: "${lesson?.topic || 'Практика английского по программе'}".\nАктивный словарь: "${cleanVocab || 'по теме урока'}".\nЗоны роста: "${doss.errors || 'грамматика и говорение'}".\nДомашнее задание (краткий контекст, НЕ копируй его целиком и НЕ пиши "Привет, ${st.name}"): "${rawHw ? rawHw.slice(0, 350) : 'повторить лексику урока'}".\nУдарный режим (Streak): ${doss.streak || 0} ДЗ подряд.\nСтруктура: 1) ${greeting} + сегодня (${dateStr}) провели занятие с ${stNameWith}. 2) 📚 Тема урока. 3) ✅ Что получилось хорошо. 4) 🎯 Над чем продолжаем работать. 5) 📌 Кратко про ДЗ (1-2 строки, 10-15 минут, без детского текста). 6) Спасибо за поддержку! 🌟`;
     try {
       const planRes = await executeFunctionCall('generate_lesson_plan', { prompt });
       aiReport = planRes.generated_plan || '';
@@ -946,7 +954,25 @@ async function sendParentLessonReportBot(st, lesson) {
   }
 
   if (!aiReport) {
-    aiReport = `Здравствуйте! 👋\nСегодня провели занятие по английскому с *${stNameWith}* (${dateStr}).\n\n📚 *Тема урока:* ${lesson?.topic || 'Практика и разбор правил'}\n${cleanVocab ? `🔤 *Слова урока:* ${cleanVocab}\n` : ''}${rawHw ? `📌 *Домашнее задание:*\n${rawHw}\n` : ''}Спасибо за поддержку! 🌟`;
+    const shortErrors = (doss.errors || '').replace(/\[[^\]]+\]/g, ' ').replace(/\s+/g, ' ').trim();
+    const lines = [
+      greeting,
+      `Сегодня (${dateStr}) провели занятие по английскому с *${stNameWith}*.`,
+      '',
+      `📚 *Тема урока:* ${lesson?.topic || 'Практика и разбор правил'}`,
+      `✅ *Что получилось хорошо:* активно поработали по теме урока, потренировали ключевую лексику и разговорную практику.`
+    ];
+    if (shortErrors) {
+      lines.push(`🎯 *Над чем продолжаем работать:* ${shortErrors.slice(0, 160)}${shortErrors.length > 160 ? '...' : ''}`);
+    }
+    if (rawHw) {
+      lines.push(`📌 *Домашнее задание:* короткая практика на 10–15 минут (повторение ключевых слов в боте и письменное задание в тетради).`);
+    }
+    if ((doss.streak || 0) > 0) {
+      lines.push(`🔥 *Серия выполненных ДЗ:* ${doss.streak} подряд!`);
+    }
+    lines.push('', 'Спасибо за поддержку! 🌟');
+    aiReport = lines.join('\n');
   }
   const kb = [
     [{ text: '📊 Запросить сводный отчёт о прогрессе', callback_data: `parent_req_report:${st.id}` }],
