@@ -2640,7 +2640,7 @@ const TutoringPage = {
       recipientName: st.name,
       topic: topic,
       cleanHw: this.cleanHomeworkText(hwText),
-      vocab: dossier.vocab || '',
+      vocab: '',
       cards: this.attachedCards || [],
       streak: dossier.streak || 0
     });
@@ -3340,13 +3340,12 @@ const TutoringPage = {
     const hwText = document.getElementById('hw-disp-text')?.value || '';
     const cleanHw = this.cleanHomeworkText(hwText);
     const dossier = this.parseStudentDossier(st);
-    const cleanVocab = this.cleanVocabulary(dossier.vocab || '');
     container.innerHTML = this.renderTelegramPreviewBubble({
       type: 'student',
       recipientName: st.name,
       topic: topic,
       cleanHw: cleanHw,
-      vocab: cleanVocab,
+      vocab: '',
       cards: this.dispatcherCards || [],
       streak: dossier.streak || 0
     });
@@ -4083,8 +4082,8 @@ const TutoringPage = {
     const combined = `${presentationText || ''}\n${scenarioText || ''}`;
     const lower = combined.toLowerCase();
 
-    // 1. Очищаем имя файла от имени ученика без багов с границами кириллицы
-    let cleanFile = (filename || '').replace(/\.[^/.]+$/, '').trim();
+    // 1. Очищаем имя файла от имени ученика и подчёркиваний/таймстампов (иначе _ ломает \b перед 20261113...)
+    let cleanFile = (filename || '').replace(/\.[^/.]+$/, '').replace(/_+/g, ' ').trim();
     const cleanWord = (text, word) => {
       if (!word || word.length < 2) return text;
       const escaped = word.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
