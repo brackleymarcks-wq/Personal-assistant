@@ -9364,12 +9364,25 @@ cron.schedule('* * * * *', async () => {
     for (const lsSoon of (lessonsSoon || [])) {
       const keySoon = `soon_${lsSoon.id}`;
       if (!notifiedEvents.has(keySoon) && lsSoon.students) {
+        const rawSoonHw = lsSoon.homework || '';
+        const hasTopicReady = !!(lsSoon.topic && lsSoon.topic.trim());
+        const hasMaterialsReady = /\[(ПРЕЗЕНТАЦИЯ|ПРЕЗЕНТАЦИЯ_ТЕКСТ|ПРЕЗЕНТАЦИЯ_ФАЙЛ|СЦЕНАРИЙ_УРОКА|МАТЕРИАЛЫ)\]/i.test(rawSoonHw);
+        if (!hasTopicReady || !hasMaterialsReady) {
+          const warnKey = `soon_unready_${lsSoon.id}`;
+          if (!notifiedEvents.has(warnKey) && CHAT_ID) {
+            notifiedEvents.add(warnKey);
+            const tStr = new Date(lsSoon.date).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' });
+            bot.sendMessage(CHAT_ID, `⏳ *Урок с ${lsSoon.students.name} в ${tStr} скоро начнётся*, но тема или презентация/сценарий ещё не привязаны.\nАвто-анонс ученикам и родителям *отложен* — он отправится, как только ты сохранишь тему и презентацию/сценарий!`, { parse_mode: 'Markdown' }).catch(() => {});
+          }
+          continue;
+        }
         notifiedEvents.add(keySoon);
         const doss = parseStudentDossierBot(lsSoon.students);
         const targetIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
         const timeStr = new Date(lsSoon.date).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' });
         const minutesLeft = Math.max(1, Math.round((new Date(lsSoon.date).getTime() - now.getTime()) / 60000));
-        const topicText = lsSoon.topic ? `\n🎯 *Тема:* ${lsSoon.topic}` : '';
+        const cleanTopicSoon = lsSoon.topic.replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+        const topicText = `\n🎯 *Тема:* ${cleanTopicSoon}`;
 
         const soonMsg = `⏰ *Привет, ${lsSoon.students.name}! Скоро урок!* 🇬🇧\nНаш урок английского начнётся через *${minutesLeft} мин* (в *${timeStr}*)!${topicText}\nПриготовь тетрадь, ручку и хорошее настроение! 👍`;
         const soonKb = [
@@ -9386,14 +9399,15 @@ cron.schedule('* * * * *', async () => {
 
         if (doss.parentTgId) {
           const pIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
-          const pSoonMsg = `⏰ *Напоминание:* Урок по английскому с *${lsSoon.students.name}* начнётся через *${minutesLeft} мин* (в *${timeStr}*)!${topicText}`;
+          const pGreeting = getParentGreetingBot(lsSoon.students, doss);
+          const pSoonMsg = `${pGreeting}\n⏰ *Напоминание:* Урок по английскому с *${formatStudentNameWithBot(lsSoon.students.name)}* начнётся через *${minutesLeft} мин* (в *${timeStr}*)!${topicText}`;
           for (const pid of pIds) {
             await bot.sendMessage(pid, pSoonMsg, { parse_mode: 'Markdown' }).catch(() => {});
           }
         }
 
         if (CHAT_ID) {
-          bot.sendMessage(CHAT_ID, `⏰ *Скоро урок:* Напоминание отправлено *${lsSoon.students.name}* (урок через ${minutesLeft} мин в ${timeStr})!`, { parse_mode: 'Markdown' }).catch(() => {});
+          bot.sendMessage(CHAT_ID, `⏰ *Скоро урок:* Анонс отправлен *${lsSoon.students.name}* (урок через ${minutesLeft} мин в ${timeStr}, тема: «${cleanTopicSoon}»)!`, { parse_mode: 'Markdown' }).catch(() => {});
         }
       }
     }
