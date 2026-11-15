@@ -870,6 +870,8 @@ function getParentDisplayNameBot(st, doss = null) {
   const stNameNorm = (st?.name || '').trim().toLowerCase();
   if (tgUserNorm === 'ilkuroch' || stNameNorm.includes('курочкин')) return 'Евгения';
   if (tgUserNorm === 'korshukanastasiya' || stNameNorm.includes('коршук')) return 'Анастасия';
+  if (stNameNorm.includes('коцуб') || stNameNorm.includes('нелли')) return 'Кристина Сергеевна';
+  if (stNameNorm.includes('воронин')) return 'Елена';
   return '';
 }
 
@@ -890,7 +892,7 @@ function cleanHomeworkTextBot(rawHw) {
   if (!rawHw) return '';
   return rawHw
     // 1. Remove blocks with opening and closing tags (with or without underscore, mismatched closing tags)
-    .replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\s*\1\s*\]/gi, '')
+    .replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|ПРАВИЛО_?УРОКА|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\s*\1\s*\]/gi, '')
     .replace(/\[ПРЕЗЕНТАЦИЯ_?ТЕКСТ\]:?[\s\S]*?\[\/?\s*ПРЕЗЕНТАЦИЯ_?ТЕКСТ\s*\]/gi, '')
     .replace(/\[КАРТОЧКИ_?ДЗ\]:?[\s\S]*?\[\/?\s*КАРТОЧКИ_?ДЗ\s*\]/gi, '')
     .replace(/\[СЦЕНАРИЙ_?УРОКА\]:?[\s\S]*?\[\/?\s*СЦЕНАРИЙ_?УРОКА\s*\]/gi, '')
@@ -3006,7 +3008,10 @@ async function sendHomeworkToStudentBot(st, lesson, isReminder = false, nextLess
 
   let grammarCard = '';
   const hasGrammarInHw = /главн\w*\s+правил|шпаргалк|📖\s*правило/i.test(rawHw || '');
-  if (!hasGrammarInHw && lesson?.topic) {
+  const cachedRuleMatch = (lesson?.homework || '').match(/\[ПРАВИЛО_УРОКА\]:([\s\S]*?)\[\/ПРАВИЛО_УРОКА\]/i);
+  if (!hasGrammarInHw && cachedRuleMatch && cachedRuleMatch[1].trim()) {
+    grammarCard = `\n📖 *Шпаргалка по главному правилу урока:*\n${cachedRuleMatch[1].trim()}\n`;
+  } else if (!hasGrammarInHw && lesson?.topic) {
     try {
       const presSnap = extractPresentationText(lesson?.homework || '') || '';
       const scenSnap = extractLessonScenario(lesson?.homework || '') || '';
@@ -3023,6 +3028,11 @@ ${presSnap ? 'Презентация: ' + presSnap.slice(0, 1200) : ''}`;
       const gText = (gRes?.generated_plan || '').replace(/\*\*/g, '').replace(/\*/g, '').trim();
       if (gText && gText.length > 20) {
         grammarCard = `\n📖 *Шпаргалка по главному правилу урока:*\n${gText}\n`;
+        if (lesson?.id && typeof lesson.homework === 'string' && !lesson.homework.includes('[ПРАВИЛО_УРОКА]:')) {
+          const updatedHw = `${lesson.homework}\n[ПРАВИЛО_УРОКА]:\n${gText}\n[/ПРАВИЛО_УРОКА]`;
+          lesson.homework = updatedHw;
+          await db.from('lessons').update({ homework: updatedHw }).eq('id', lesson.id).catch(() => {});
+        }
       }
     } catch (_) {}
   }
@@ -4892,6 +4902,26 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
 // TELEGRAM HANDLERS
 // ============================================
 
+// /preview — быстрый предпросмотр глазами родителя или ученика (только для преподавателя)
+bot.onText(/\/preview/, async (msg) => {
+  const incomingChatId = String(msg.chat.id);
+  if (incomingChatId !== ADMIN_CHAT_ID) return;
+  try {
+    const { data: sts } = await db.from('students').select('id, name').order('name', { ascending: true });
+    if (!sts || sts.length === 0) return bot.sendMessage(incomingChatId, 'Ученики не найдены.');
+    const kb = sts.map(s => ([
+      { text: `👨‍👩‍👧 Родитель: ${s.name}`, callback_data: `teacher_preview_parent:${s.id}` },
+      { text: `🎓 Ученик: ${s.name}`, callback_data: `teacher_preview_student:${s.id}` }
+    ]));
+    await bot.sendMessage(incomingChatId, '👀 *Предпросмотр бота глазами родителя или ученика.*\nВыбери профиль ниже:', {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: kb }
+    });
+  } catch (e) {
+    bot.sendMessage(incomingChatId, '❌ Ошибка: ' + e.message);
+  }
+});
+
 // /start — регистрация chat_id
 bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
   const incomingChatId = String(msg.chat.id);
@@ -5318,6 +5348,43 @@ bot.on('callback_query', async (query) => {
         parse_mode: 'Markdown',
         reply_markup: { inline_keyboard: buildParentKeyboard(pFoundGuard.student.id) }
       }).catch(() => {});
+    }
+  }
+
+  if (data && data.startsWith('teacher_preview_parent:')) {
+    const studentId = data.split(':')[1];
+    if (String(chatId) !== ADMIN_CHAT_ID) return;
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      const doss = parseStudentDossierBot(st);
+      const pGreeting = getParentGreetingBot(st, doss);
+      await bot.answerCallbackQuery(query.id, { text: `👀 Показываю режим родителя (${st.name})` });
+      return sendCleanMessage(chatId, `👀 *[Предпросмотр глазами родителя — ${st.name}]:*\n\n${pGreeting} Это электронный дневник успеваемости ученика *${st.name}* по английскому языку (преподаватель — Игорь) 🇬🇧.\n\nВы можете задать мне *любой вопрос* текстом или голосом (про отчёты, свежее ДЗ, прогресс ребёнка, ошибки или оплату) либо выбрать действие ниже:`, {
+        reply_markup: { inline_keyboard: buildParentKeyboard(st.id) }
+      });
+    } catch (e) {
+      return bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  }
+  if (data && data.startsWith('teacher_preview_student:')) {
+    const studentId = data.split(':')[1];
+    if (String(chatId) !== ADMIN_CHAT_ID) return;
+    try {
+      const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+      if (!st) return bot.answerCallbackQuery(query.id, { text: 'Ученик не найден', show_alert: true });
+      const lastLs = await getLatestLessonWithMaterials(st.id);
+      await bot.answerCallbackQuery(query.id, { text: `👀 Показываю режим ученика (${st.name})` });
+      if (!lastLs || !lastLs.homework) {
+        return bot.sendMessage(chatId, `👀 *[Предпросмотр глазами ученика — ${st.name}]:*\nАктивного ДЗ сейчас нет.`, { parse_mode: 'Markdown' });
+      }
+      const { cleanHw: noCardsHw } = extractAttachedCards(lastLs.homework || '');
+      const cleanHw = cleanHomeworkTextBot(noCardsHw);
+      return sendCleanMessage(chatId, `👀 *[Предпросмотр глазами ученика — ${st.name}]:*\n📚 Тема: *${lastLs.topic || 'Английский'}*\n\n${cleanHw || '(Текст ДЗ пуст)'}`, {
+        reply_markup: buildStudentKeyboard(st, lastLs)
+      });
+    } catch (e) {
+      return bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
     }
   }
 
@@ -9302,6 +9369,10 @@ cron.schedule('* * * * *', async () => {
     for (const ls3 of (lessons3h || [])) {
       const key3h = `hw3h_${ls3.id}`;
       if (!notifiedEvents.has(key3h) && ls3.students) {
+        const raw3hHw = ls3.homework || '';
+        const has3hTopic = !!(ls3.topic && ls3.topic.trim());
+        const has3hMaterials = /\[(ПРЕЗЕНТАЦИЯ|ПРЕЗЕНТАЦИЯ_ТЕКСТ|ПРЕЗЕНТАЦИЯ_ФАЙЛ|СЦЕНАРИЙ_УРОКА|МАТЕРИАЛЫ)\]/i.test(raw3hHw);
+        if (!has3hTopic || !has3hMaterials) continue;
         notifiedEvents.add(key3h);
         const doss = parseStudentDossierBot(ls3.students);
         if (doss.tgId) {

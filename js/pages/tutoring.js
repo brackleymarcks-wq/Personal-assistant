@@ -2263,6 +2263,8 @@ const TutoringPage = {
     const stName = (st?.name || '').trim().toLowerCase();
     if (tgUser === 'ilkuroch' || stName.includes('курочкин')) return 'Евгения';
     if (tgUser === 'korshukanastasiya' || stName.includes('коршук')) return 'Анастасия';
+    if (stName.includes('коцуб') || stName.includes('нелли')) return 'Кристина Сергеевна';
+    if (stName.includes('воронин')) return 'Елена';
     return '';
   },
 
@@ -2420,7 +2422,7 @@ const TutoringPage = {
     if (!rawHw) return '';
     return rawHw
       // 1. Remove blocks with opening and closing tags (with or without underscore, mismatched closing tags)
-      .replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\s*\1\s*\]/gi, '')
+      .replace(/\[(ДЕБРИФИНГ|КАРТОЧКИ_?ДЗ|СЦЕНАРИЙ_?УРОКА|ПРЕЗЕНТАЦИЯ_?ТЕКСТ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРЕЗЕНТАЦИЯ|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|ПРАВИЛО_?УРОКА|МАТЕРИАЛЫ)\]:?[\s\S]*?\[\/\s*\1\s*\]/gi, '')
       .replace(/\[ПРЕЗЕНТАЦИЯ_?ТЕКСТ\]:?[\s\S]*?\[\/?\s*ПРЕЗЕНТАЦИЯ_?ТЕКСТ\s*\]/gi, '')
       .replace(/\[КАРТОЧКИ_?ДЗ\]:?[\s\S]*?\[\/?\s*КАРТОЧКИ_?ДЗ\s*\]/gi, '')
       .replace(/\[СЦЕНАРИЙ_?УРОКА\]:?[\s\S]*?\[\/?\s*СЦЕНАРИЙ_?УРОКА\s*\]/gi, '')
