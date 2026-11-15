@@ -368,10 +368,7 @@ const TutoringPage = {
               </div>
 
               <div class="form-group">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                  <label class="form-label" style="margin-bottom:0;">📌 Домашнее задание для ученика (текст)</label>
-                  <button type="button" id="hw-disp-btn-ai-hw" class="btn btn-ghost" style="font-size:11px;color:var(--accent);display:flex;align-items:center;gap:4px;padding:2px 6px;"><i data-lucide="sparkles" style="width:12px;height:12px;"></i> Сгенерировать ИИ</button>
-                </div>
+                <label class="form-label">📌 Домашнее задание для ученика (текст)</label>
                 <textarea id="hw-disp-text" class="form-input" rows="3" placeholder="Что задано ученику? (Например: выучить слова из карточек, сделать упр. 3 на стр. 14)"></textarea>
               </div>
 
@@ -3304,20 +3301,26 @@ const TutoringPage = {
       statusBox.innerHTML = `⚠️ <b>Ученик ещё не нажал Start в боте.</b> Откроется диалог с учеником в Telegram для прямой отправки.`;
     }
 
-    // Extract raw homework, cards, and scenario
+    // Extract raw homework, cards, and scenario (prefer live unsaved draft from open lesson-modal)
     const rawHw = ls?.homework || '';
     const cardsMatch = rawHw.match(/\[КАРТОЧКИ_?ДЗ\]:([\s\S]*?)\[\/?\s*КАРТОЧКИ_?ДЗ\s*\]/i);
-    this.dispatcherCards = cardsMatch ? cardsMatch[1].trim().split('||').map(s=>s.trim()).filter(Boolean) : [];
-    
+    const savedCards = cardsMatch ? cardsMatch[1].trim().split('||').map(s=>s.trim()).filter(Boolean) : [];
     const scenMatch = rawHw.match(/\[СЦЕНАРИЙ_?УРОКА\]:([\s\S]*?)\[\/?\s*СЦЕНАРИЙ_?УРОКА\s*\]/i);
     const existingScenario = scenMatch ? scenMatch[1].trim() : '';
-
     const cleanHwText = this.cleanHomeworkText(rawHw);
 
+    const lessonModalEl = document.getElementById('lesson-modal');
+    const isLessonModalOpen = lessonModalEl && !lessonModalEl.classList.contains('hidden');
+    const draftTopic = isLessonModalOpen ? (document.getElementById('ls-topic')?.value?.trim() || '') : '';
+    const draftHw = isLessonModalOpen ? this.cleanHomeworkText(document.getElementById('ls-homework')?.value || '') : '';
+    const draftScenario = isLessonModalOpen ? (document.getElementById('ls-scenario')?.value?.trim() || '') : '';
+    const draftCards = (isLessonModalOpen && Array.isArray(this.attachedCards) && this.attachedCards.length > 0) ? [...this.attachedCards] : null;
+
+    this.dispatcherCards = draftCards || savedCards;
     this._currentDispatcherStudent = st;
-    document.getElementById('hw-disp-topic').value = ls?.topic || '';
-    document.getElementById('hw-disp-text').value = cleanHwText || '';
-    document.getElementById('hw-disp-scenario').value = existingScenario || '';
+    document.getElementById('hw-disp-topic').value = draftTopic || ls?.topic || '';
+    document.getElementById('hw-disp-text').value = draftHw || cleanHwText || '';
+    document.getElementById('hw-disp-scenario').value = draftScenario || existingScenario || '';
     document.getElementById('hw-disp-send-parent').checked = !!dossier.parentTgId;
 
     this.renderDispatcherCardsPreview();
