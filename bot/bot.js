@@ -5302,6 +5302,25 @@ bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const messageId = query.message.message_id;
 
+  const isStudentOnlyCb = data && (
+    data.startsWith('student_') ||
+    data.startsWith('flip_card:') ||
+    data.startsWith('card_known:') ||
+    data.startsWith('refresh_cards:') ||
+    data.startsWith('quiz_ans:')
+  );
+  if (isStudentOnlyCb && String(chatId) !== ADMIN_CHAT_ID) {
+    const pFoundGuard = await findParentByTgChatId(chatId).catch(() => null);
+    if (pFoundGuard) {
+      await bot.answerCallbackQuery(query.id, { text: 'Вы находитесь в режиме Родителя 👨‍👩‍👧' }).catch(() => {});
+      const pGreeting = getParentGreetingBot(pFoundGuard.student, pFoundGuard.dossier);
+      return bot.sendMessage(chatId, `${pGreeting} Вы подключены в режиме *Родителя* ученика *${pFoundGuard.student.name}*. Используйте кнопки дневника для родителей:`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: buildParentKeyboard(pFoundGuard.student.id) }
+      }).catch(() => {});
+    }
+  }
+
   if (data && data.startsWith('habit:')) {
     const [_, habitId, action] = data.split(':');
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
