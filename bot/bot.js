@@ -1185,9 +1185,9 @@ function extractAllLessonMaterials(lesson, st) {
   let block = `📚 ТЕМА ТЕКУЩЕГО УРОКА: "${topic}"\n`;
   if (doss.unit) block += `📖 УЧЕБНИК / ПРОГРАММА: ${doss.unit}\n`;
   if (doss.interests) block += `🎯 ИНТЕРЕСЫ И ПЕРСОНАЖИ УЧЕНИКА: ${doss.interests}\n`;
-  if (scenario) block += `📋 КОНСПЕКТ И СЦЕНАРИЙ УРОКА (ИЗ PERPLEXITY):\n${scenario.slice(0, 10000)}\n`;
+  if (scenario) block += `📋 КОНСПЕКТ И СЦЕНАРИЙ УРОКА (ИЗ PERPLEXITY):\n${scenario}\n`;
   if (presText && (!scenario || !scenario.includes(presText.slice(0, 100)))) {
-    block += `📑 СЛАЙДЫ, ЛЕКСИКА И ПРАВИЛА ИЗ ПРЕЗЕНТАЦИИ УРОКА:\n${presText.slice(0, 12000)}\n`;
+    block += `📑 СЛАЙДЫ, ЛЕКСИКА И ПРАВИЛА ИЗ ПРЕЗЕНТАЦИИ УРОКА:\n${presText}\n`;
   }
   if (cleanHw) block += `📌 ЗАДАННОЕ ДЗ ПО УРОКУ:\n${cleanHw.slice(0, 2200)}\n`;
   if (materials) block += `📎 ДОП. МАТЕРИАЛЫ УРОКА:\n${materials.slice(0, 1500)}\n`;
@@ -1406,7 +1406,7 @@ async function generateFullAcademicRuleExplanation(st, actor, lastLs, studentQue
 ${focusHint ? `Грамматический фокус: ${focusHint}.\n` : ''}${studentQuestion ? `Конкретный вопрос ученика: "${studentQuestion}".\n` : ''}
 Материалы урока (слайды презентации, конспект и типичные ошибки ученика):
 """
-${materialsText.slice(0, 16000)}
+${materialsText.slice(0, 60000)}
 """
 ${academicBlock}
 ТВОЯ ЗАДАЧА — рассказать ребёнку правило ПОЛНОСТЬЮ (как в хорошем учебнике, без пробелов!), но живо, структурно и «на пальцах»:
@@ -5863,15 +5863,51 @@ bot.on('callback_query', async (query) => {
       const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
       prog.wordsBatch++;
 
-      const wordsPrompt = `Ты — первоклассный методист английского языка для ${actor.name} (${st.grade || '6 класс'}).
-СТРОГО ИСПОЛЬЗУЙ МАТЕРИАЛЫ, СЛОВАРЬ И СЦЕНАРИЙ УРОКА:
-${materialsText || `Активный словарь: "${doss.vocab || ''}"\nТема урока: "${lastLs?.topic || 'English'}"`}
+      // Собираем широкий пул из 15-25+ слов (текущий урок + словарь ученика) и делаем случайную выборку 5 НЕПОВТОРЯЮЩИХСЯ слов
+      let wordPool = [];
+      try {
+        const fcCards = getLessonFlashcards(lastLs, st) || [];
+        wordPool = fcCards.map(c => ({ en: (c.en || '').trim(), ru: (c.ru || '').trim() })).filter(c => c.en);
+      } catch (_) {}
+      if (doss.vocab) {
+        const seenPool = new Set(wordPool.map(w => w.en.toLowerCase()));
+        for (const item of doss.vocab.split(/[,;\r\n]+/)) {
+          const clean = item.trim();
+          if (!clean) continue;
+          const parts = clean.split(/\s*[—–\-:]\s*/);
+          const en = (parts[0] || '').trim();
+          const ru = parts.slice(1).join(' — ').trim();
+          if (en && !seenPool.has(en.toLowerCase())) {
+            seenPool.add(en.toLowerCase());
+            wordPool.push({ en, ru });
+          }
+        }
+      }
+      wordPool = wordPool.slice(0, 30);
+      const seenLower = new Set((prog.seenWords || []).map(w => String(w).trim().toLowerCase()));
+      let availablePool = wordPool.filter(w => !seenLower.has(w.en.toLowerCase()));
+      let poolResetNote = '';
+      if (availablePool.length < 5 && wordPool.length >= 5) {
+        availablePool = [...wordPool];
+        poolResetNote = ' (новая перемешанная подборка)';
+      }
+      // Fisher-Yates shuffle
+      for (let i = availablePool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [availablePool[i], availablePool[j]] = [availablePool[j], availablePool[i]];
+      }
+      const picked5 = availablePool.slice(0, 5);
+      const pickedWordsInstruction = picked5.length >= 3
+        ? `ОБЯЗАТЕЛЬНО ИСПОЛЬЗУЙ ИМЕННО ЭТИ 5 СЛУЧАЙНО ВЫБРАННЫХ СЛОВ ИЗ ПУЛА УРОКА И СЛОВАРЯ (${wordPool.length} слов в базе)${poolResetNote}:\n` +
+          picked5.map((w, idx) => `${idx + 1}. ${w.en}${w.ru ? ' — ' + w.ru : ''}`).join('\n')
+        : `Выбери РОВНО 5 СЛЕДУЮЩИХ НОВЫХ слов или словосочетаний из материалов урока (порция #${prog.wordsBatch}), которых ещё НЕТ в списке уже пройденных: ${prog.seenWords.join(', ') || 'нет'}.`;
 
-Ученик уже выучил следующие слова урока: ${prog.seenWords.length > 0 ? prog.seenWords.join(', ') : 'ещё не начинал'}.
+      const wordsPrompt = `Ты — первоклассный методист английского языка для ${actor.name} (${st.grade || '6 класс'}).
+КОНТЕКСТ УРОКА:
+${materialsText ? materialsText.slice(0, 12000) : `Активный словарь: "${doss.vocab || ''}"\nТема урока: "${lastLs?.topic || 'English'}"`}
 
 ТВОЯ ЗАДАЧА:
-Выбери РОВНО 5 СЛЕДУЮЩИХ НОВЫХ слов или словосочетаний из материалов урока (порция #${prog.wordsBatch}), которые ещё НЕ встречались в списке выше!
-Если все ключевые слова сценария уже пройдены, напиши в первой строке: "🎉 Все ключевые слова урока пройдены! Повторяем с 1-й порции с новыми примерами."
+${pickedWordsInstruction}
 
 ПРАВИЛА ОФОРМЛЕНИЯ (СТРОГО):
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать звездочки markdown (** или *)! Никаких звездочек!

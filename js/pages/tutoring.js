@@ -2046,7 +2046,7 @@ const TutoringPage = {
               if (k && !vocabMap.has(k)) vocabMap.set(k, t);
             }
           }
-          const updatedVocab = Array.from(vocabMap.values()).slice(0, 120).join(', ');
+          const updatedVocab = Array.from(vocabMap.values()).slice(0, 500).join(', ');
           const updatedInterests = dossier.interests || essence.worlds.join('; ');
           const updatedErrors = debriefVal && !dossier.errors.includes(debriefVal.slice(0, 30))
             ? (dossier.errors ? `${dossier.errors} | ${debriefVal}` : debriefVal)
@@ -3936,14 +3936,14 @@ const TutoringPage = {
           const buf = await file.arrayBuffer();
           const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
           let fullText = '';
-          const maxPages = Math.min(pdf.numPages, 60);
+          const maxPages = pdf.numPages;
           for (let p = 1; p <= maxPages; p++) {
             const page = await pdf.getPage(p);
             const content = await page.getTextContent();
             const pageText = content.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
             if (pageText) fullText += `Слайд ${p}: ${pageText}\n`;
           }
-          if (fullText.trim().length > 15) return fullText.trim().slice(0, 35000);
+          if (fullText.trim().length > 15) return fullText.trim();
         }
       }
 
@@ -4048,7 +4048,7 @@ const TutoringPage = {
             }
           }
           if (slideLines.length > 0) {
-            return slideLines.join('\n').slice(0, 35000);
+            return slideLines.join('\n');
           }
         }
       }
