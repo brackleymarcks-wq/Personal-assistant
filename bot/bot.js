@@ -5006,8 +5006,30 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
   if (minimalSystem) {
     systemInstruction = `Ты технический ИИ-ассистент. Твоя единственная цель - вызывать нужные функции для обработки данных (например, транзакций или привычек). Никаких лишних слов.\n\nТЕКУЩЕЕ ВРЕМЯ МИНСК (GMT+3): ${timeStr}${calendarContext}`;
   } else {
-    const advisorHint = '\n\nПРАВИЛО ПРОАКТИВНОГО АССИСТЕНТА: Если Игорь спрашивает о делах, встречах, планах на день/неделю или с чего начать — ОБЯЗАТЕЛЬНО загляни в get_tasks и get_events, раздели задачи на важные (Высокий приоритет / горящий дедлайн / до встречи) и второстепенные (Низкий / можно перенести), и дай чёткий совет, от чего отталкиваться в первую очередь.';
-    systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ МИНСК (GMT+3): ${timeStr}${calendarContext}${advisorHint}${extraCtx}${context ? '\n\n' + context : ''}`;
+    let liveScheduleSnapshot = '';
+    if (!disableTools) {
+      try {
+        const [evs14, activeTasks] = await Promise.all([
+          getUpcomingEvents(14).catch(() => []),
+          getTasks({}).catch(() => [])
+        ]);
+        const evLines = (evs14 || []).slice(0, 25).map(e => {
+          const w = new Date(e.start_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+          return `- ${w}: ${e.title}`;
+        });
+        const tkLines = (activeTasks || []).filter(t => t.status !== 'Готово' && t.status !== 'Отменена').slice(0, 25).map(t => {
+          return `- [${t.priority || 'Средний'}] ${t.title}${t.deadline ? ' (до ' + t.deadline + ')' : ''}${t.direction ? ' [' + t.direction + ']' : ''}`;
+        });
+        liveScheduleSnapshot =
+          `\n\n📅 РЕАЛЬНЫЕ ВСТРЕЧИ И УРОКИ ИЗ БАЗЫ (ближайшие 14 дней, время Минск):\n` +
+          (evLines.length > 0 ? evLines.join('\n') : '_Встреч и уроков на ближайшие 14 дней в базе нет._') +
+          `\n\n✅ РЕАЛЬНЫЕ АКТИВНЫЕ ЗАДАЧИ ИЗ БАЗЫ:\n` +
+          (tkLines.length > 0 ? tkLines.join('\n') : '_Активных задач в базе сейчас нет._') +
+          `\n⚠️ СТРОГОЕ ПРАВИЛО: НИКОГДА не выдумывай встречи или задачи, которых НЕТ в списках выше! Называй только реальные даты, время по Минску и точные названия из базы!`;
+      } catch (_) {}
+    }
+    const advisorHint = '\n\nПРАВИЛО ПРОАКТИВНОГО АССИСТЕНТА: Если Игорь спрашивает о делах, встречах, планах на день/неделю или с чего начать — опирайся на реальные списки выше (и при необходимости вызывай get_tasks / get_events), раздели задачи на важные (Высокий приоритет / горящий дедлайн / до встречи) и второстепенные (Низкий / можно перенести), и дай чёткий совет, от чего отталкиваться в первую очередь.';
+    systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ МИНСК (GMT+3): ${timeStr}${calendarContext}${liveScheduleSnapshot}${advisorHint}${extraCtx}${context ? '\n\n' + context : ''}`;
   }
 
   let messages = [];
