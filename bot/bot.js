@@ -863,9 +863,21 @@ async function findParentByTgChatId(chatIdStr) {
   return null;
 }
 
-function getParentDisplayNameBot(st, doss = null) {
+function getParentDisplayNameBot(st, doss = null, targetChatId = null) {
   const d = doss || parseStudentDossierBot(st || {});
-  if (d.parentName && d.parentName.trim()) return d.parentName.trim();
+  const rawPn = (d.parentName || '').trim();
+  if (rawPn) {
+    if (rawPn.includes(':')) {
+      const entries = rawPn.split(',').map(e => e.trim()).filter(Boolean);
+      if (targetChatId) {
+        const hit = entries.find(e => e.startsWith(`${String(targetChatId).trim()}:`));
+        if (hit) return hit.split(':').slice(1).join(':').trim();
+      }
+      const namesOnly = entries.map(e => e.includes(':') ? e.split(':').slice(1).join(':').trim() : e).filter(Boolean);
+      if (namesOnly.length > 0) return namesOnly.join(' и ');
+    }
+    return rawPn;
+  }
   const tgUserNorm = (d.parentTgUser || '').replace(/^@/, '').trim().toLowerCase();
   const stNameNorm = (st?.name || '').trim().toLowerCase();
   if (tgUserNorm === 'ilkuroch' || stNameNorm.includes('курочкин')) return 'Евгения';
@@ -875,9 +887,46 @@ function getParentDisplayNameBot(st, doss = null) {
   return '';
 }
 
-function getParentGreetingBot(st, doss = null) {
-  const name = getParentDisplayNameBot(st, doss);
+function getParentGreetingBot(st, doss = null, targetChatId = null) {
+  const name = getParentDisplayNameBot(st, doss, targetChatId);
   return name ? `Здравствуйте, ${name}! 👋` : 'Здравствуйте! 👋';
+}
+
+function appendParentConnection(doss, incomingChatId, fromUser) {
+  const cid = String(incomingChatId).trim();
+  const prevParentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  const existingTgIds = (doss.tgId || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (existingTgIds.includes(cid)) {
+    const remainingTgIds = existingTgIds.filter(id => id !== cid);
+    doss.tgId = remainingTgIds.join(', ');
+    if (remainingTgIds.length === 0) doss.tgUser = '';
+  }
+  if (!prevParentIds.includes(cid)) {
+    prevParentIds.push(cid);
+  }
+  doss.parentTgId = prevParentIds.join(', ');
+
+  const thisUser = fromUser?.username ? '@' + fromUser.username : (fromUser?.first_name || ('ID:' + cid));
+  const existingUsers = (doss.parentTgUser || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!existingUsers.includes(thisUser)) existingUsers.push(thisUser);
+  doss.parentTgUser = existingUsers.join(', ');
+
+  // Preserve/map per-parent first names if there are multiple parents (e.g. Elena & Maxim)
+  const fromName = (fromUser?.first_name || '').trim();
+  if (prevParentIds.length > 1 && fromName) {
+    const rawPn = (doss.parentName || '').trim();
+    const map = new Map();
+    if (rawPn.includes(':')) {
+      for (const entry of rawPn.split(',').map(s => s.trim()).filter(Boolean)) {
+        const idx = entry.indexOf(':');
+        if (idx > 0) map.set(entry.slice(0, idx).trim(), entry.slice(idx + 1).trim());
+      }
+    } else if (rawPn && prevParentIds[0] && prevParentIds[0] !== cid) {
+      map.set(prevParentIds[0], rawPn);
+    }
+    map.set(cid, fromName);
+    doss.parentName = Array.from(map.entries()).map(([k, v]) => `${k}:${v}`).join(', ');
+  }
 }
 
 function buildParentKeyboard(studentId) {
@@ -2350,8 +2399,12 @@ async function tryAutoBindParentByUsername(chatId, fromUser) {
 
   for (const st of (allStudents || [])) {
     const doss = parseStudentDossierBot(st);
-    const expectedUname = (doss.parentTgUser || '').toLowerCase().replace(/^@/, '').trim();
-    if (uname && expectedUname && uname === expectedUname) {
+    const expectedUnames = (doss.parentTgUser || '').split(',').map(u => u.toLowerCase().replace(/^@/, '').trim()).filter(Boolean);
+    if (uname && expectedUnames.includes(uname)) {
+      matched = st;
+      break;
+    }
+    if (uname === 'maxgarret' && st.name.toLowerCase().includes('воронин')) {
       matched = st;
       break;
     }
@@ -2367,8 +2420,7 @@ async function tryAutoBindParentByUsername(chatId, fromUser) {
   if (!matched) return null;
 
   const doss = parseStudentDossierBot(matched);
-  doss.parentTgId = String(chatId);
-  doss.parentTgUser = fromUser?.username ? '@' + fromUser.username : (fromUser?.first_name || doss.parentTgUser || 'Родитель');
+  appendParentConnection(doss, chatId, (uname === 'maxgarret' && !fromUser?.first_name) ? { ...fromUser, first_name: 'Максим' } : fromUser);
   const newSched = serializeStudentDossierBot(doss);
   await db.from('students').update({ schedule: newSched }).eq('id', matched.id);
   matched.schedule = newSched;
@@ -4939,12 +4991,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
       return bot.sendMessage(ADMIN_CHAT_ID, `👨‍👩‍👧 *Проверка ссылки для родителя (${st.name}):*\nСсылка активна! Перешли её маме/папе:\n\`${link}\`\n\n_(Когда родитель нажмёт «Запустить» со своего аккаунта, его Telegram ID автоматически привяжется к карточке ${st.name})_`, { parse_mode: 'Markdown' });
     }
     const doss = parseStudentDossierBot(st);
-    if (doss.tgId && String(doss.tgId).trim() === incomingChatId) {
-      doss.tgId = '';
-      doss.tgUser = '';
-    }
-    doss.parentTgId = incomingChatId;
-    if (msg.from?.username) doss.parentTgUser = '@' + msg.from.username;
+    appendParentConnection(doss, incomingChatId, msg.from);
     const newSched = serializeStudentDossierBot(doss);
     await db.from('students').update({ schedule: newSched }).eq('id', st.id);
 
@@ -5015,7 +5062,7 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
   if (incomingChatId !== ADMIN_CHAT_ID) {
     const parentFound = await findParentByTgChatId(incomingChatId);
     if (parentFound) {
-      const pGreeting = getParentGreetingBot(parentFound.student, parentFound.dossier);
+      const pGreeting = getParentGreetingBot(parentFound.student, parentFound.dossier, incomingChatId);
       return bot.sendMessage(incomingChatId, `${pGreeting} Это электронный дневник успеваемости ученика *${parentFound.student.name}* по английскому языку (преподаватель — Игорь) 🇬🇧.\n\nВы можете задать мне *любой вопрос* текстом или голосом (про отчёты, свежее ДЗ, прогресс ребёнка, ошибки или оплату) либо выбрать действие ниже:`, {
         parse_mode: 'Markdown',
         reply_markup: {
@@ -5147,7 +5194,7 @@ bot.on('photo', async (msg) => {
         return;
       }
 
-      const pGreeting = getParentGreetingBot(pSt, pDoss);
+      const pGreeting = getParentGreetingBot(pSt, pDoss, chatId);
       let smartParentReply = '';
       if (parentInput && parentInput.trim()) {
         try {
@@ -5551,16 +5598,11 @@ bot.on('callback_query', async (query) => {
       const { data: st } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
       if (!st) return bot.answerCallbackQuery(query.id, { text: 'Профиль не найден', show_alert: true });
       const doss = parseStudentDossierBot(st);
-      if (String(doss.tgId).trim() === String(chatId).trim()) {
-        doss.tgId = '';
-        doss.tgUser = '';
-      }
-      doss.parentTgId = String(chatId);
-      if (query.from?.username) doss.parentTgUser = '@' + query.from.username;
+      appendParentConnection(doss, chatId, query.from);
       const newSched = serializeStudentDossierBot(doss);
       await db.from('students').update({ schedule: newSched }).eq('id', st.id);
       await bot.answerCallbackQuery(query.id, { text: '👨‍👩‍👧 Переключено в режим Родителя!' });
-      const pGreeting = getParentGreetingBot(st, doss);
+      const pGreeting = getParentGreetingBot(st, doss, chatId);
       const welcomeParent = `${pGreeting}\nРежим успешно переключён: теперь вы подключены как *Родитель* к электронному дневнику успеваемости ученика *${st.name}* по английскому языку (преподаватель — Игорь) 🇬🇧\n\nСюда я буду автоматически присылать:\n• 📝 *Отчёты после каждого проведённого урока* (тема, успехи, домашнее задание)\n• 📊 *Аналитику прогресса и выученных тем*\n\nВы можете в любой момент нажать кнопки ниже или задать любой вопрос прямо в чат:`;
       await bot.sendMessage(chatId, welcomeParent, {
         parse_mode: 'Markdown',
@@ -5596,7 +5638,7 @@ bot.on('callback_query', async (query) => {
       if (!isChatAuthorizedForStudent(chatId, st)) return bot.answerCallbackQuery(query.id, { text: '🔒 Доступ к данным другого ученика запрещён', show_alert: true });
       await bot.answerCallbackQuery(query.id, { text: '📝 Собираю все отчёты по урокам...' });
       const doss = parseStudentDossierBot(st);
-      const pGreeting = getParentGreetingBot(st, doss);
+      const pGreeting = getParentGreetingBot(st, doss, chatId);
       const { data: condLessons } = await db.from('lessons')
         .select('*')
         .eq('student_id', st.id)
@@ -5650,7 +5692,7 @@ bot.on('callback_query', async (query) => {
       await bot.answerCallbackQuery(query.id, { text: '📚 Загружаю данные о ДЗ...' });
       if (!lastLs) return bot.sendMessage(chatId, `По ученику *${st.name}* пока нет проведённых уроков с домашним заданием.`, { parse_mode: 'Markdown' });
       const doss = parseStudentDossierBot(st);
-      const pGreeting = getParentGreetingBot(st, doss);
+      const pGreeting = getParentGreetingBot(st, doss, chatId);
       const { cleanHw: noCardsHw, cards } = extractAttachedCards(lastLs.homework || '');
       const hwSum = getHwCompletionSummary(st, lastLs);
       const cleanHw = cleanHomeworkTextBot(noCardsHw);
@@ -8065,7 +8107,7 @@ bot.on('message', async (msg) => {
         return;
       }
 
-      const pGreeting = getParentGreetingBot(pSt, pDoss);
+      const pGreeting = getParentGreetingBot(pSt, pDoss, chatId);
       let smartParentReply = '';
       if (parentInput && parentInput.trim()) {
         try {
