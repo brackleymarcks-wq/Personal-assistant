@@ -3628,6 +3628,98 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'mark_lesson_paid',
+      description: 'Отметить оплату урока(ов) ученика по английскому (когда Игорь пишет "Соня оплатила", "Воронины перевели за все уроки", "отметь оплату за 14 ноября" и т.д.). Сразу обновляет базу для бота и веб-приложения.',
+      parameters: {
+        type: 'object',
+        properties: {
+          student_name: { type: 'string', description: 'Имя ученика' },
+          paid: { type: 'boolean', description: 'true = оплачен, false = снять оплату (по умолчанию true)' },
+          lesson_date: { type: 'string', description: 'Дата конкретного урока YYYY-MM-DD (если указана, иначе последний неоплаченный проведённый урок)' },
+          all_unpaid: { type: 'boolean', description: 'true = отметить оплаченными ВСЕ неоплаченные проведённые уроки этого ученика' }
+        },
+        required: ['student_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_tutoring_debt',
+      description: 'Показать статус оплат и задолженностей по урокам английского (по одному ученику или по всем ученикам сразу, с датами и суммами в BYN).',
+      parameters: {
+        type: 'object',
+        properties: {
+          student_name: { type: 'string', description: 'Имя ученика (если пусто — сводка по всем ученикам)' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_lesson',
+      description: 'Изменить или обновить запись урока ученика в базе (тему, домашнее задание, дату/время переноса, статус Проведен/Запланирован/Отменен, цену урока, заметку/дебрифинг или пометить ДЗ проверенным). Изменения сразу видны и в боте, и в приложении.',
+      parameters: {
+        type: 'object',
+        properties: {
+          student_name: { type: 'string', description: 'Имя ученика' },
+          lesson_date: { type: 'string', description: 'Дата урока YYYY-MM-DD для поиска (если пусто — берётся последний актуальный/ближайший урок)' },
+          topic: { type: 'string', description: 'Новая тема урока' },
+          homework: { type: 'string', description: 'Новый чистый текст ДЗ (презентация, сценарий и карточки сохранятся)' },
+          status: { type: 'string', enum: ['Проведен', 'Запланирован', 'Отменен'], description: 'Новый статус урока' },
+          new_datetime: { type: 'string', description: 'Новая дата и время (YYYY-MM-DDTHH:mm:00+03:00) при переносе' },
+          price: { type: 'number', description: 'Новая цена именно этого урока в BYN (если отличается от ставки ученика)' },
+          mark_hw_checked: { type: 'boolean', description: 'true = отметить ДЗ этого урока как проверенное ([ДЗ_ПРОВЕРЕНО])' },
+          debrief: { type: 'string', description: 'Добавить или обновить заметку/дебрифинг преподавателя' }
+        },
+        required: ['student_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_student_dossier',
+      description: 'Обновить карточку и досье ученика в базе: ставку за урок (price), расписание (schedule), имя родителя (parent_name), ошибки (add_errors / set_errors), словарь (add_vocab / set_vocab), интересы, учебник, заметки или стрик.',
+      parameters: {
+        type: 'object',
+        properties: {
+          student_name: { type: 'string', description: 'Имя ученика' },
+          price: { type: 'number', description: 'Новая базовая цена 1 урока в BYN' },
+          schedule: { type: 'string', description: 'Новое текстовое расписание (например: Сб 10:30, Вт 18:00)' },
+          parent_name: { type: 'string', description: 'Имя родителя для обращений' },
+          add_errors: { type: 'string', description: 'Добавить новые ошибки в копилку ошибок ученика' },
+          set_errors: { type: 'string', description: 'Полностью заменить список ошибок' },
+          add_vocab: { type: 'string', description: 'Добавить новые слова в словарь ученика (через запятую)' },
+          set_vocab: { type: 'string', description: 'Полностью заменить словарь ученика' },
+          interests: { type: 'string', description: 'Обновить интересы ученика' },
+          unit: { type: 'string', description: 'Обновить учебник / программу' },
+          notes: { type: 'string', description: 'Обновить общие заметки по ученику' },
+          streak: { type: 'number', description: 'Обновить число стрика (серии ДЗ)' }
+        },
+        required: ['student_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'send_parent_report',
+      description: 'Сформировать и отправить отчёт родителю ученика в Telegram по последнему проведённому уроку (или отправить продиктованный Игорем текст отчёта).',
+      parameters: {
+        type: 'object',
+        properties: {
+          student_name: { type: 'string', description: 'Имя ученика' },
+          custom_text: { type: 'string', description: 'Опционально: готовый текст отчёта от преподавателя' }
+        },
+        required: ['student_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_habits',
       description: 'Get active habits list',
       parameters: { type: 'object', properties: {} }
@@ -4415,6 +4507,154 @@ async function executeFunctionCall(name, args) {
           message: 'Базовый план готов.'
         };
       }
+      case 'mark_lesson_paid': {
+        const user = await getUser();
+        const { data: allSt } = await db.from('students').select('*').eq('user_id', user.id);
+        const st = matchStudent(allSt, args.student_name);
+        if (!st) return { error: `Ученик "${args.student_name}" не найден.` };
+        const setPaid = args.paid !== undefined ? !!args.paid : true;
+        const { data: lessons } = await db.from('lessons').select('*').eq('student_id', st.id).order('date', { ascending: false }).limit(30);
+        if (!lessons || lessons.length === 0) return { error: `У ученика ${st.name} нет уроков в базе.` };
+
+        let targets = [];
+        if (args.all_unpaid) {
+          targets = lessons.filter(l => l.status === 'Проведен' && (setPaid ? !l.paid : l.paid));
+        } else if (args.lesson_date) {
+          targets = lessons.filter(l => (l.date || '').startsWith(args.lesson_date));
+        } else {
+          const one = setPaid
+            ? (lessons.find(l => l.status === 'Проведен' && !l.paid) || lessons.find(l => l.status === 'Проведен') || lessons[0])
+            : (lessons.find(l => l.paid) || lessons[0]);
+          if (one) targets = [one];
+        }
+        if (targets.length === 0) return { success: true, message: `У ${st.name} нет подходящих уроков для изменения оплаты.` };
+
+        const ids = targets.map(t => t.id);
+        await db.from('lessons').update({ paid: setPaid }).in('id', ids);
+        const paySummary = await buildParentPaymentStatusMessage(st);
+        return {
+          success: true,
+          updated_count: targets.length,
+          message: `${setPaid ? '✅ Отмечена оплата' : '↩️ Снята отметка оплаты'} для *${st.name}* (${targets.length} ур.: ${targets.map(t => new Date(t.date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' })).join(', ')}).\n\n${paySummary.unpaidCount === 0 ? '🎉 Задолженности больше нет!' : `📌 Осталось неоплаченных уроков: *${paySummary.unpaidCount}* (*${paySummary.totalAmount} BYN*)`}`
+        };
+      }
+      case 'get_tutoring_debt': {
+        const user = await getUser();
+        const { data: allSt } = await db.from('students').select('*').eq('user_id', user.id);
+        const list = args.student_name ? [matchStudent(allSt, args.student_name)].filter(Boolean) : (allSt || []);
+        if (list.length === 0) return { error: `Ученик "${args.student_name}" не найден.` };
+        let grandTotal = 0;
+        const lines = [];
+        for (const st of list) {
+          const p = await buildParentPaymentStatusMessage(st);
+          grandTotal += p.totalAmount;
+          if (p.unpaidCount > 0 || args.student_name) {
+            lines.push(`• *${st.name}*: ${p.unpaidCount} неоплач. ур. — *${p.totalAmount} BYN*`);
+          }
+        }
+        return {
+          success: true,
+          total_byn: grandTotal,
+          message: lines.length > 0
+            ? `💳 *Долги по урокам:*\n${lines.join('\n')}\n\n💵 *Итого к получению:* *${grandTotal} BYN*`
+            : '✅ Все проведённые уроки у всех учеников оплачены!'
+        };
+      }
+      case 'update_lesson': {
+        const user = await getUser();
+        const { data: allSt } = await db.from('students').select('*').eq('user_id', user.id);
+        const st = matchStudent(allSt, args.student_name);
+        if (!st) return { error: `Ученик "${args.student_name}" не найден.` };
+        const { data: lessons } = await db.from('lessons').select('*').eq('student_id', st.id).order('date', { ascending: false }).limit(20);
+        if (!lessons || lessons.length === 0) return { error: `Уроков для ${st.name} не найдено.` };
+        let target = args.lesson_date
+          ? lessons.find(l => (l.date || '').startsWith(args.lesson_date))
+          : (args.new_datetime ? (lessons.find(l => l.status === 'Запланирован') || lessons[0]) : lessons[0]);
+        if (!target) target = lessons[0];
+
+        let rawHw = target.homework || '';
+        const preservedBlocks = [];
+        const blockRegex = /\[(ПРЕЗЕНТАЦИЯ_?ТЕКСТ|СЦЕНАРИЙ_?УРОКА|КАРТОЧКИ_?ДЗ|ПРЕЗЕНТАЦИЯ_?ФАЙЛ|ПРАВИЛО_?УРОКА|КАСТОМНЫЙ_?ОТЧЕТ|ОТЧЕТ_?РОДИТЕЛЮ|ОС_ПО_ФОТО_[А-ЯA-Z_]+|ДЕБРИФИНГ)\]:?[\s\S]*?\[\/\s*\1\s*\]/gi;
+        let mb;
+        while ((mb = blockRegex.exec(rawHw)) !== null) preservedBlocks.push(mb[0]);
+        const singleTags = rawHw.match(/\[(ДЗ_ПРОВЕРЕНО[A-ZА-Я0-9_]*|ДЗ_СДАНО[A-ZА-Я0-9_]*|ФОТО_ДЗ_СДАНО[A-ZА-Я0-9_]*|ПРОГРЕСС[A-ZА-Я0-9_]*:[^\]]+|ЦЕНА_УРОКА:[^\]]+|МАТЕРИАЛЫ:[^\n]*)\]/gi) || [];
+
+        let cleanBody = args.homework !== undefined ? args.homework : cleanHomeworkTextBot(rawHw);
+        let tagsOut = [...singleTags];
+        if (args.mark_hw_checked && !tagsOut.some(t => t.includes('ДЗ_ПРОВЕРЕНО'))) {
+          tagsOut.unshift('[ДЗ_ПРОВЕРЕНО]');
+        }
+        if (args.price !== undefined && args.price !== null) {
+          tagsOut = tagsOut.filter(t => !t.startsWith('[ЦЕНА_УРОКА:'));
+          tagsOut.push(`[ЦЕНА_УРОКА:${Number(args.price)}]`);
+        }
+        let blocksOut = [...preservedBlocks];
+        if (args.debrief) {
+          blocksOut = blocksOut.filter(b => !/^\[ДЕБРИФИНГ\]/i.test(b));
+          blocksOut.unshift(`[ДЕБРИФИНГ]:\n${args.debrief}\n[/ДЕБРИФИНГ]`);
+        }
+        const finalHw = [tagsOut.join(' '), cleanBody, ...blocksOut].filter(Boolean).join('\n\n').trim();
+
+        const patch = { homework: finalHw };
+        if (args.topic !== undefined) patch.topic = args.topic;
+        if (args.status) patch.status = args.status;
+        if (args.new_datetime) patch.date = new Date(args.new_datetime).toISOString();
+
+        const { data: updated, error: uErr } = await db.from('lessons').update(patch).eq('id', target.id).select().single();
+        if (uErr) return { error: uErr.message };
+        const dStr = new Date(updated.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+        return {
+          success: true,
+          lesson: updated,
+          message: `✅ Урок *${st.name}* (${dStr}) обновлён в базе и в приложении!\n• Статус: *${updated.status}*\n• Тема: *${updated.topic || 'не задана'}*${args.mark_hw_checked ? '\n• ДЗ отмечено проверенным ✅' : ''}`
+        };
+      }
+      case 'update_student_dossier': {
+        const user = await getUser();
+        const { data: allSt } = await db.from('students').select('*').eq('user_id', user.id);
+        const st = matchStudent(allSt, args.student_name);
+        if (!st) return { error: `Ученик "${args.student_name}" не найден.` };
+        const doss = parseStudentDossierBot(st);
+        if (args.schedule !== undefined) doss.schedule = args.schedule;
+        if (args.parent_name !== undefined) doss.parentName = args.parent_name;
+        if (args.set_errors !== undefined) doss.errors = args.set_errors;
+        else if (args.add_errors) doss.errors = doss.errors ? `${doss.errors}; ${args.add_errors}` : args.add_errors;
+        if (args.set_vocab !== undefined) doss.vocab = args.set_vocab;
+        else if (args.add_vocab) doss.vocab = doss.vocab ? `${args.add_vocab}, ${doss.vocab}` : args.add_vocab;
+        if (args.interests !== undefined) doss.interests = args.interests;
+        if (args.unit !== undefined) doss.unit = args.unit;
+        if (args.notes !== undefined) doss.notes = args.notes;
+        if (args.streak !== undefined) doss.streak = Number(args.streak) || 0;
+
+        const newSched = serializeStudentDossierBot(doss);
+        const patch = { schedule: newSched };
+        if (args.price !== undefined && args.price !== null) patch.price = Number(args.price);
+        const { error: sErr } = await db.from('students').update(patch).eq('id', st.id);
+        if (sErr) return { error: sErr.message };
+        return {
+          success: true,
+          message: `✅ Карточка и досье ученика *${st.name}* обновлены в базе и в приложении!${patch.price !== undefined ? `\n• Новая ставка: *${patch.price} BYN*` : ''}${args.parent_name ? `\n• Имя родителя: *${args.parent_name}*` : ''}${args.add_errors || args.set_errors ? '\n• Ошибки обновлены' : ''}${args.add_vocab || args.set_vocab ? '\n• Словарь обновлён' : ''}`
+        };
+      }
+      case 'send_parent_report': {
+        const user = await getUser();
+        const { data: allSt } = await db.from('students').select('*').eq('user_id', user.id);
+        const st = matchStudent(allSt, args.student_name);
+        if (!st) return { error: `Ученик "${args.student_name}" не найден.` };
+        const doss = parseStudentDossierBot(st);
+        const parentIds = (doss.parentTgId || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (parentIds.length === 0) return { error: `У ученика ${st.name} не привязан Telegram родителя.` };
+        const { data: cond } = await db.from('lessons').select('*').eq('student_id', st.id).eq('status', 'Проведен').order('date', { ascending: false }).limit(1).maybeSingle();
+        if (args.custom_text && cond) {
+          const newHw = `${cond.homework || ''}\n[ОТЧЕТ_РОДИТЕЛЮ]:\n${args.custom_text}\n[/ОТЧЕТ_РОДИТЕЛЮ]`.trim();
+          cond.homework = newHw;
+          await db.from('lessons').update({ homework: newHw }).eq('id', cond.id);
+        }
+        const res = await sendParentLessonReportBot(st, cond || { topic: 'Практика английского', date: new Date().toISOString(), homework: args.custom_text || '' });
+        return res.sent
+          ? { success: true, message: `👨‍👩‍👧 Отчёт по ученику *${st.name}* успешно отправлен родителю (${parentIds.length} конт.) и продублирован тебе!` }
+          : { error: `Не удалось отправить отчёт: ${res.reason}` };
+      }
       case 'generate_channel_post': {
         let content = args.raw_text || '';
         
@@ -4830,7 +5070,7 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
       });
     }
 
-    const isActionOnly = message.tool_calls.every(tc => ['process_brain_dump', 'schedule_lesson', 'send_homework_to_student', 'import_perplexity_lesson', 'add_lesson', 'create_task', 'create_tasks', 'create_event', 'update_task_status', 'update_task', 'reschedule_tasks', 'add_transaction', 'create_transaction', 'log_habit', 'update_context'].includes(tc.function.name));
+    const isActionOnly = message.tool_calls.every(tc => ['process_brain_dump', 'schedule_lesson', 'send_homework_to_student', 'import_perplexity_lesson', 'add_lesson', 'mark_lesson_paid', 'update_lesson', 'update_student_dossier', 'send_parent_report', 'create_task', 'create_tasks', 'create_event', 'update_task_status', 'update_task', 'reschedule_tasks', 'add_transaction', 'create_transaction', 'log_habit', 'update_context'].includes(tc.function.name));
     try {
       response = await callAPI(systemInstruction, messages, 0, !!imageUrl, overrideModel, isActionOnly ? true : disableTools, activeTools);
     } catch (e) {
