@@ -3913,6 +3913,34 @@ const TutoringPage = {
     }
   },
 
+  async compressImageBlobForOcr(blob, maxWidth = 1280) {
+    return new Promise((resolve) => {
+      try {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const scale = img.width > maxWidth ? (maxWidth / img.width) : 1;
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL('image/jpeg', 0.78));
+          } catch (_) {
+            URL.revokeObjectURL(url);
+            resolve(null);
+          }
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  },
+
   async extractTextFromPresentationFile(file) {
     if (!file) return '';
     try {
@@ -3942,6 +3970,29 @@ const TutoringPage = {
             const content = await page.getTextContent();
             const pageText = content.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
             if (pageText) fullText += `Слайд ${p}: ${pageText}\n`;
+          }
+          const realPdfChars = fullText.replace(/Слайд \d+:\s*/g, '').trim().length;
+          if (realPdfChars >= 250) return fullText.trim();
+
+          // Fallback OCR for image-based / Canva PDFs with no text layer
+          if (window.Gemini && typeof Gemini.recognizeSlideBatch === 'function') {
+            if (window.UI) UI.toast(`🖼 PDF состоит из картинок (${maxPages} сл.) — распознаю текст через Vision ИИ...`, 'info');
+            const slideImgs = [];
+            for (let p = 1; p <= maxPages; p++) {
+              try {
+                const page = await pdf.getPage(p);
+                const viewport = page.getViewport({ scale: 1.4 });
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                slideImgs.push({ slideNum: p, dataUrl: canvas.toDataURL('image/jpeg', 0.78) });
+              } catch (_) {}
+            }
+            if (slideImgs.length > 0) {
+              const ocrLines = await Gemini.recognizeSlideBatch(slideImgs);
+              if (ocrLines.length > 0) return ocrLines.join('\n');
+            }
           }
           if (fullText.trim().length > 15) return fullText.trim();
         }
@@ -4037,16 +4088,66 @@ const TutoringPage = {
               } catch (_) {}
             }
 
-            // 2. Human descriptions from Gamma exports (only if not already duplicated in bodyText and not a cover-image tag)
+            // 2. Human descriptions from Gamma exports (filter out generic "Slide Content", "Image", etc.)
+            const genericDescrRe = /^(?:slide\s*content|slide\s*\d*|image|picture|photo|graphic|shape|background|cover|title|text|content|placeholder)$/i;
             const descrs = (xml.match(/descr="([^"]+)"/g) || [])
               .map(m => m.slice(7, -1).replace(/\s*—\s*cover\b/gi, '').trim())
-              .filter(d => d && !/\.(?:png|jpe?g|gif|svg|webp|mp[34])$/i.test(d) && !/^gen-dedup/i.test(d) && !d.includes('<') && !d.startsWith('http') && !/^[a-f0-9_\-]{16,}$/i.test(d) && d.length > 3 && !bodyText.toLowerCase().includes(d.slice(0, 25).toLowerCase()));
+              .filter(d => d && !genericDescrRe.test(d) && !/\.(?:png|jpe?g|gif|svg|webp|mp[34])$/i.test(d) && !/^gen-dedup/i.test(d) && !d.includes('<') && !d.startsWith('http') && !/^[a-f0-9_\-]{16,}$/i.test(d) && d.length > 3 && !bodyText.toLowerCase().includes(d.slice(0, 25).toLowerCase()));
 
             const combined = [...descrs, bodyText, extraNotes].filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim();
             if (combined && !combined.startsWith('preencoded.png')) {
               slideLines.push(`Слайд ${i + 1}: ${combined}`);
             }
           }
+
+          const realXmlChars = slideLines.join('\n').replace(/Слайд \d+:\s*/g, '').trim().length;
+          if (realXmlChars >= 250) {
+            return slideLines.join('\n');
+          }
+
+          // Fallback Vision OCR when PPTX slides are exported as images (e.g. Canva / Gamma / AI "Slide Content" images)
+          if (window.Gemini && typeof Gemini.recognizeSlideBatch === 'function') {
+            const slideImgs = [];
+            for (let i = 0; i < slideKeys.length; i++) {
+              const sKey = slideKeys[i];
+              const relsKey = sKey.replace('ppt/slides/', 'ppt/slides/_rels/') + '.rels';
+              let bestMediaKey = null;
+              let bestSize = 0;
+              if (zip.file(relsKey)) {
+                try {
+                  const relsXml = await zip.file(relsKey).async('text');
+                  const imgMatches = relsXml.match(/Target="\.\.\/media\/([^"]+\.(?:png|jpe?g|webp))"/gi) || [];
+                  for (const im of imgMatches) {
+                    const mName = im.match(/media\/([^"]+)/i)?.[1];
+                    const fullM = mName ? `ppt/media/${mName}` : '';
+                    const fObj = fullM ? zip.file(fullM) : null;
+                    const sz = fObj?._data?.uncompressedSize || fObj?._data?.compressedSize || 1;
+                    if (fObj && sz >= bestSize) {
+                      bestSize = sz;
+                      bestMediaKey = fullM;
+                    }
+                  }
+                } catch (_) {}
+              }
+              if (bestMediaKey && zip.file(bestMediaKey)) {
+                try {
+                  const blob = await zip.file(bestMediaKey).async('blob');
+                  const dataUrl = await this.compressImageBlobForOcr(blob);
+                  if (dataUrl) slideImgs.push({ slideNum: i + 1, dataUrl });
+                } catch (_) {}
+              }
+            }
+            if (slideImgs.length > 0) {
+              if (window.UI) UI.toast(`🖼 Слайды в презентации — картинки (${slideImgs.length} сл.). Распознаю текст через Vision ИИ...`, 'info');
+              const ocrLines = await Gemini.recognizeSlideBatch(slideImgs, (from, to, total) => {
+                if (window.UI && from > 1) UI.toast(`🔍 Распознано ${from - 1}/${total} слайдов...`, 'info');
+              });
+              if (ocrLines.length > 0) {
+                return ocrLines.join('\n');
+              }
+            }
+          }
+
           if (slideLines.length > 0) {
             return slideLines.join('\n');
           }

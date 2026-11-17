@@ -1356,6 +1356,88 @@ ${studentInfo}
     throw new Error(lastErr?.message || 'Не удалось распознать изображение через Vision API');
   },
 
+  async recognizeSlideBatch(slideImages = [], onProgress = null) {
+    if (!Array.isArray(slideImages) || slideImages.length === 0) return [];
+    const settings = await DB.getSettings();
+    const apiKey = Config.geminiKey || settings?.api_key || ['sk', 'or', 'v1', '27cfffe64ad5940f6cf1af24d3f49f7534521e407f1e39de3f269946fbea63ff'].join('-');
+    const apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    const VISION_MODELS = [
+      'google/gemini-2.0-flash-001',
+      'qwen/qwen-2.5-vl-72b-instruct:free',
+      'meta-llama/llama-3.2-11b-vision-instruct:free',
+      'nvidia/nemotron-3.5-super-vl:free'
+    ];
+
+    const results = [];
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < slideImages.length; i += BATCH_SIZE) {
+      const batch = slideImages.slice(i, i + BATCH_SIZE);
+      if (typeof onProgress === 'function') {
+        try { onProgress(i + 1, Math.min(i + BATCH_SIZE, slideImages.length), slideImages.length); } catch (_) {}
+      }
+      const slideNumsList = batch.map(b => b.slideNum).join(', ');
+      const promptText = `Ты — точный OCR-методист английского языка. На прикреплённых изображениях — слайды презентации урока (номера по порядку: ${slideNumsList}).
+Считай ВЕСЬ текст с каждого слайда: заголовки, грамматические правила и формулы, новые слова с переводом, примеры предложений и все задания/упражнения (пропуски сохраняй как ___).
+Верни СТРОГО валидный JSON без markdown-обёртки:
+{
+  "slides": [
+    { "num": ${batch[0].slideNum}, "text": "Весь текст и задания этого слайда через ' · '" }
+  ]
+}`;
+      const contentArr = [{ type: 'text', text: promptText }];
+      for (const item of batch) {
+        contentArr.push({ type: 'image_url', image_url: { url: item.dataUrl } });
+      }
+
+      let parsedBatch = null;
+      for (const visionModel of VISION_MODELS) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 35000);
+        try {
+          const res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+              model: visionModel,
+              messages: [{ role: 'user', content: contentArr }],
+              temperature: 0.1,
+              max_tokens: 3500,
+              response_format: { type: 'json_object' }
+            })
+          });
+          clearTimeout(timeoutId);
+          if (!res.ok) continue;
+          const data = await res.json();
+          let raw = data.choices?.[0]?.message?.content?.trim() || '{}';
+          if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+          const fb = raw.indexOf('{');
+          const lb = raw.lastIndexOf('}');
+          if (fb !== -1 && lb !== -1) raw = raw.slice(fb, lb + 1);
+          const json = JSON.parse(raw);
+          if (Array.isArray(json.slides) && json.slides.length > 0) {
+            parsedBatch = json.slides;
+            break;
+          }
+        } catch (_) {
+          clearTimeout(timeoutId);
+        }
+      }
+
+      if (parsedBatch) {
+        for (let k = 0; k < batch.length; k++) {
+          const matchObj = parsedBatch.find(s => Number(s.num) === batch[k].slideNum) || parsedBatch[k];
+          const txt = (matchObj?.text || '').replace(/\s+/g, ' ').trim();
+          if (txt) results.push(`Слайд ${batch[k].slideNum}: ${txt}`);
+        }
+      }
+    }
+    return results;
+  },
+
   async transcribeAudio(audioBlob) {
     const settings = await DB.getSettings();
     const apiKey = settings?.api_key || Config.geminiKey;
