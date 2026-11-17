@@ -972,8 +972,8 @@ const Gemini = {
       }
 
       let materialsBlock = '';
-      if (hasScenario) materialsBlock += `\n📋 СЦЕНАРИЙ И КОНСПЕКТ УРОКА (ИЗ PERPLEXITY):\n"""\n${currentLesson.scenario.slice(0, 7500)}\n"""\n`;
-      if (presSummary) materialsBlock += `\n📑 МАТЕРИАЛЫ И СЛАЙДЫ ПРЕЗЕНТАЦИИ УРОКА:\n"""\n${presSummary.slice(0, 9000)}\n"""\n`;
+      if (hasScenario) materialsBlock += `\n📋 СЦЕНАРИЙ И КОНСПЕКТ УРОКА (ИЗ PERPLEXITY):\n"""\n${currentLesson.scenario.slice(0, 16000)}\n"""\n`;
+      if (presSummary) materialsBlock += `\n📑 МАТЕРИАЛЫ И СЛАЙДЫ ПРЕЗЕНТАЦИИ УРОКА:\n"""\n${presSummary.slice(0, 20000)}\n"""\n`;
       if (hasMaterials) materialsBlock += `\nДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ / ССЫЛКИ УРОКА:\n"""\n${currentLesson.materials}\n"""\n`;
       if (hasDebrief) materialsBlock += `\nИТОГИ УРОКА И ЗАМЕЧАНИЯ ПРЕПОДАВАТЕЛЯ (ДЕБРИФИНГ):\n"""\n${currentLesson.debrief}\n"""\n`;
       if (hasCards) materialsBlock += `\nПРИКРЕПЛЁННЫЕ PNG-КАРТОЧКИ / СКРИНШОТЫ УПРАЖНЕНИЙ: Преподаватель прикрепил ${currentLesson.cards.length} карточек (переданы во вложении). Обязательно считай слова и упражнения с этих карточек и построй ДЗ вокруг них!\n`;

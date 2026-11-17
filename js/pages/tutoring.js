@@ -2031,20 +2031,22 @@ const TutoringPage = {
           const dossier = this.parseStudentDossier(stObj);
           const essence = this.analyzePresentationEssence(this.attachedPresentationText || '', scenarioVal || '', this.attachedPresentationName || '', stObj.name);
           const vocabMap = new Map();
+          // Новые слова текущего урока кладём В НАЧАЛО, чтобы свежая лексика всегда была на виду
+          for (const v of essence.vocabList) {
+            const k = v.en.toLowerCase();
+            if (k && !vocabMap.has(k)) {
+              vocabMap.set(k, v.formatted);
+            }
+          }
           if (dossier.vocab) {
             for (const item of dossier.vocab.split(/[,;\n]+/)) {
               const t = item.trim();
               if (!t) continue;
               const k = t.split(/[—–\-:]/)[0].trim().toLowerCase();
-              if (k) vocabMap.set(k, t);
+              if (k && !vocabMap.has(k)) vocabMap.set(k, t);
             }
           }
-          for (const v of essence.vocabList) {
-            if (!vocabMap.has(v.en.toLowerCase())) {
-              vocabMap.set(v.en.toLowerCase(), v.formatted);
-            }
-          }
-          const updatedVocab = Array.from(vocabMap.values()).slice(0, 40).join(', ');
+          const updatedVocab = Array.from(vocabMap.values()).slice(0, 120).join(', ');
           const updatedInterests = dossier.interests || essence.worlds.join('; ');
           const updatedErrors = debriefVal && !dossier.errors.includes(debriefVal.slice(0, 30))
             ? (dossier.errors ? `${dossier.errors} | ${debriefVal}` : debriefVal)
@@ -3934,14 +3936,14 @@ const TutoringPage = {
           const buf = await file.arrayBuffer();
           const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
           let fullText = '';
-          const maxPages = Math.min(pdf.numPages, 30);
+          const maxPages = Math.min(pdf.numPages, 60);
           for (let p = 1; p <= maxPages; p++) {
             const page = await pdf.getPage(p);
             const content = await page.getTextContent();
             const pageText = content.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim();
             if (pageText) fullText += `Слайд ${p}: ${pageText}\n`;
           }
-          if (fullText.trim().length > 15) return fullText.trim().slice(0, 15000);
+          if (fullText.trim().length > 15) return fullText.trim().slice(0, 35000);
         }
       }
 
@@ -3966,14 +3968,11 @@ const TutoringPage = {
             return numA - numB;
           });
 
-          const slideLines = [];
-          for (let i = 0; i < slideKeys.length; i++) {
-            const xml = await zip.file(slideKeys[i]).async('text');
-            // 1. Parse paragraphs <a:p> so sentences and table cells don't glue together
-            const paragraphs = [];
+          const extractXmlParagraphs = (xmlStr) => {
+            const pars = [];
             const pRegex = /<a:p(?:\s+[^>]*)?>([\s\S]*?)<\/a:p>/gi;
             let pm;
-            while ((pm = pRegex.exec(xml)) !== null) {
+            while ((pm = pRegex.exec(xmlStr)) !== null) {
               const pXml = pm[1];
               const runTexts = [];
               const tRegex = /<a:t(?:\s+[^>]*)?>([\s\S]*?)<\/a:t>/gi;
@@ -3991,35 +3990,65 @@ const TutoringPage = {
                 }
               }
               const pText = runTexts.join('').replace(/\s+/g, ' ').trim();
-              if (pText && !/^preencoded\.png$/i.test(pText)) {
-                paragraphs.push(pText);
-              }
+              if (pText && !/^preencoded\.png$/i.test(pText)) pars.push(pText);
             }
-
-            // Fallback if no <a:p> matched
-            if (paragraphs.length === 0) {
+            if (pars.length === 0) {
               const tRegex = /<a:t(?:\s+[^>]*)?>([\s\S]*?)<\/a:t>/gi;
               let tm;
-              while ((tm = tRegex.exec(xml)) !== null) {
+              while ((tm = tRegex.exec(xmlStr)) !== null) {
                 const t = tm[1].replace(/<[^>]+>/g, '').trim();
-                if (t && !t.startsWith('http') && !/^gen-dedup/i.test(t)) paragraphs.push(t);
+                if (t && !t.startsWith('http') && !/^gen-dedup/i.test(t)) pars.push(t);
               }
             }
+            return pars;
+          };
 
+          const slideLines = [];
+          for (let i = 0; i < slideKeys.length; i++) {
+            const sKey = slideKeys[i];
+            const xml = await zip.file(sKey).async('text');
+            const paragraphs = extractXmlParagraphs(xml);
             const bodyText = paragraphs.join(' · ').replace(/\s+/g, ' ').trim();
+
+            // Read speaker notes & linked SmartArt/diagram text for this slide if present
+            let extraNotes = '';
+            const relsKey = sKey.replace('ppt/slides/', 'ppt/slides/_rels/') + '.rels';
+            if (zip.file(relsKey)) {
+              try {
+                const relsXml = await zip.file(relsKey).async('text');
+                const noteMatches = relsXml.match(/Target="\.\.\/notesSlides\/(notesSlide\d+\.xml)"/gi) || [];
+                for (const nm of noteMatches) {
+                  const nFile = nm.match(/notesSlide\d+\.xml/i)?.[0];
+                  if (nFile && zip.file(`ppt/notesSlides/${nFile}`)) {
+                    const nXml = await zip.file(`ppt/notesSlides/${nFile}`).async('text');
+                    const nText = extractXmlParagraphs(nXml).filter(p => !/^\d+$/.test(p)).join(' · ').trim();
+                    if (nText && !bodyText.includes(nText.slice(0, 30))) extraNotes += (extraNotes ? ' · ' : '') + `[Заметка: ${nText}]`;
+                  }
+                }
+                const diagMatches = relsXml.match(/Target="\.\.\/diagrams\/(data\d+\.xml)"/gi) || [];
+                for (const dm of diagMatches) {
+                  const dFile = dm.match(/data\d+\.xml/i)?.[0];
+                  if (dFile && zip.file(`ppt/diagrams/${dFile}`)) {
+                    const dXml = await zip.file(`ppt/diagrams/${dFile}`).async('text');
+                    const dText = extractXmlParagraphs(dXml).join(' · ').trim();
+                    if (dText && !bodyText.includes(dText.slice(0, 30))) extraNotes += (extraNotes ? ' · ' : '') + dText;
+                  }
+                }
+              } catch (_) {}
+            }
 
             // 2. Human descriptions from Gamma exports (only if not already duplicated in bodyText and not a cover-image tag)
             const descrs = (xml.match(/descr="([^"]+)"/g) || [])
               .map(m => m.slice(7, -1).replace(/\s*—\s*cover\b/gi, '').trim())
               .filter(d => d && !/\.(?:png|jpe?g|gif|svg|webp|mp[34])$/i.test(d) && !/^gen-dedup/i.test(d) && !d.includes('<') && !d.startsWith('http') && !/^[a-f0-9_\-]{16,}$/i.test(d) && d.length > 3 && !bodyText.toLowerCase().includes(d.slice(0, 25).toLowerCase()));
 
-            const combined = [...descrs, bodyText].filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim();
+            const combined = [...descrs, bodyText, extraNotes].filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim();
             if (combined && !combined.startsWith('preencoded.png')) {
               slideLines.push(`Слайд ${i + 1}: ${combined}`);
             }
           }
           if (slideLines.length > 0) {
-            return slideLines.join('\n').slice(0, 15000);
+            return slideLines.join('\n').slice(0, 35000);
           }
         }
       }

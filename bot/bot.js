@@ -1185,16 +1185,16 @@ function extractAllLessonMaterials(lesson, st) {
   let block = `📚 ТЕМА ТЕКУЩЕГО УРОКА: "${topic}"\n`;
   if (doss.unit) block += `📖 УЧЕБНИК / ПРОГРАММА: ${doss.unit}\n`;
   if (doss.interests) block += `🎯 ИНТЕРЕСЫ И ПЕРСОНАЖИ УЧЕНИКА: ${doss.interests}\n`;
-  if (historySummary) block += `⏪ ИСТОРИЯ ПРОШЛЫХ УРОКОВ УЧЕНИКА (ЧТО УЖЕ ПРОХОДИЛИ):\n${historySummary}\n`;
-  if (cleanHw) block += `📌 ЗАДАННОЕ ДЗ ПО УРОКУ:\n${cleanHw.slice(0, 1800)}\n`;
-  if (scenario) block += `📋 КОНСПЕКТ И СЦЕНАРИЙ УРОКА (ИЗ PERPLEXITY):\n${scenario.slice(0, 4000)}\n`;
+  if (scenario) block += `📋 КОНСПЕКТ И СЦЕНАРИЙ УРОКА (ИЗ PERPLEXITY):\n${scenario.slice(0, 10000)}\n`;
   if (presText && (!scenario || !scenario.includes(presText.slice(0, 100)))) {
-    block += `📑 СЛАЙДЫ, ЛЕКСИКА И ПРАВИЛА ИЗ ПРЕЗЕНТАЦИИ УРОКА:\n${presText.slice(0, 5500)}\n`;
+    block += `📑 СЛАЙДЫ, ЛЕКСИКА И ПРАВИЛА ИЗ ПРЕЗЕНТАЦИИ УРОКА:\n${presText.slice(0, 12000)}\n`;
   }
-  if (materials) block += `📎 ДОП. МАТЕРИАЛЫ УРОКА:\n${materials.slice(0, 1000)}\n`;
-  if (debrief) block += `📝 ЗАМЕТКИ ПРЕПОДАВАТЕЛЯ ПО УРОКУ:\n${debrief.slice(0, 800)}\n`;
+  if (cleanHw) block += `📌 ЗАДАННОЕ ДЗ ПО УРОКУ:\n${cleanHw.slice(0, 2200)}\n`;
+  if (materials) block += `📎 ДОП. МАТЕРИАЛЫ УРОКА:\n${materials.slice(0, 1500)}\n`;
+  if (debrief) block += `📝 ЗАМЕТКИ ПРЕПОДАВАТЕЛЯ ПО УРОКУ:\n${debrief.slice(0, 1000)}\n`;
   if (doss.vocab) block += `🔤 АКТИВНЫЙ СЛОВАРЬ УЧЕНИКА:\n${doss.vocab}\n`;
   if (doss.errors || warmupErrors) block += `⚠️ СЛАБЫЕ МЕСТА И ОШИБКИ УЧЕНИКА (на отработку):\n${[doss.errors, warmupErrors].filter(Boolean).join(' | ')}\n`;
+  if (historySummary) block += `⏪ ИСТОРИЯ ПРОШЛЫХ УРОКОВ УЧЕНИКА:\n${historySummary}\n`;
   return block.trim();
 }
 
@@ -1406,7 +1406,7 @@ async function generateFullAcademicRuleExplanation(st, actor, lastLs, studentQue
 ${focusHint ? `Грамматический фокус: ${focusHint}.\n` : ''}${studentQuestion ? `Конкретный вопрос ученика: "${studentQuestion}".\n` : ''}
 Материалы урока (слайды презентации, конспект и типичные ошибки ученика):
 """
-${materialsText.slice(0, 3800)}
+${materialsText.slice(0, 16000)}
 """
 ${academicBlock}
 ТВОЯ ЗАДАЧА — рассказать ребёнку правило ПОЛНОСТЬЮ (как в хорошем учебнике, без пробелов!), но живо, структурно и «на пальцах»:
@@ -6061,13 +6061,27 @@ ${materialsText || `Тема: "${lastLs?.topic || 'English Verbs'}"`}
       const textContent = (materialsText + ' ' + (doss.errors || '')).toLowerCase();
 
       let ruleTitle = lastLs?.topic ? `📖 Правило урока: ${lastLs.topic}` : '📖 Грамматическое правило урока';
-      let ruleFocus = lastLs?.topic ? `тема урока "${lastLs.topic}" и грамматические правила со слайдов презентации/сценария` : 'ключевое грамматическое правило прошедшего урока';
-      if (topic.includes('present perfect') || textContent.includes('present perfect')) {
+      let ruleFocus = lastLs?.topic
+        ? `проанализируй ВСЕ слайды презентации и сценарий урока "${lastLs.topic}" и выдели САМУЮ ВАЖНУЮ грамматику, формулы и правила этого урока`
+        : 'выдели ключевое грамматическое правило прошедшего урока из презентации и сценария';
+      if (topic.includes('too') && topic.includes('enough') || (textContent.includes('too +') && textContent.includes('enough'))) {
+        ruleTitle = '📖 Правило урока: Конструкции too и enough (слишком / достаточно)';
+        ruleFocus = 'too + прилагательное (до прилагательного, мешает задаче) vs прилагательное + enough / enough + существительное, отрицание not + прил + enough, запрет на too much expensive';
+      } else if (topic.includes('must') || topic.includes('have to') || textContent.includes("mustn't") || textContent.includes("don't have to")) {
+        ruleTitle = '📖 Правило урока: Модальные глаголы must / have to / mustn\'t / don\'t have to';
+        ruleFocus = 'разница must (личная обязанность) и have to / has to (внешнее правило), жёсткий запрет mustn\'t vs необязательность don\'t/doesn\'t have to';
+      } else if (topic.includes('present perfect continuous') || textContent.includes('have been')) {
+        ruleTitle = '📖 Правило урока: Present Perfect Continuous vs Present Perfect';
+        ruleFocus = 'Present Perfect Continuous (have/has been + V-ing — процесс/длительность) vs Present Perfect (have/has + V3 — результат/опыт) и слова-маячки for, since';
+      } else if (topic.includes('present perfect') || textContent.includes('present perfect')) {
         ruleTitle = '📖 Правило урока: Present Perfect (have/has + V3) и слова-маячки';
         ruleFocus = 'Present Perfect (have/has + 3-я форма глагола V3), разница have vs has, слова-спутники already, just, yet, ever, never, since, for и отличие от Past Simple';
       } else if (topic.includes('past simple') || textContent.includes('past simple')) {
         ruleTitle = '📖 Правило урока: Past Simple (прошедшее время: V2 / -ed и did)';
         ruleFocus = 'Past Simple: правильные (-ed и правила правописания) и неправильные (2-я форма) глаголы, глагол was/were, вопросы и отрицания с did/didn\'t + V1';
+      } else if (topic.includes('present simple') || (textContent.includes('present simple') && !textContent.includes('continuous'))) {
+        ruleTitle = '📖 Правило урока: Present Simple (регулярные действия: V1 / -s, do / does)';
+        ruleFocus = 'Present Simple: окончание -s/-es для he/she/it, вопросы и отрицания с do/does/don\'t/doesn\'t, слова-маячки usually, every day, always';
       } else if (topic.includes('местоимен') || topic.includes('pronoun') || topic.includes('whose') || topic.includes('owner') || topic.includes("'s") || textContent.includes('притяжательн')) {
         ruleTitle = '📖 Чей это предмет? Притяжательные местоимения (my, your, his, her, its, our, their) и \'s';
         ruleFocus = 'притяжательные местоимения (my/mine, your/yours, his, her/hers, its, our/ours, their/theirs), вопрос Whose is it? и притяжательный падеж \'s / s\' (единственное и множественное число)';
