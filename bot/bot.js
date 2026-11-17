@@ -3024,17 +3024,22 @@ function extractAttachedCards(homeworkText) {
   return { cleanHw, cards };
 }
 
-async function sendCardsToChat(chatId, cards, captionPrefix = '🖼 Карточка к уроку') {
+async function sendCardsToChat(chatId, cards, captionPrefix = '🖼 Карточка от Игоря') {
   if (!cards || cards.length === 0) return;
+  let igorIdx = 0;
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
+    const isAutoWorksheet = card.includes(';name=bot_worksheet');
+    const caption = isAutoWorksheet
+      ? '✍️ Письменное задание для тетради'
+      : `🖼 Карточка от Игоря #${++igorIdx}`;
     try {
       if (card.startsWith('data:image/')) {
-        const base64Data = card.replace(/^data:image\/\w+;base64,/, '');
+        const base64Data = card.replace(/^data:image\/[^;]+(?:;[^,]+)*;base64,/, '');
         const buf = Buffer.from(base64Data, 'base64');
-        await bot.sendPhoto(chatId, buf, { caption: `${captionPrefix} #${i + 1}` }, { filename: `card_${i + 1}.png`, contentType: 'image/png' });
+        await bot.sendPhoto(chatId, buf, { caption }, { filename: `card_${i + 1}.png`, contentType: 'image/png' });
       } else if (card.startsWith('http')) {
-        await bot.sendPhoto(chatId, card, { caption: `${captionPrefix} #${i + 1}` });
+        await bot.sendPhoto(chatId, card, { caption });
       }
     } catch (e) {
       console.error('Failed to send card to', chatId, e.message);

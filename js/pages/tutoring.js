@@ -4874,13 +4874,19 @@ const TutoringPage = {
     const cleanTopic = (topic || 'English Practice').slice(0, 52);
     ctx.fillText(`📚 Тема: ${cleanTopic}`, 44, 88);
 
-    // Extract clean lines from hwText (keep Vocabulary & Written Exercise, exclude section 3/4 meta instructions)
-    const cleanHw = (hwText || '')
+    // Extract ONLY the written exercise part (Шаг 2 and Шаг 3) for the notebook worksheet PNG
+    let writtenOnly = (hwText || '')
       .replace(/\[[\s\S]*?\]/g, '')
-      .replace(/[*_`#]/g, '')
+      .replace(/[*_`#]/g, '');
+    const step2Idx = writtenOnly.search(/Шаг\s*2\./i);
+    if (step2Idx !== -1) writtenOnly = writtenOnly.slice(step2Idx);
+    const step4Idx = writtenOnly.search(/Шаг\s*4\.|⚠️?\s*ОБЯЗАТЕЛЬНО:/i);
+    if (step4Idx !== -1) writtenOnly = writtenOnly.slice(0, step4Idx);
+
+    const cleanHw = writtenOnly
       .split('\n')
       .map(l => l.trim())
-      .filter(l => l.length > 2 && !/^4\.\s*📬/.test(l) && !/^3\.\s*🎯/.test(l));
+      .filter(l => l.length > 1 && !/^4\.\s*📬/.test(l));
 
     // Helper for word wrapping on canvas
     const drawWrappedLine = (text, x, y, maxWidth, lineHeight, maxLines = 2) => {
@@ -4915,17 +4921,17 @@ const TutoringPage = {
     ctx.font = '18px Inter, system-ui, sans-serif';
     ctx.fillStyle = '#e2e8f0';
 
-    for (const line of cleanHw.slice(0, 18)) {
+    for (const line of cleanHw.slice(0, 26)) {
       if (curY > 645) break;
-      if (/^(1\.|2\.|🔤|✍️|💡)/.test(line)) {
+      if (/^(Шаг\s*[23]|1\.|2\.|3\.|✍️|🎯|💡|📌)/i.test(line)) {
         curY += 6;
         ctx.font = 'bold 19px Inter, system-ui, sans-serif';
         ctx.fillStyle = '#5eead4';
-        curY = drawWrappedLine(line, 44, curY, 830, 24, 2);
-        ctx.font = '17px Inter, system-ui, sans-serif';
+        curY = drawWrappedLine(line, 44, curY, 830, 24, 3);
+        ctx.font = '18px Inter, system-ui, sans-serif';
         ctx.fillStyle = '#f1f5f9';
       } else {
-        curY = drawWrappedLine(line, 52, curY, 820, 23, 2);
+        curY = drawWrappedLine(line, 52, curY, 820, 24, 3);
       }
     }
 
@@ -4937,7 +4943,7 @@ const TutoringPage = {
     ctx.textAlign = 'center';
     ctx.fillText('📸 ОБЯЗАТЕЛЬНО: Выполни письменно в тетради и пришли ФОТО тетрадки в бот!', 460, 702);
 
-    return canvas.toDataURL('image/png');
+    return canvas.toDataURL('image/png').replace('data:image/png;base64,', 'data:image/png;name=bot_worksheet;base64,');
   },
 
   async renderWordCardCanvas(word) {
