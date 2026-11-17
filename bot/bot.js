@@ -271,6 +271,25 @@ async function getTodayEvents() {
   return all;
 }
 
+async function getUpcomingEvents(days = 7) {
+  const minskDateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+  const start = new Date(minskDateStr + 'T00:00:00.000+03:00');
+  const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+  const { data: events } = await db.from('events').select('*')
+    .gte('start_at', start.toISOString()).lte('start_at', end.toISOString()).order('start_at');
+  const { data: lessons } = await db.from('lessons').select('*, students(name)')
+    .gte('date', start.toISOString()).lte('date', end.toISOString()).neq('status', 'Отменен').order('date');
+  const lessonEvents = (lessons || []).map(l => ({
+    id: 'lesson_' + l.id,
+    title: `🇬🇧 Урок: ${l.students?.name || 'Ученик'} (${l.topic || 'Английский'}) [${l.status}]`,
+    start_at: l.date,
+    is_lesson: true
+  }));
+  const all = [...(events || []), ...lessonEvents];
+  all.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+  return all;
+}
+
 async function getHabits() {
   const { data } = await db.from('habits').select('*');
   return data || [];
@@ -3881,6 +3900,19 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'get_events',
+      description: 'Получить список всех встреч, событий календаря и уроков на сегодня или ближайшие N дней (по умолчанию 7 дней). Обязательно вызывай при вопросах о расписании, встречах, планах на день/неделю или перед тем, как советовать распределение времени.',
+      parameters: {
+        type: 'object',
+        properties: {
+          days: { type: 'number', description: 'Количество дней вперёд (1 = только сегодня, 7 = неделя, 14 = 2 недели)' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'update_task',
       description: 'Обновить любые параметры задачи: перенести дедлайн/дату в календаре, изменить статус, название или приоритет',
       parameters: {
@@ -4139,6 +4171,16 @@ async function executeFunctionCall(name, args) {
       case 'get_tasks': {
         const tasks = await getTasks(args);
         return { success: true, tasks, count: tasks.length };
+      }
+      case 'get_events': {
+        const days = Math.max(1, Math.min(30, Number(args.days) || 7));
+        const evs = days === 1 ? await getTodayEvents() : await getUpcomingEvents(days);
+        const formatted = evs.map(e => ({
+          title: e.title,
+          when: new Date(e.start_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+          is_lesson: !!e.is_lesson
+        }));
+        return { success: true, events: formatted, count: formatted.length };
       }
       case 'update_context': {
         await updateContext(args.new_instruction);
@@ -4964,7 +5006,8 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
   if (minimalSystem) {
     systemInstruction = `Ты технический ИИ-ассистент. Твоя единственная цель - вызывать нужные функции для обработки данных (например, транзакций или привычек). Никаких лишних слов.\n\nТЕКУЩЕЕ ВРЕМЯ МИНСК (GMT+3): ${timeStr}${calendarContext}`;
   } else {
-    systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ МИНСК (GMT+3): ${timeStr}${calendarContext}${extraCtx}${context ? '\n\n' + context : ''}`;
+    const advisorHint = '\n\nПРАВИЛО ПРОАКТИВНОГО АССИСТЕНТА: Если Игорь спрашивает о делах, встречах, планах на день/неделю или с чего начать — ОБЯЗАТЕЛЬНО загляни в get_tasks и get_events, раздели задачи на важные (Высокий приоритет / горящий дедлайн / до встречи) и второстепенные (Низкий / можно перенести), и дай чёткий совет, от чего отталкиваться в первую очередь.';
+    systemInstruction = `${SYSTEM_PROMPT}\n\n${USER_CONTEXT}\n\nТЕКУЩЕЕ ВРЕМЯ МИНСК (GMT+3): ${timeStr}${calendarContext}${advisorHint}${extraCtx}${context ? '\n\n' + context : ''}`;
   }
 
   let messages = [];
@@ -9198,23 +9241,25 @@ async function generateMorningBriefing() {
   const overdue = await getOverdueTasks();
   const upcoming = await getUpcomingDeadlines(7);
   const events = await getTodayEvents();
+  const weekEvents = await getUpcomingEvents(7);
   const habits = await getHabits();
 
+  const fmtTask = (t) => ({ title: t.title, priority: t.priority || 'Средний', direction: t.direction || '', deadline: t.deadline });
   const contextData = `
 ДАННЫЕ ДЛЯ УТРЕННЕГО БРИФИНГА:
-- Задачи на сегодня: ${JSON.stringify(todayTasks.map(t => t.title))}
-- Просроченные задачи: ${JSON.stringify(overdue.map(t => ({ title: t.title, deadline: t.deadline })))}
-- Задачи на неделю (ближайшие 7 дней): ${JSON.stringify(upcoming.map(t => ({ title: t.title, deadline: t.deadline })))}
-- События сегодня: ${JSON.stringify(events.map(e => ({ title: e.title, start: e.start_at })))}
+- Задачи на сегодня: ${JSON.stringify(todayTasks.map(fmtTask))}
+- Просроченные задачи (хвосты): ${JSON.stringify(overdue.map(fmtTask))}
+- Задачи на неделю (ближайшие 7 дней): ${JSON.stringify(upcoming.map(fmtTask))}
+- Встречи и уроки СЕГОДНЯ: ${JSON.stringify(events.map(e => ({ title: e.title, when: new Date(e.start_at).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' }) })))}
+- Встречи и уроки НА НЕДЕЛЮ (7 дней): ${JSON.stringify(weekEvents.map(e => ({ title: e.title, when: new Date(e.start_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) })))}
 - Привычки: ${JSON.stringify(habits.map(h => h.name))}
 
-Сгенерируй утренний брифинг. Формат:
+Сгенерируй утренний брифинг-совет. Формат:
 1. Приветствие с датой
-2. 🎯 Задачи на сегодня (главный фокус дня + остальные задачи на сегодня)
-3. 📅 План задач на эту неделю (перечисли запланированные задачи на ближайшие дни с датами!)
-4. 🕐 События из календаря на сегодня (НЕ выдумывай расписание английского, если его нет в событиях!)
-5. 🔥 Хвосты с прошлых дней (если есть)
-6. Короткая бодрая мотивация
+2. 🎯 Задачи на сегодня — раздели на 🔴 Важные (Высокий приоритет / срочно) и ⚪ Обычные / Не важные (можно сделать потом или перенести)
+3. 🕐 Встречи и уроки сегодня + ключевые встречи на этой неделе
+4. 📅 План задач на неделю (с датами) + просроченные хвосты (если есть)
+5. 💡 Совет от чего отталкиваться: с чего лучше начать прямо сейчас (учитывая окна до первых встреч и приоритеты), что можно спокойно отложить.
 `;
 
   try {
