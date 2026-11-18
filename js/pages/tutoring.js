@@ -2257,7 +2257,18 @@ const TutoringPage = {
 
   getParentDisplayName(st, dossier = null) {
     const d = dossier || this.parseStudentDossier(st || {});
-    if (d.parentName && d.parentName.trim()) return d.parentName.trim();
+    const rawPn = (d.parentName || '').trim();
+    if (rawPn) {
+      if (rawPn.includes(':')) {
+        const names = rawPn.split(',')
+          .map(e => e.trim())
+          .filter(Boolean)
+          .map(e => (e.includes(':') ? e.split(':').slice(1).join(':').trim() : e))
+          .filter(Boolean);
+        if (names.length > 0) return names.join(' и ');
+      }
+      return rawPn;
+    }
     const tgUser = (d.parentTgUser || '').replace(/^@/, '').trim().toLowerCase();
     const stName = (st?.name || '').trim().toLowerCase();
     if (tgUser === 'ilkuroch' || stName.includes('курочкин')) return 'Евгения';

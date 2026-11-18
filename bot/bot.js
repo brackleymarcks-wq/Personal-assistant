@@ -9420,12 +9420,31 @@ async function sendTaskPulseReminder(headerTitle = '⏰ *Пульс задач: 
     const completedToday = await getTasksCompletedToday();
     const upcomingWeek = await getUpcomingDeadlines(7);
     const overdue = await getOverdueTasks();
+    const todayEvents = await getTodayEvents().catch(() => []);
+    const weekEvents = await getUpcomingEvents(7).catch(() => []);
 
     const priorityEmoji = { 'Высокий': '🔴', 'Средний': '🟡', 'Низкий': '🟢' };
     const now = new Date();
     const todayStr = now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short' });
 
     let text = `${headerTitle}\n🗓 _Сегодня: ${todayStr}_\n\n`;
+
+    // 0. Встречи и уроки сегодня / на ближайшие дни
+    if (todayEvents.length > 0) {
+      text += `📅 *ВСТРЕЧИ И УРОКИ СЕГОДНЯ (${todayEvents.length}):*\n`;
+      todayEvents.forEach(ev => {
+        const tStr = new Date(ev.start_at).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' });
+        text += `• 🕐 *${tStr}* — ${ev.title}\n`;
+      });
+      text += `\n`;
+    } else if (weekEvents.length > 0) {
+      text += `📅 *БЛИЖАЙШИЕ ВСТРЕЧИ НА НЕДЕЛЕ (${weekEvents.length}):*\n`;
+      weekEvents.slice(0, 4).forEach(ev => {
+        const wStr = new Date(ev.start_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        text += `• 🗓 *${wStr}* — ${ev.title}\n`;
+      });
+      text += `\n`;
+    }
 
     // 1. Задачи на сегодня
     text += `🎯 *ЗАДАЧИ НА СЕГОДНЯ (${todayTasks.length}):*\n`;
