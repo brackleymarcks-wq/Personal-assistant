@@ -464,12 +464,18 @@ const CalendarPage = {
     document.getElementById('event-modal-title').textContent = event ? 'Редактировать событие' : 'Новое событие';
     document.getElementById('event-modal-delete').style.display = event ? '' : 'none';
 
+    const toLocalInput = (isoOrDate) => {
+      if (!isoOrDate) return '';
+      const d = new Date(isoOrDate);
+      if (Number.isNaN(d.getTime())) return String(isoOrDate).slice(0, 16);
+      return d.toLocaleString('sv-SE', { timeZone: 'Europe/Minsk' }).replace(' ', 'T').slice(0, 16);
+    };
     const defaultStart = defaultDate
       ? `${defaultDate}T10:00`
-      : event ? event.start_at?.slice(0, 16) : new Date().toISOString().slice(0, 16);
+      : event ? toLocalInput(event.start_at) : toLocalInput(new Date());
     const defaultEnd = defaultDate
       ? `${defaultDate}T11:00`
-      : event ? event.end_at?.slice(0, 16) : new Date(Date.now() + 3600000).toISOString().slice(0, 16);
+      : event ? toLocalInput(event.end_at) : toLocalInput(new Date(Date.now() + 3600000));
 
     const defaultArea = event?.area || (Config.currentArea !== 'Все' ? Config.currentArea : 'Работа');
 
@@ -536,10 +542,17 @@ const CalendarPage = {
     const title = document.getElementById('ef-title').value.trim();
     if (!title) { UI.toast('Введи название события', 'warning'); return; }
 
+    const rawStart = document.getElementById('ef-start').value;
+    const rawEnd = document.getElementById('ef-end').value;
+    const toIsoUtc = (v) => {
+      if (!v) return v;
+      const d = new Date(v);
+      return Number.isNaN(d.getTime()) ? v : d.toISOString();
+    };
     const data = {
       title,
-      start_at: document.getElementById('ef-start').value,
-      end_at: document.getElementById('ef-end').value,
+      start_at: toIsoUtc(rawStart),
+      end_at: toIsoUtc(rawEnd),
       type: document.getElementById('ef-type').value,
       area: document.getElementById('ef-area').value,
       recurrence: document.getElementById('ef-recurrence').value || null,
