@@ -271,6 +271,111 @@ async function getTodayEvents() {
   return all;
 }
 
+async function getTutoringOperationalSnapshot() {
+  try {
+    const now = new Date();
+    const weekAhead = new Date(now.getTime() + 7 * 86400000);
+    const [{ data: sts }, { data: allLs }] = await Promise.all([
+      db.from('students').select('id, name, price'),
+      db.from('lessons').select('id, student_id, date, status, topic, paid, homework').order('date', { ascending: false }).limit(80)
+    ]);
+    const stMap = new Map((sts || []).map(s => [s.id, s]));
+
+    // 1. Запланированные уроки на 7 дней без готовой темы или материалов
+    const unreadyLessons = (allLs || [])
+      .filter(l => l.status === 'Запланирован' && new Date(l.date) >= new Date(now.getTime() - 3600000) && new Date(l.date) <= weekAhead)
+      .filter(l => {
+        const hw = l.homework || '';
+        const hasTopic = !!(l.topic && l.topic.trim());
+        const hasMat = /\[(ПРЕЗЕНТАЦИЯ|ПРЕЗЕНТАЦИЯ_ТЕКСТ|ПРЕЗЕНТАЦИЯ_ФАЙЛ|СЦЕНАРИЙ_УРОКА|МАТЕРИАЛЫ)\]/i.test(hw);
+        return !hasTopic || !hasMat;
+      })
+      .map(l => ({
+        student: stMap.get(l.student_id)?.name || 'Ученик',
+        when: new Date(l.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      }));
+
+    // 2. Сданные ДЗ, ожидающие проверки учителем
+    const latestConductedBySt = new Map();
+    for (const l of (allLs || [])) {
+      if (l.status === 'Проведен' && !latestConductedBySt.has(l.student_id)) {
+        latestConductedBySt.set(l.student_id, l);
+      }
+    }
+    const awaitingCheck = [];
+    for (const [sid, l] of latestConductedBySt.entries()) {
+      const hw = l.homework || '';
+      const submitted = hw.includes('[ФОТО_ДЗ_СДАНО') || hw.includes('[ДЗ_СДАНО');
+      const checked = hw.includes('[ДЗ_ПРОВЕРЕНО]');
+      if (submitted && !checked) {
+        awaitingCheck.push({
+          student: stMap.get(sid)?.name || 'Ученик',
+          topic: (l.topic || 'Урок').replace(/_+/g, ' ').trim()
+        });
+      }
+    }
+
+    // 3. Неоплаченные проведённые уроки
+    let unpaidCount = 0;
+    let totalDebtByn = 0;
+    for (const l of (allLs || [])) {
+      if (l.status === 'Проведен' && !l.paid) {
+        unpaidCount++;
+        const m = (l.homework || '').match(/\[ЦЕНА_УРОКА:(\d+(?:\.\d+)?)\]/);
+        const price = m ? Number(m[1]) : (Number(stMap.get(l.student_id)?.price) || 0);
+        totalDebtByn += price;
+      }
+    }
+
+    return { unreadyLessons, awaitingCheck, unpaidCount, totalDebtByn };
+  } catch (e) {
+    return { unreadyLessons: [], awaitingCheck: [], unpaidCount: 0, totalDebtByn: 0 };
+  }
+}
+
+async function generateSmartPlanAdvice() {
+  const [todayTasks, overdue, upcoming, todayEvents, weekEvents, tutSnap] = await Promise.all([
+    getTasksDueToday(),
+    getOverdueTasks(),
+    getUpcomingDeadlines(7),
+    getTodayEvents(),
+    getUpcomingEvents(7),
+    getTutoringOperationalSnapshot()
+  ]);
+
+  const fmtT = t => `${t.priority || 'Средний'} | ${t.title}${t.deadline ? ' (до ' + t.deadline + ')' : ''}`;
+  const fmtE = e => `${new Date(e.start_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} — ${e.title}`;
+  const ctx = `
+СЕГОДНЯШНЯЯ ОБСТАНОВКА (Минск):
+- Встречи и уроки СЕГОДНЯ: ${todayEvents.length ? todayEvents.map(fmtE).join('; ') : 'нет'}
+- Встречи и уроки НА НЕДЕЛЕ (7 дней): ${weekEvents.length ? weekEvents.map(fmtE).join('; ') : 'нет'}
+- Задачи на сегодня: ${todayTasks.length ? todayTasks.map(fmtT).join('; ') : 'нет'}
+- Просроченные хвосты: ${overdue.length ? overdue.map(fmtT).join('; ') : 'нет'}
+- Задачи на неделю: ${upcoming.length ? upcoming.map(fmtT).join('; ') : 'нет'}
+- Репетиторство (операционка):
+  * Уроки без готовой темы/презентации: ${tutSnap.unreadyLessons.length ? tutSnap.unreadyLessons.map(u => `${u.student} (${u.when})`).join(', ') : 'все готовы'}
+  * Сданные ДЗ ждут проверки: ${tutSnap.awaitingCheck.length ? tutSnap.awaitingCheck.map(a => `${a.student} (${a.topic})`).join(', ') : 'нет'}
+  * Долги по оплате: ${tutSnap.unpaidCount} ур. на ${tutSnap.totalDebtByn} BYN
+
+Дай Игорю чёткий, живой, конкретный план-подсказку:
+1) 🎯 Главный фокус на ближайшие 2 часа (от чего отталкиваться прямо сейчас с учётом времени до встреч/уроков);
+2) 🔴 Что важно сделать сегодня в первую очередь vs ⚪ что второстепенное можно перенести;
+3) 🎓 Что сделать по английскому (какие уроки подготовить заранее, чьи ДЗ проверить, напомнить ли об оплате).
+Коротко, по делу, без звёздочек **!`;
+
+  try {
+    return await askAI('Дай точный план и совет, от чего отталкиваться и что делать сейчас по встречам, задачам и английскому', ctx, null, true, true);
+  } catch (e) {
+    const lines = ['💡 *Быстрый план действий:*'];
+    if (todayEvents.length) lines.push(`📅 Сегодня встречи/уроки: ${todayEvents.map(fmtE).join(', ')}`);
+    if (todayTasks.length) lines.push(`🎯 Задачи сегодня (${todayTasks.length}): ${todayTasks.slice(0, 3).map(t => t.title).join(', ')}`);
+    if (tutSnap.unreadyLessons.length) lines.push(`🎓 Подготовь тему/презентацию к: ${tutSnap.unreadyLessons.map(u => `${u.student} (${u.when})`).join(', ')}`);
+    if (tutSnap.awaitingCheck.length) lines.push(`📬 Проверь сданные ДЗ: ${tutSnap.awaitingCheck.map(a => a.student).join(', ')}`);
+    if (tutSnap.unpaidCount > 0) lines.push(`💳 Неоплаченных уроков: ${tutSnap.unpaidCount} (${tutSnap.totalDebtByn} BYN)`);
+    return lines.join('\n');
+  }
+}
+
 async function getUpcomingEvents(days = 7) {
   const minskDateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
   const start = new Date(minskDateStr + 'T00:00:00.000+03:00');
@@ -288,6 +393,111 @@ async function getUpcomingEvents(days = 7) {
   const all = [...(events || []), ...lessonEvents];
   all.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
   return all;
+}
+
+async function getTutoringOperationalSnapshot() {
+  try {
+    const now = new Date();
+    const weekAhead = new Date(now.getTime() + 7 * 86400000);
+    const [{ data: sts }, { data: allLs }] = await Promise.all([
+      db.from('students').select('id, name, price'),
+      db.from('lessons').select('id, student_id, date, status, topic, paid, homework').order('date', { ascending: false }).limit(80)
+    ]);
+    const stMap = new Map((sts || []).map(s => [s.id, s]));
+
+    // 1. Запланированные уроки на 7 дней без готовой темы или материалов
+    const unreadyLessons = (allLs || [])
+      .filter(l => l.status === 'Запланирован' && new Date(l.date) >= new Date(now.getTime() - 3600000) && new Date(l.date) <= weekAhead)
+      .filter(l => {
+        const hw = l.homework || '';
+        const hasTopic = !!(l.topic && l.topic.trim());
+        const hasMat = /\[(ПРЕЗЕНТАЦИЯ|ПРЕЗЕНТАЦИЯ_ТЕКСТ|ПРЕЗЕНТАЦИЯ_ФАЙЛ|СЦЕНАРИЙ_УРОКА|МАТЕРИАЛЫ)\]/i.test(hw);
+        return !hasTopic || !hasMat;
+      })
+      .map(l => ({
+        student: stMap.get(l.student_id)?.name || 'Ученик',
+        when: new Date(l.date).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      }));
+
+    // 2. Сданные ДЗ, ожидающие проверки учителем
+    const latestConductedBySt = new Map();
+    for (const l of (allLs || [])) {
+      if (l.status === 'Проведен' && !latestConductedBySt.has(l.student_id)) {
+        latestConductedBySt.set(l.student_id, l);
+      }
+    }
+    const awaitingCheck = [];
+    for (const [sid, l] of latestConductedBySt.entries()) {
+      const hw = l.homework || '';
+      const submitted = hw.includes('[ФОТО_ДЗ_СДАНО') || hw.includes('[ДЗ_СДАНО');
+      const checked = hw.includes('[ДЗ_ПРОВЕРЕНО]');
+      if (submitted && !checked) {
+        awaitingCheck.push({
+          student: stMap.get(sid)?.name || 'Ученик',
+          topic: (l.topic || 'Урок').replace(/_+/g, ' ').trim()
+        });
+      }
+    }
+
+    // 3. Неоплаченные проведённые уроки
+    let unpaidCount = 0;
+    let totalDebtByn = 0;
+    for (const l of (allLs || [])) {
+      if (l.status === 'Проведен' && !l.paid) {
+        unpaidCount++;
+        const m = (l.homework || '').match(/\[ЦЕНА_УРОКА:(\d+(?:\.\d+)?)\]/);
+        const price = m ? Number(m[1]) : (Number(stMap.get(l.student_id)?.price) || 0);
+        totalDebtByn += price;
+      }
+    }
+
+    return { unreadyLessons, awaitingCheck, unpaidCount, totalDebtByn };
+  } catch (e) {
+    return { unreadyLessons: [], awaitingCheck: [], unpaidCount: 0, totalDebtByn: 0 };
+  }
+}
+
+async function generateSmartPlanAdvice() {
+  const [todayTasks, overdue, upcoming, todayEvents, weekEvents, tutSnap] = await Promise.all([
+    getTasksDueToday(),
+    getOverdueTasks(),
+    getUpcomingDeadlines(7),
+    getTodayEvents(),
+    getUpcomingEvents(7),
+    getTutoringOperationalSnapshot()
+  ]);
+
+  const fmtT = t => `${t.priority || 'Средний'} | ${t.title}${t.deadline ? ' (до ' + t.deadline + ')' : ''}`;
+  const fmtE = e => `${new Date(e.start_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} — ${e.title}`;
+  const ctx = `
+СЕГОДНЯШНЯЯ ОБСТАНОВКА (Минск):
+- Встречи и уроки СЕГОДНЯ: ${todayEvents.length ? todayEvents.map(fmtE).join('; ') : 'нет'}
+- Встречи и уроки НА НЕДЕЛЕ (7 дней): ${weekEvents.length ? weekEvents.map(fmtE).join('; ') : 'нет'}
+- Задачи на сегодня: ${todayTasks.length ? todayTasks.map(fmtT).join('; ') : 'нет'}
+- Просроченные хвосты: ${overdue.length ? overdue.map(fmtT).join('; ') : 'нет'}
+- Задачи на неделю: ${upcoming.length ? upcoming.map(fmtT).join('; ') : 'нет'}
+- Репетиторство (операционка):
+  * Уроки без готовой темы/презентации: ${tutSnap.unreadyLessons.length ? tutSnap.unreadyLessons.map(u => `${u.student} (${u.when})`).join(', ') : 'все готовы'}
+  * Сданные ДЗ ждут проверки: ${tutSnap.awaitingCheck.length ? tutSnap.awaitingCheck.map(a => `${a.student} (${a.topic})`).join(', ') : 'нет'}
+  * Долги по оплате: ${tutSnap.unpaidCount} ур. на ${tutSnap.totalDebtByn} BYN
+
+Дай Игорю чёткий, живой, конкретный план-подсказку:
+1) 🎯 Главный фокус на ближайшие 2 часа (от чего отталкиваться прямо сейчас с учётом времени до встреч/уроков);
+2) 🔴 Что важно сделать сегодня в первую очередь vs ⚪ что второстепенное можно перенести;
+3) 🎓 Что сделать по английскому (какие уроки подготовить заранее, чьи ДЗ проверить, напомнить ли об оплате).
+Коротко, по делу, без звёздочек **!`;
+
+  try {
+    return await askAI('Дай точный план и совет, от чего отталкиваться и что делать сейчас по встречам, задачам и английскому', ctx, null, true, true);
+  } catch (e) {
+    const lines = ['💡 *Быстрый план действий:*'];
+    if (todayEvents.length) lines.push(`📅 Сегодня встречи/уроки: ${todayEvents.map(fmtE).join(', ')}`);
+    if (todayTasks.length) lines.push(`🎯 Задачи сегодня (${todayTasks.length}): ${todayTasks.slice(0, 3).map(t => t.title).join(', ')}`);
+    if (tutSnap.unreadyLessons.length) lines.push(`🎓 Подготовь тему/презентацию к: ${tutSnap.unreadyLessons.map(u => `${u.student} (${u.when})`).join(', ')}`);
+    if (tutSnap.awaitingCheck.length) lines.push(`📬 Проверь сданные ДЗ: ${tutSnap.awaitingCheck.map(a => a.student).join(', ')}`);
+    if (tutSnap.unpaidCount > 0) lines.push(`💳 Неоплаченных уроков: ${tutSnap.unpaidCount} (${tutSnap.totalDebtByn} BYN)`);
+    return lines.join('\n');
+  }
 }
 
 async function getHabits() {
@@ -612,12 +822,12 @@ async function completeTask(taskId) {
 // ============================================
 function parseStudentDossierBot(st) {
   const raw = st?.schedule || '';
-  const TAG_PATTERN = /\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/;
+  const TAG_PATTERN = /(?:^|\\n|\n)\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/;
   const getSec = (tag) => {
     const idx = raw.indexOf(tag);
     if (idx === -1) return '';
     const rest = raw.slice(idx + tag.length);
-    const nextIdx = rest.search(TAG_PATTERN);
+    const nextIdx = rest.search(/(?:\\n|\n)\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/);
     return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
   };
   const firstTagIdx = raw.search(TAG_PATTERN);
@@ -5264,6 +5474,26 @@ async function callAPI(systemInstruction, messages, retryCount = 0, isVision = f
 // TELEGRAM HANDLERS
 // ============================================
 
+// /plan — полная сводка по встречам, задачам, английскому + совет ИИ от чего отталкиваться
+bot.onText(/\/plan/, async (msg) => {
+  const incomingChatId = String(msg.chat.id);
+  if (incomingChatId !== ADMIN_CHAT_ID) return;
+  try {
+    await bot.sendChatAction(incomingChatId, 'typing');
+    const advice = await generateSmartPlanAdvice();
+    await sendCleanMessage(incomingChatId, advice, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Обновить план и совет', callback_data: 'ai_plan_advice' }],
+          [{ text: '📋 Пульс задач и встреч', callback_data: 'tasks_pulse_refresh' }]
+        ]
+      }
+    });
+  } catch (e) {
+    bot.sendMessage(incomingChatId, '❌ Ошибка формирования плана: ' + e.message);
+  }
+});
+
 // /preview — быстрый предпросмотр глазами родителя или ученика (только для преподавателя)
 bot.onText(/\/preview/, async (msg) => {
   const incomingChatId = String(msg.chat.id);
@@ -5739,6 +5969,24 @@ bot.on('callback_query', async (query) => {
       const cleanHw = cleanHomeworkTextBot(noCardsHw);
       return sendCleanMessage(chatId, `👀 *[Предпросмотр глазами ученика — ${st.name}]:*\n📚 Тема: *${lastLs.topic || 'Английский'}*\n\n${cleanHw || '(Текст ДЗ пуст)'}`, {
         reply_markup: buildStudentKeyboard(st, lastLs)
+      });
+    } catch (e) {
+      return bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
+    }
+  }
+  if (data === 'ai_plan_advice') {
+    if (String(chatId) !== ADMIN_CHAT_ID) return;
+    try {
+      await bot.answerCallbackQuery(query.id, { text: '🧠 Анализирую встречи, задачи и уроки...' });
+      await bot.sendChatAction(chatId, 'typing');
+      const advice = await generateSmartPlanAdvice();
+      return sendCleanMessage(chatId, advice, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Обновить совет ИИ', callback_data: 'ai_plan_advice' }],
+            [{ text: '📋 Пульс задач и встреч', callback_data: 'tasks_pulse_refresh' }]
+          ]
+        }
       });
     } catch (e) {
       return bot.answerCallbackQuery(query.id, { text: 'Ошибка: ' + e.message, show_alert: true });
@@ -9259,12 +9507,15 @@ ${routerAcademic ? `АКАДЕМИЧЕСКАЯ СПРАВКА ПО ГРАММА�
 // ============================================
 
 async function generateMorningBriefing() {
-  const todayTasks = await getTasksDueToday();
-  const overdue = await getOverdueTasks();
-  const upcoming = await getUpcomingDeadlines(7);
-  const events = await getTodayEvents();
-  const weekEvents = await getUpcomingEvents(7);
-  const habits = await getHabits();
+  const [todayTasks, overdue, upcoming, events, weekEvents, habits, tutSnap] = await Promise.all([
+    getTasksDueToday(),
+    getOverdueTasks(),
+    getUpcomingDeadlines(7),
+    getTodayEvents(),
+    getUpcomingEvents(7),
+    getHabits(),
+    getTutoringOperationalSnapshot()
+  ]);
 
   const fmtTask = (t) => ({ title: t.title, priority: t.priority || 'Средний', direction: t.direction || '', deadline: t.deadline });
   const contextData = `
@@ -9274,14 +9525,19 @@ async function generateMorningBriefing() {
 - Задачи на неделю (ближайшие 7 дней): ${JSON.stringify(upcoming.map(fmtTask))}
 - Встречи и уроки СЕГОДНЯ: ${JSON.stringify(events.map(e => ({ title: e.title, when: new Date(e.start_at).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' }) })))}
 - Встречи и уроки НА НЕДЕЛЮ (7 дней): ${JSON.stringify(weekEvents.map(e => ({ title: e.title, when: new Date(e.start_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) })))}
+- Репетиторство (операционка):
+  * Уроки без готовой темы/презентации: ${JSON.stringify(tutSnap.unreadyLessons)}
+  * Сданные ДЗ ждут проверки: ${JSON.stringify(tutSnap.awaitingCheck)}
+  * Неоплаченные уроки: ${tutSnap.unpaidCount} шт. на ${tutSnap.totalDebtByn} BYN
 - Привычки: ${JSON.stringify(habits.map(h => h.name))}
 
 Сгенерируй утренний брифинг-совет. Формат:
 1. Приветствие с датой
 2. 🎯 Задачи на сегодня — раздели на 🔴 Важные (Высокий приоритет / срочно) и ⚪ Обычные / Не важные (можно сделать потом или перенести)
 3. 🕐 Встречи и уроки сегодня + ключевые встречи на этой неделе
-4. 📅 План задач на неделю (с датами) + просроченные хвосты (если есть)
-5. 💡 Совет от чего отталкиваться: с чего лучше начать прямо сейчас (учитывая окна до первых встреч и приоритеты), что можно спокойно отложить.
+4. 🎓 Английский: к какому уроку нужно подготовить тему/презу, чьи ДЗ проверить и статус оплат
+5. 📅 План задач на неделю (с датами) + просроченные хвосты (если есть)
+6. 💡 Совет от чего отталкиваться: с чего лучше начать прямо сейчас (учитывая окна до первых встреч и приоритеты), что можно спокойно отложить.
 `;
 
   try {
@@ -9422,6 +9678,7 @@ async function sendTaskPulseReminder(headerTitle = '⏰ *Пульс задач: 
     const overdue = await getOverdueTasks();
     const todayEvents = await getTodayEvents().catch(() => []);
     const weekEvents = await getUpcomingEvents(7).catch(() => []);
+    const tutSnap = await getTutoringOperationalSnapshot();
 
     const priorityEmoji = { 'Высокий': '🔴', 'Средний': '🟡', 'Низкий': '🟢' };
     const now = new Date();
@@ -9490,6 +9747,19 @@ async function sendTaskPulseReminder(headerTitle = '⏰ *Пульс задач: 
       }
     }
 
+    if (tutSnap.unreadyLessons.length > 0 || tutSnap.awaitingCheck.length > 0 || tutSnap.unpaidCount > 0) {
+      text += `\n🎓 *АНГЛИЙСКИЙ (ФОКУС):*\n`;
+      if (tutSnap.unreadyLessons.length > 0) {
+        text += `• ⚠️ Подготовить тему/презу: ${tutSnap.unreadyLessons.map(u => `${u.student} (${u.when})`).join(', ')}\n`;
+      }
+      if (tutSnap.awaitingCheck.length > 0) {
+        text += `• 📬 Ждут проверки ДЗ: ${tutSnap.awaitingCheck.map(a => `${a.student}`).join(', ')}\n`;
+      }
+      if (tutSnap.unpaidCount > 0) {
+        text += `• 💳 Неоплаченных уроков: *${tutSnap.unpaidCount}* (*${tutSnap.totalDebtByn} BYN*)\n`;
+      }
+    }
+
     // Интерактивные кнопки для быстрого закрытия/переноса по ВСЕМ задачам
     const actionable = [...todayTasks, ...overdue, ...(todayTasks.length + overdue.length < 4 ? upcomingWeek : [])].slice(0, 8);
     const inlineKeyboard = actionable.map(t => ([
@@ -9499,6 +9769,9 @@ async function sendTaskPulseReminder(headerTitle = '⏰ *Пульс задач: 
     if (overdue.length > 0) {
       inlineKeyboard.push([{ text: `🧹 Закрыть все вчерашние хвосты (${overdue.length})`, callback_data: 'tasks_close_overdue' }]);
     }
+    inlineKeyboard.push([
+      { text: '💡 Совет ИИ: что делать сейчас', callback_data: 'ai_plan_advice' }
+    ]);
     inlineKeyboard.push([
       { text: '🔄 Обновить сводку', callback_data: 'tasks_pulse_refresh' },
       { text: '🍅 Фокус 25 мин', callback_data: 'focus_start:25' }

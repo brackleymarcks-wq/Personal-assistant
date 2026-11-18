@@ -984,88 +984,96 @@ const TutoringPage = {
             hwStatusBadge = `<div style="margin-top:8px;padding:4px 8px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary);min-width:0;overflow:hidden;"><div style="display:flex;align-items:center;gap:6px;"><i data-lucide="edit-3" style="width:12px;height:12px;color:var(--accent);flex-shrink:0;"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">ДЗ: ${this.escapeHtml(cleanHwText || 'Письменное задание')}</span>${progChip}</div>${groupChip}</div>`;
           }
         }
-        const displaySchedule = dossier.schedule || 'Нет расписания';
-        if (displaySchedule.includes('\\n[ЗАМЕТКИ]:')) {
-          displaySchedule = displaySchedule.split('\\n[ЗАМЕТКИ]:')[0];
-        }
+        const displaySchedule = (dossier.schedule || '').replace(/\[[A-ZА-Я0-9_]+\]:[\s\S]*/g, '').trim() || 'Расписание не задано';
+        const hasTg = !!(dossier.tgId && dossier.tgId.trim());
+        const hasParentTg = !!(dossier.parentTgId && dossier.parentTgId.trim());
+        const parentDisplay = this.getParentDisplayName(st, dossier);
+        const errorsList = (dossier.errors || '').split(/[;\n|]+/).map(s => s.trim()).filter(Boolean);
+        const vocabPreview = (dossier.vocab || '').trim();
 
         const borderColor = unpaidCount > 0 ? 'rgba(239, 68, 68, 0.35)' : 'var(--border-light)';
-        const glowEffect = unpaidCount > 0 ? 'box-shadow: 0 0 12px rgba(239, 68, 68, 0.05);' : '';
-        const onMouseOver = unpaidCount > 0 
-          ? "this.style.transform='translateY(-2px)';this.style.borderColor='var(--danger)';this.style.boxShadow='0 4px 16px rgba(239,68,68,0.15)';" 
-          : "this.style.transform='translateY(-2px)';this.style.borderColor='var(--accent)';this.style.boxShadow='0 4px 12px var(--accent-alpha)';";
+        const glowEffect = unpaidCount > 0 ? 'box-shadow: 0 2px 14px rgba(239, 68, 68, 0.06);' : 'box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);';
+        const onMouseOver = unpaidCount > 0
+          ? "this.style.transform='translateY(-2px)';this.style.borderColor='var(--danger)';this.style.boxShadow='0 8px 22px rgba(239,68,68,0.14)';"
+          : "this.style.transform='translateY(-2px)';this.style.borderColor='var(--accent)';this.style.boxShadow='0 8px 22px var(--accent-alpha)';";
         const onMouseOut = unpaidCount > 0
-          ? `this.style.transform='none';this.style.borderColor='rgba(239, 68, 68, 0.35)';this.style.boxShadow='0 0 12px rgba(239, 68, 68, 0.05)';`
-          : "this.style.transform='none';this.style.borderColor='var(--border-light)';this.style.boxShadow='none';";
+          ? "this.style.transform='none';this.style.borderColor='rgba(239, 68, 68, 0.35)';this.style.boxShadow='0 2px 14px rgba(239, 68, 68, 0.06)';"
+          : "this.style.transform='none';this.style.borderColor='var(--border-light)';this.style.boxShadow='0 2px 12px rgba(15, 23, 42, 0.04)';";
+
+        const tabBtnStyle = (active) => `font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid ${active ? 'var(--accent)' : 'transparent'};background:${active ? 'var(--accent-alpha)' : 'transparent'};color:${active ? 'var(--accent)' : 'var(--text-secondary)'};cursor:pointer;transition:all 0.15s;`;
+        const switchTabJs = (tab) => `event.stopPropagation(); ['hw','err','voc'].forEach(t => { const p = document.getElementById('st-panel-${st.id}-' + t); const b = document.getElementById('st-tab-${st.id}-' + t); if (p) p.style.display = (t === '${tab}') ? 'block' : 'none'; if (b) { b.style.borderColor = (t === '${tab}') ? 'var(--accent)' : 'transparent'; b.style.background = (t === '${tab}') ? 'var(--accent-alpha)' : 'transparent'; b.style.color = (t === '${tab}') ? 'var(--accent)' : 'var(--text-secondary)'; } });`;
 
         return `
-          <div class="glass-panel" data-id="${st.id}" style="padding:20px;border-radius:16px;cursor:pointer;opacity:${opacity};transition:all 0.2s;background:var(--bg-surface);border:1px solid ${borderColor};${glowEffect}position:relative;overflow:hidden;min-width:0;max-width:100%;box-sizing:border-box;" onmouseover="${onMouseOver}" onmouseout="${onMouseOut}">
+          <div class="glass-panel" data-id="${st.id}" style="padding:18px 20px;border-radius:18px;cursor:pointer;opacity:${opacity};transition:all 0.2s;background:var(--bg-surface);border:1px solid ${borderColor};${glowEffect}position:relative;overflow:hidden;min-width:0;max-width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;" onmouseover="${onMouseOver}" onmouseout="${onMouseOut}">
             ${!st.active ? '<div style="position:absolute;top:12px;right:12px;font-size:10px;background:var(--bg-secondary);padding:2px 8px;border-radius:12px;font-weight:600;">АРХИВ</div>' : ''}
-            <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:16px;">
-              <div style="display:flex;align-items:center;gap:12px;">
-                <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg, var(--accent), var(--accent-vibrant));color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;box-shadow:0 2px 8px var(--accent-alpha);">
+
+            <!-- 1. Единая шапка ученика -->
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+              <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+                <div style="width:42px;height:42px;flex-shrink:0;border-radius:14px;background:linear-gradient(135deg, var(--accent), var(--accent-vibrant));color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;box-shadow:0 3px 10px var(--accent-alpha);">
                   ${st.name.charAt(0).toUpperCase()}
                 </div>
-                <div>
-                  <div style="font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">${this.escapeHtml(st.name)}<span title="Ударный режим (выполненных ДЗ подряд без пропусков)" style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(249,115,22,0.15);color:#f97316;font-weight:800;border:1px solid rgba(249,115,22,0.3);display:inline-flex;align-items:center;gap:3px;">🔥 ${dossier.streak || 0} ДЗ</span><span title="Щиты заморозки стрика (защищают серию при пропуске дня, макс. 3)" style="font-size:11px;padding:2px 7px;border-radius:10px;background:rgba(59,130,246,0.15);color:#3b82f6;font-weight:800;border:1px solid rgba(59,130,246,0.3);display:inline-flex;align-items:center;gap:3px;">🛡️ ${dossier.shields ?? 1}/3</span></div>
-                  <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${this.escapeHtml(st.grade || 'Уровень не указан')}</div>
+                <div style="min-width:0;">
+                  <div style="font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <span>${this.escapeHtml(st.name)}</span>
+                    <span title="Ударный режим (ДЗ подряд)" style="font-size:11px;padding:2px 7px;border-radius:8px;background:rgba(249,115,22,0.12);color:#ea580c;font-weight:700;border:1px solid rgba(249,115,22,0.25);">🔥 ${dossier.streak || 0}</span>
+                    <span title="Щиты заморозки стрика" style="font-size:11px;padding:2px 7px;border-radius:8px;background:rgba(59,130,246,0.12);color:#2563eb;font-weight:700;border:1px solid rgba(59,130,246,0.25);">🛡️ ${dossier.shields ?? 1}/3</span>
+                  </div>
+                  <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <span>${this.escapeHtml(st.grade || 'Уровень не указан')}</span>
+                    <span style="color:var(--border-medium);">•</span>
+                    <span style="display:inline-flex;align-items:center;gap:4px;"><i data-lucide="clock" style="width:12px;height:12px;color:var(--accent);"></i>${this.escapeHtml(displaySchedule)}</span>
+                  </div>
                 </div>
               </div>
-              <div style="text-align:right;">
-                <div onclick="event.stopPropagation(); TutoringPage.openPaymentHistoryModal('${st.id}')" title="Нажмите, чтобы посмотреть историю оплат ученика ${this.escapeHtml(st.name)}" style="font-weight:800;color:var(--accent);font-size:16px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)';" onmouseout="this.style.borderColor='var(--border-light)';">
-                  <span>${st.price} <span style="font-size:12px;">BYN</span></span>
-                  <i data-lucide="receipt" style="width:13px;height:13px;color:var(--text-muted);"></i>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;">
+                <div onclick="event.stopPropagation(); TutoringPage.openPaymentHistoryModal('${st.id}')" title="История оплат" style="font-weight:800;color:var(--accent);font-size:15px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:9px;background:var(--bg-primary);border:1px solid var(--border-light);">
+                  <span>${st.price} <span style="font-size:11px;font-weight:600;">BYN</span></span>
+                  <i data-lucide="receipt" style="width:12px;height:12px;color:var(--text-muted);"></i>
                 </div>
+                ${debtBadge || `<span style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(16,185,129,0.12);color:var(--success);font-weight:700;">✅ Всё оплачено</span>`}
               </div>
             </div>
-            
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);background:var(--bg-primary);padding:4px 8px;border-radius:8px;">
-                <i data-lucide="clock" style="width:14px;height:14px;color:var(--accent);"></i>
-                ${this.escapeHtml(displaySchedule)}
-              </div>
-              ${debtBadge}
-            </div>
-            ${(dossier.unit || dossier.interests || dossier.errors) ? `
-              <div style="margin-top:8px;font-size:11px;color:var(--text-secondary);display:flex;flex-direction:column;gap:3px;overflow:hidden;word-break:break-word;min-width:0;">
-                ${dossier.unit ? `<div style="color:var(--accent);">📖 <b>Программа:</b> ${this.escapeHtml(dossier.unit)}</div>` : ''}
-                ${dossier.interests ? `<div>🎯 <b>Интересы:</b> ${this.escapeHtml(dossier.interests)}</div>` : ''}
-                ${dossier.errors ? `
-                  <div style="color:var(--warning);line-height:1.35;">
-                    ⚠️ <b>Ошибки:</b>
-                    <span id="st-err-${st.id}" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${this.escapeHtml(dossier.errors)}</span>
-                    ${dossier.errors.length > 80 ? `<span onclick="event.stopPropagation(); const el = document.getElementById('st-err-${st.id}'); const isClamped = el.style.webkitLineClamp !== 'unset'; el.style.webkitLineClamp = isClamped ? 'unset' : '2'; this.textContent = isClamped ? '▲ Свернуть' : '▼ Развернуть подробнее'; this.style.color = isClamped ? 'var(--accent)' : 'var(--text-muted)';" style="font-size:10px;text-decoration:underline;cursor:pointer;color:var(--text-muted);margin-top:2px;display:inline-block;">▼ Развернуть подробнее</span>` : ''}
-                  </div>` : ''}
-              </div>` : ''}
-            ${hwStatusBadge}
 
-            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-light); width: 100%; flex-wrap:wrap; min-width:0;">
-              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.openPaymentHistoryModal('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px; color:var(--success); border-color:rgba(16,185,129,0.3); background:rgba(16,185,129,0.04);" title="История оплат и проведённых уроков ${this.escapeHtml(st.name)}">
-                <i data-lucide="receipt" style="width:12px;height:12px;"></i> Оплаты
-              </button>
-              ${unpaidCount > 0 ? `
-                <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.payAllDebts('${st.id}', ${unpaidCount}, ${st.price}, '${this.escapeHtml(st.name)}')" style="color:var(--danger); border-color:rgba(239,68,68,0.2); background:rgba(239,68,68,0.05); display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;">
-                  <i data-lucide="coins" style="width:12px;height:12px;"></i> Оплатить долг
-                </button>
-              ` : ''}
-              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.copyStudentBotInvite('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px; color:${dossier.tgId ? 'var(--success)' : '#3b82f6'};" title="${dossier.tgId ? 'Ученик подключён к ТГ-боту (нажми, чтобы скопировать ссылку снова)' : 'Скопировать ссылку-приглашение в ТГ-бота для авто-напоминаний ДЗ'}">
-                ${dossier.tgId ? '🟢 ТГ-бот' : '🔗 В ТГ-бот'}
-              </button>
-              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.copyParentBotInvite('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px; color:${dossier.parentTgId ? 'var(--success)' : '#8b5cf6'};" title="${dossier.parentTgId ? 'Родитель подключён к ТГ-боту (нажми, чтобы скопировать ссылку снова)' : 'Скопировать ссылку-приглашение в ТГ-бота для родителя (авто-отчёты по урокам)'}">
-                ${dossier.parentTgId ? '🟢 Родитель' : '👨‍👩‍👧 Родителю'}
-              </button>
-              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.sendHwToStudentTelegram('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;" title="Отправить / напомнить последнее домашнее задание ученику в Telegram">
-                📨 ДЗ в ТГ
-              </button>
-              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.launchPerplexity('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px; color:#0d9488; border-color:rgba(13,148,136,0.35); background:rgba(13,148,136,0.06);" title="Скопировать промпт с памятью об ученике и открыть его Perplexity Space">
-                🔮 Perplexity
-              </button>
-              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.generateMonthlyReport('${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;" title="Сгенерировать ИИ-отчёт о прогрессе за месяц">
-                <i data-lucide="bar-chart-2" style="width:12px;height:12px;"></i> Отчёт
-              </button>
-              <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.openLessonModal(null, '${st.id}')" style="display:flex; align-items:center; gap:4px; padding: 4px 8px; font-size:11px;">
-                <i data-lucide="plus" style="width:12px;height:12px;"></i> Урок
-              </button>
+            <!-- 2. Единый блок контекста (программа / интересы / родитель) -->
+            <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;">
+              <span style="padding:3px 8px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);color:var(--text-secondary);">📖 ${this.escapeHtml(dossier.unit || 'Программа не указана')}</span>
+              ${dossier.interests ? `<span style="padding:3px 8px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-light);color:var(--text-secondary);">🎯 ${this.escapeHtml(dossier.interests)}</span>` : ''}
+              ${parentDisplay ? `<span style="padding:3px 8px;border-radius:8px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);color:#7c3aed;">👨‍👩‍👧 ${this.escapeHtml(parentDisplay)}</span>` : ''}
+            </div>
+
+            <!-- 3. Единый прокручиваемый блок с вкладками (ДЗ / Ошибки / Словарь) -->
+            <div onclick="event.stopPropagation();" style="background:var(--bg-primary);border:1px solid var(--border-light);border-radius:12px;padding:8px 10px;">
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:8px;border-bottom:1px solid var(--border-light);padding-bottom:6px;flex-wrap:wrap;">
+                <button type="button" id="st-tab-${st.id}-hw" onclick="${switchTabJs('hw')}" style="${tabBtnStyle(true)}">📌 Текущее ДЗ</button>
+                <button type="button" id="st-tab-${st.id}-err" onclick="${switchTabJs('err')}" style="${tabBtnStyle(false)}">⚠️ Ошибки (${errorsList.length})</button>
+                <button type="button" id="st-tab-${st.id}-voc" onclick="${switchTabJs('voc')}" style="${tabBtnStyle(false)}">🔤 Словарь</button>
+              </div>
+              <div id="st-panel-${st.id}-hw" style="display:block;max-height:110px;overflow-y:auto;padding-right:4px;font-size:12px;line-height:1.45;">
+                ${hwStatusBadge || '<div style="color:var(--text-muted);font-style:italic;">Активного домашнего задания пока нет</div>'}
+              </div>
+              <div id="st-panel-${st.id}-err" style="display:none;max-height:110px;overflow-y:auto;padding-right:4px;font-size:11.5px;line-height:1.45;color:var(--text-secondary);">
+                ${errorsList.length > 0 ? errorsList.map(err => `<div style="margin-bottom:4px;">• ${this.escapeHtml(err)}</div>`).join('') : '<div style="color:var(--text-muted);font-style:italic;">Ошибки пока не зафиксированы</div>'}
+              </div>
+              <div id="st-panel-${st.id}-voc" style="display:none;max-height:110px;overflow-y:auto;padding-right:4px;font-size:11.5px;line-height:1.45;color:var(--text-secondary);">
+                ${vocabPreview ? this.escapeHtml(vocabPreview) : '<div style="color:var(--text-muted);font-style:italic;">Словарь ученика пока пуст</div>'}
+              </div>
+            </div>
+
+            <!-- 4. Единая аккуратная панель кнопок -->
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding-top:10px;border-top:1px dashed var(--border-light);flex-wrap:wrap;">
+              <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.openPaymentHistoryModal('${st.id}')" style="padding:4px 8px;font-size:11px;color:var(--success);border-color:rgba(16,185,129,0.3);background:rgba(16,185,129,0.05);">💳 Оплаты</button>
+                ${unpaidCount > 0 ? `<button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.payAllDebts('${st.id}', ${unpaidCount}, ${st.price}, '${this.escapeHtml(st.name)}')" style="padding:4px 8px;font-size:11px;color:var(--danger);border-color:rgba(239,68,68,0.28);background:rgba(239,68,68,0.06);">💰 Оплатить долг</button>` : ''}
+                <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.copyStudentBotInvite('${st.id}')" style="padding:4px 8px;font-size:11px;color:${hasTg ? 'var(--success)' : '#3b82f6'};">${hasTg ? '🟢 ТГ-бот' : '🔗 ТГ ученика'}</button>
+                <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.copyParentBotInvite('${st.id}')" style="padding:4px 8px;font-size:11px;color:${hasParentTg ? 'var(--success)' : '#8b5cf6'};">${hasParentTg ? '🟢 Родитель' : '👨‍👩‍👧 Родителю'}</button>
+              </div>
+              <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.sendHwToStudentTelegram('${st.id}')" style="padding:4px 8px;font-size:11px;">📨 ДЗ в ТГ</button>
+                <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.launchPerplexity('${st.id}')" style="padding:4px 8px;font-size:11px;color:#0d9488;border-color:rgba(13,148,136,0.3);background:rgba(13,148,136,0.06);">🔮 Perplexity</button>
+                <button class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); TutoringPage.generateMonthlyReport('${st.id}')" style="padding:4px 8px;font-size:11px;">📊 Отчёт</button>
+                <button class="btn btn-primary btn-xs" onclick="event.stopPropagation(); TutoringPage.openLessonModal(null, '${st.id}')" style="padding:4px 9px;font-size:11px;">+ Урок</button>
+              </div>
             </div>
           </div>
         `;
@@ -2206,14 +2214,15 @@ const TutoringPage = {
   },
   parseStudentDossier(st) {
     const raw = st?.schedule || '';
+    const tagRe = /(?:^|\\n|\n)\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/;
     const getSec = (tag) => {
       const idx = raw.indexOf(tag);
       if (idx === -1) return '';
       const rest = raw.slice(idx + tag.length);
-      const nextIdx = rest.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/);
+      const nextIdx = rest.search(/(?:\\n|\n)\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/);
       return (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).replace(/^\\n|^\n/, '').trim();
     };
-    const firstTagIdx = raw.search(/\\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:|\n\[(ЗАМЕТКИ|ИНТЕРЕСЫ|ОШИБКИ|СЛОВАРЬ|PERPLEXITY|УЧЕБНИК|TG_ID|TG_USER|PARENT_TG_ID|PARENT_TG_USER|PARENT_NAME|СТРИК|ЩИТЫ_СТРИКА|LAST_ACTIVE)\]:/);
+    const firstTagIdx = raw.search(tagRe);
     const schedule = (firstTagIdx === -1 ? raw : raw.slice(0, firstTagIdx)).trim();
     const rawShields = getSec('[ЩИТЫ_СТРИКА]:');
     const parsedShields = rawShields !== '' ? parseInt(rawShields, 10) : 1;
