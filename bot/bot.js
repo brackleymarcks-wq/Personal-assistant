@@ -892,10 +892,20 @@ async function recordStudentDailyActivity(st, actor = null) {
   }
 
   isNewDay = true;
-  if (lastDate === yesterdayMinsk || !lastDate) {
+  // Честное окно между уроками репетиторства: 7 дней (щиты НЕ сгорают между занятиями!)
+  let daysDiff = 1;
+  if (lastDate && /^\d{4}-\d{2}-\d{2}$/.test(lastDate) && /^\d{4}-\d{2}-\d{2}$/.test(todayMinsk)) {
+    const tLast = Date.parse(lastDate + 'T00:00:00Z');
+    const tToday = Date.parse(todayMinsk + 'T00:00:00Z');
+    if (!Number.isNaN(tLast) && !Number.isNaN(tToday)) {
+      daysDiff = Math.max(0, Math.round((tToday - tLast) / 86400000));
+    }
+  }
+
+  if (!lastDate || daysDiff <= 7) {
     curStreak = (curStreak || 0) + 1;
   } else if (curStreak > 1 && curShields > 0) {
-    // 🛡️ Щит заморозки спасает серию, если ребёнок пропустил день!
+    // 🛡️ Щит заморозки спасает серию только если прошло больше 7 дней без практики!
     curShields -= 1;
     shieldUsed = true;
     curStreak = curStreak + 1;
@@ -920,17 +930,17 @@ async function recordStudentDailyActivity(st, actor = null) {
   const studentChatId = (actor?.actorId && /^\d+$/.test(String(actor.actorId))) ? String(actor.actorId) : null;
   if (studentChatId && isNewDay) {
     if (shieldUsed) {
-      bot.sendMessage(studentChatId, `🛡️ *Сработал твой Щит заморозки стрика, ${actor?.name || st.name}!*\nТы пропустил(а) день, но щит защитил твой огонёк — серия *🔥 ${curStreak} дн. подряд* полностью сохранена!\nОсталось щитов в запасе: *${curShields}/3* 🛡️`, { parse_mode: 'Markdown' }).catch(() => {});
+      bot.sendMessage(studentChatId, `🛡️ *Сработал твой Щит заморозки стрика, ${actor?.name || st.name}!*\nПрошло больше недели с прошлой практики, но щит защитил твой огонёк — серия *🔥 ${curStreak} подряд* полностью сохранена!\nОсталось щитов в запасе: *${curShields}/3* 🛡️`, { parse_mode: 'Markdown' }).catch(() => {});
     }
     if (earnedNewShield) {
-      bot.sendMessage(studentChatId, `🎁 *НОВАЯ НАГРАДА, ${(actor?.name || st.name).toUpperCase()}!* 🎉\nЗа стабильную серию *🔥 ${curStreak} дней подряд* ты получаешь **+1 🛡️ Щит заморозки стрика**!\nТеперь у тебя в запасе: *${curShields}/3 🛡️*`, { parse_mode: 'Markdown' }).catch(() => {});
+      bot.sendMessage(studentChatId, `🎁 *НОВАЯ НАГРАДА, ${(actor?.name || st.name).toUpperCase()}!* 🎉\nЗа стабильную серию *🔥 ${curStreak} подряд* ты получаешь **+1 🛡️ Щит заморозки стрика**!\nТеперь у тебя в запасе: *${curShields}/3 🛡️*`, { parse_mode: 'Markdown' }).catch(() => {});
     }
   }
   if (ADMIN_CHAT_ID && isNewDay) {
     let extraNote = '';
-    if (shieldUsed) extraNote += `\n🛡️ *Сработал Щит заморозки!* Серия спасена (осталось щитов: ${curShields}).`;
-    if (earnedNewShield) extraNote += `\n🎁 *Награда за ${curStreak} дней подряд:* ученик получил +1 🛡️ Щит заморозки (всего щитов: ${curShields})!`;
-    bot.sendMessage(ADMIN_CHAT_ID, `🔥 *[Ударный режим Duolingo Streak]*: *${actorLabel}* позанимался(лась) сегодня в боте!\n🎯 Серия дней: *${curStreak} дн. подряд* | 🛡️ Щитов: *${curShields}/3*! 🚀${extraNote}`, { parse_mode: 'Markdown' }).catch(() => {});
+    if (shieldUsed) extraNote += `\n🛡️ *Сработал Щит заморозки!* Прошло >7 дней, но серия спасена (осталось щитов: ${curShields}).`;
+    if (earnedNewShield) extraNote += `\n🎁 *Награда за серию ${curStreak}:* ученик получил +1 🛡️ Щит заморозки (всего щитов: ${curShields})!`;
+    bot.sendMessage(ADMIN_CHAT_ID, `🔥 *[Ударный режим Streak]*: *${actorLabel}* позанимался(лась) сегодня в боте!\n🎯 Серия: *${curStreak} подряд* | 🛡️ Щитов: *${curShields}/3*! 🚀${extraNote}`, { parse_mode: 'Markdown' }).catch(() => {});
   }
 
   return { streak: curStreak, shields: curShields, isNewDay: true, alreadyActiveToday: false, shieldUsed, earnedNewShield };
@@ -1013,7 +1023,7 @@ const pendingTeacherReplyToStudent = new Map(); // adminChatId -> { studentId, s
 async function saveHwWarmupErrorsToDossier(st, warmupText, actorName = '', conciseErrorSummary = '') {
   if (!st || !st.id || !warmupText) return;
   const trimmed = String(warmupText).trim();
-  if (!trimmed || trimmed.includes('вижу только условие задачи')) return;
+  if (!trimmed || trimmed.includes('вижу только условие задачи') || /Не удалось получить ответ/i.test(trimmed)) return;
 
   const doss = parseStudentDossierBot(st);
   const dateTag = new Date().toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit' });
@@ -7306,9 +7316,9 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
       text += `🛡️ *Щиты заморозки стрика:* *${shields} из 3* (${'🛡️'.repeat(shields)}${'⚪'.repeat(Math.max(0, 3 - shields))})\n`;
       text += `⚡ Статус на сегодня: *${streakInfo.alreadyActiveToday ? '✅ Огонёк уже горит и защищён!' : '🔥 Огонёк активен!'}*\n\n`;
       text += `💡 *Как работают Стрик и Щит заморозки:*\n`;
-      text += `• Заходи в бот каждый день на пару минут — повторяй правило, слова или карточки.\n`;
-      text += `• Если случайно пропустишь день — твой *🛡️ Щит заморозки* автоматически спасёт серию от сгорания!\n`;
-      text += `• Каждые *5 дней стрика подряд* ты получаешь *+1 новый 🛡️ Щит* (максимум 3 щита в запасе).\n\n`;
+      text += `• Занимайся и сдавай ДЗ к каждому уроку — между занятиями огонёк держится до *7 дней* (щиты не сгорают!).\n`;
+      text += `• Если пропустишь больше недели — твой *🛡️ Щит заморозки* автоматически спасёт серию от сгорания!\n`;
+      text += `• Каждые *5 занятий/ДЗ подряд* ты получаешь *+1 новый 🛡️ Щит* (максимум 3 щита в запасе).\n\n`;
       text += `👇 Закрепи свой результат на сегодня:`;
 
       const kb = [
@@ -8694,9 +8704,9 @@ bot.onText(/\/(streak|fire|стрик|огон|shield|щит|innovations|нов�
   text += `🛡️ *Щиты заморозки стрика:* *${shields} из 3* (${'🛡️'.repeat(shields)}${'⚪'.repeat(Math.max(0, 3 - shields))})\n`;
   text += `⚡ Статус на сегодня: *${streakInfo.alreadyActiveToday ? '✅ Огонёк уже горит и защищён!' : '🔥 Огонёк активен!'}*\n\n`;
   text += `💡 *Как сохранить огонёк и заработать Щит:*\n`;
-  text += `• Заходи каждый день хотя бы на 1 минуту — открывай «📖 Правило урока», слова или тестик.\n`;
-  text += `• Если случайно пропустишь день — твой *🛡️ Щит заморозки* автоматически спасёт серию!\n`;
-  text += `• Каждые *5 дней стрика подряд* ты получаешь *+1 новый 🛡️ Щит*!\n\n`;
+  text += `• Делай ДЗ и практикуйся в боте — между уроками огонёк держится до *7 дней*, щиты не сгорают!\n`;
+  text += `• Если пропустишь больше недели — твой *🛡️ Щит заморозки* автоматически спасёт серию!\n`;
+  text += `• Каждые *5 практик/ДЗ подряд* ты получаешь *+1 новый 🛡️ Щит*!\n\n`;
   text += `👇 Потренируйся прямо сейчас:`;
 
   const kb = [
