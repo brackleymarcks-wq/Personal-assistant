@@ -670,14 +670,13 @@ const Gemini = {
     const disableTools = isExtendedSig ? !!arg6 : (typeof arg6 === 'boolean' ? arg6 : false);
     const apiUrl = Config.aiApiUrl || DEFAULT_API_URL;
     const configuredModel = Config.aiModel || DEFAULT_MODEL;
-    const deadModels = ['nvidia/nemotron-3-ultra-550b-a55b:free', 'google/gemma-4-31b-it:free', 'google/gemma-3-27b-it:free', 'qwen/qwen3-235b-a22b:free', 'gpt-4o'];
+    const deadModels = ['cohere/north-mini-code:free', 'dots-studio/dots-3-note-preview:free', 'google/gemma-4-31b-it:free', 'google/gemma-3-27b-it:free', 'qwen/qwen3-235b-a22b:free', 'gpt-4o'];
     const primaryModel = deadModels.includes(configuredModel) ? 'baidu/ernie-5.5-flash-preview:free' : configuredModel;
     const FALLBACK_MODELS = Array.from(new Set([
       primaryModel,
       'baidu/ernie-5.5-flash-preview:free',
-      'cohere/north-mini-code:free',
+      'nvidia/nemotron-3-ultra-550b-a55b:free',
       'recursive/flint-v1.0:free',
-      'dots-studio/dots-3-note-preview:free',
       'openrouter/free'
     ]));
     const model = FALLBACK_MODELS[Math.min(retryCount, FALLBACK_MODELS.length - 1)];
@@ -1093,8 +1092,18 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
       const data = await this._callAPI(apiUrl, apiKey, model, sysInstruction, [{ role: 'user', content: prompt }], true);
       out = data.choices?.[0]?.message?.content?.trim() || '';
     } catch (apiErr) {
-      console.warn('generateTutoringAI API error, using smart fallback if homework:', apiErr.message);
-      if (mode !== 'homework') throw apiErr;
+      console.warn('generateTutoringAI API error, retrying with compact prompt:', apiErr.message);
+      if (mode === 'homework') {
+        try {
+          const compactPrompt = prompt.length > 7500 ? (prompt.slice(0, 5500) + '\n...\n' + prompt.slice(-2000)) : prompt;
+          const retryData = await this._callAPI(apiUrl, apiKey, 'openrouter/free', sysInstruction.slice(0, 1500), [{ role: 'user', content: compactPrompt }], true);
+          out = retryData.choices?.[0]?.message?.content?.trim() || '';
+        } catch (retryErr) {
+          console.warn('generateTutoringAI compact retry also failed, using smart fallback:', retryErr.message);
+        }
+      } else {
+        throw apiErr;
+      }
     }
     if (mode === 'homework') {
       out = out.replace(/\*\*/g, '').replace(/\*/g, '').trim();
@@ -1114,7 +1123,18 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
     const topic = currentLesson.topic || 'Практика английского языка';
     const tLow = topic.toLowerCase();
     const gLow = String(studentCtx.grade || '').toLowerCase();
-    const vocabItems = (studentCtx.vocab || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 6);
+    const rawVocab = (studentCtx.vocab || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+    const seenV = new Set();
+    const vocabItems = [];
+    for (const v of rawVocab) {
+      if (!/[A-Za-z]/.test(v) || !/[а-яА-ЯёЁ]/.test(v)) continue;
+      if (/guess the word|это подсказк|а не |по желанию|обязательно|vocabulary tracker/i.test(v)) continue;
+      const k = v.split(/[—–-]/)[0].trim().toLowerCase();
+      if (!k || seenV.has(k)) continue;
+      seenV.add(k);
+      vocabItems.push(v);
+      if (vocabItems.length >= 6) break;
+    }
     const prevTopic = prevLesson?.topic || '';
     const errorsText = studentCtx.errors || '';
 

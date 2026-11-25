@@ -4181,15 +4181,29 @@ const TutoringPage = {
 
   extractVocabFromPresentationAndScenario(presentationText = '', scenarioText = '') {
     const wordsMap = new Map();
-    const stopWords = new Set(['word', 'words', 'expression', 'ipa', 'translation', 'example', 'examples', 'model', 'rule', 'step', 'stage', 'slide', 'today', 'mission', 'check', 'stars', 'arina', 'matvey', 'skyrim', 'spore', 'academy', 'library', 'sound', 'police', 'grammar', 'tracker', 'vocabulary', 'unit', 'lesson']);
+    const stopWords = new Set([
+      'word', 'words', 'expression', 'ipa', 'translation', 'example', 'examples', 'model', 'rule', 'step', 'stage',
+      'slide', 'today', 'mission', 'check', 'stars', 'arina', 'matvey', 'skyrim', 'spore', 'academy', 'library',
+      'sound', 'police', 'grammar', 'tracker', 'vocabulary', 'unit', 'lesson', 'guess the word', 'vocabulary tracker',
+      'creative', 'repetition', 'bonus', 'optional', 'in', 'on', 'at', 'to', 'of', 'for', 'the', 'a', 'an'
+    ]);
 
     const addWord = (en, ipa, ru) => {
-      const cleanEn = (en || '').replace(/^[^a-zA-Z]+|[^a-zA-Z\s'-]+$/g, '').replace(/\s+/g, ' ').trim();
-      const cleanRu = (ru || '').replace(/^[—–\-:\s·•]+|[—–\-:\s·•]+$/g, '').split(/\s*(?:Примеры|Угадай|Полезно|Не путай|Важно|Слова|Слайд|Этап|·)\b/i)[0].trim();
+      const cleanEn = (en || '')
+        .replace(/^[^a-zA-Z]+|[^a-zA-Z\s'-]+$/g, '')
+        .replace(/^(?:example|e\.g\.|word|phrase)\s*[:\-–—]?\s+/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const cleanRu = (ru || '')
+        .replace(/^[—–\-:\s·•]+|[—–\-:\s·•.]+$/g, '')
+        .split(/\s*(?:Примеры|Угадай|Полезно|Не путай|Важно|Слова|Слайд|Этап|·|•)\b/i)[0]
+        .replace(/[·•|].*$/, '')
+        .trim();
       if (!cleanEn || cleanEn.length < 2 || cleanEn.length > 28) return;
       if (cleanEn.split(/\s+/).length > 3) return;
       if (stopWords.has(cleanEn.toLowerCase())) return;
-      if (!cleanRu || !/[а-яА-ЯёЁ]/.test(cleanRu) || cleanRu.length > 50) return;
+      if (!cleanRu || !/[а-яА-ЯёЁ]/.test(cleanRu) || cleanRu.length < 2 || cleanRu.length > 50) return;
+      if (/^(?:по желанию|обязательно|необязательно|угадай слово|это подсказк|а не |часть дня|точное время|день недели|повторяем|бонус)/i.test(cleanRu)) return;
       const key = cleanEn.toLowerCase();
       if (!wordsMap.has(key)) {
         wordsMap.set(key, {
@@ -4203,8 +4217,8 @@ const TutoringPage = {
 
     const fullSource = `${presentationText || ''}\n${scenarioText || ''}`;
 
-    // 1. Формат слайдов Gamma/PPTX: word /ipa/ перевод (например: ever /ˈevə/ когда-либо)
-    const ipaRegex = /\b([a-zA-Z][a-zA-Z'-]*(?:\s+[a-zA-Z][a-zA-Z'-]*)?)\s+\/([^\/\n]{1,28})\/\s+([а-яА-ЯёЁ][а-яА-ЯёЁ\s,;\-—–()]{1,42}?)(?=\s+[a-zA-Z]{2,}(?:\s+[a-zA-Z]+)?\s+\/|\s+(?:Примеры|Угадай|Полезно|Не путай|Важно|Слова|Слайд|Этап|ВЫРАЖЕНИЕ|СЛОВО)|·|\n|$)/g;
+    // 1. Формат слайдов Gamma/PPTX: word /ipa/ перевод (разделители: •, ·, |, ., перенос строки или следующее слово /ipa/)
+    const ipaRegex = /\b([a-zA-Z][a-zA-Z'-]*(?:\s+[a-zA-Z][a-zA-Z'-]*)?)\s+[\[\/]([^\]\/\n]{1,28})[\]\/]\s*(?:[—–-]\s*)?([а-яА-ЯёЁ][а-яА-ЯёЁ\s,;\-—–()]{1,42}?)(?=\s*[•·|.]|\s+[a-zA-Z]{2,}(?:\s+[a-zA-Z]+)?\s+[\[\/]|\s+(?:Примеры|Угадай|Полезно|Не путай|Важно|Слова|Слайд|Этап|ВЫРАЖЕНИЕ|СЛОВО)|\n|$)/g;
     let m;
     while ((m = ipaRegex.exec(fullSource)) !== null) {
       addWord(m[1], m[2], m[3]);
@@ -4217,10 +4231,10 @@ const TutoringPage = {
     }
 
     // 3. Списки через тире: word [ipa] — перевод
-    const dashRegex = /(?:^|\n|·)\s*(?:\d+\.\s*|[•\-]\s*)?([a-zA-Z][a-zA-Z\s'-]{1,22}?)\s*(?:[\[\/]([^\]\/\n]{1,25})[\]\/])?\s+[—–-]\s+([а-яА-ЯёЁ][^\n·(]{1,40})/g;
+    const dashRegex = /(?:^|\n|[•·])\s*(?:\d+\.\s*|[•\-]\s*)?([a-zA-Z][a-zA-Z\s'-]{1,22}?)\s*(?:[\[\/]([^\]\/\n]{1,25})[\]\/])?\s+[—–-]\s+([а-яА-ЯёЁ][^\n·•(.]{1,40})/g;
     while ((m = dashRegex.exec(fullSource)) !== null) {
       // Отсекаем длинные примеры предложений (если больше 3 английских слов)
-      if (m[1].trim().split(/\s+/).length <= 3 && !/^(The|He|She|We|They|It|Has|Have|Did|Do|Does)\b/.test(m[1].trim())) {
+      if (m[1].trim().split(/\s+/).length <= 3 && !/^(The|He|She|We|They|It|Has|Have|Did|Do|Does|Guess)\b/i.test(m[1].trim())) {
         addWord(m[1], m[2] || '', m[3]);
       }
     }
@@ -4276,8 +4290,14 @@ const TutoringPage = {
 
     // 4. Распознаём ключевые грамматические темы по сути контента
     const grammarPoints = [];
-    if (lower.includes('present perfect continuous') || /\b(?:have|has)\s+been\s+[a-z]{2,}ing\b/i.test(lower) || ((lower.includes('have been') || lower.includes('has been')) && lower.includes('v-ing'))) {
-      if (lower.includes('процесс или результат') || lower.includes('has chosen') || lower.includes('present perfect')) {
+    if (
+      lower.includes('present perfect continuous') ||
+      /present perfect\s+(?:simple\s+)?(?:and|vs\.?|\/)\s+continuous/i.test(lower) ||
+      /\bppc\b/i.test(lower) ||
+      /\b(?:have|has)\s+been\s+[a-z]{2,}ing\b/i.test(lower) ||
+      ((lower.includes('have been') || lower.includes('has been')) && (lower.includes('v-ing') || lower.includes('-ing')))
+    ) {
+      if (lower.includes('процесс или результат') || lower.includes('present perfect simple') || lower.includes('has chosen') || lower.includes('result') || lower.includes('present perfect')) {
         grammarPoints.push('Present Perfect Continuous vs Present Perfect (процесс и результат)');
       } else {
         grammarPoints.push('Present Perfect Continuous (длительность: have/has been + V-ing)');
