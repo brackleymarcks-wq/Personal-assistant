@@ -1112,13 +1112,76 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
   buildSmartFallbackHomework(studentCtx = {}, currentLesson = {}, prevLesson = null) {
     const stName = studentCtx.name || 'Ученик';
     const topic = currentLesson.topic || 'Практика английского языка';
+    const tLow = topic.toLowerCase();
+    const gLow = String(studentCtx.grade || '').toLowerCase();
     const vocabItems = (studentCtx.vocab || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 6);
     const prevTopic = prevLesson?.topic || '';
     const errorsText = studentCtx.errors || '';
 
     const vocabLine = vocabItems.length > 0
       ? vocabItems.map(v => `• ${v}`).join('\n')
-      : '• Повтори ключевые слова и маркеры из слайдов сегодняшней презентации';
+      : '• Повтори ключевые слова из слайдов сегодняшней презентации';
+
+    let exLines;
+    let step3Line;
+    if (tLow.includes('present perfect continuous')) {
+      exLines = [
+        `1. Она учит английский уже 2 часа. (use: has been + V-ing, for)`,
+        `2. Мы играем в эту игру с 5 часов. (use: have been + V-ing, since)`,
+        `3. Он только что закончил задание. (use: has just + V3)`
+      ];
+      step3Line = prevTopic ? `4. Повтори тему «${prevTopic}»: составь 1 короткое предложение со словом из словаря.` : `4. Проверь разницу for (период) и since (начальная точка) в 1 примере.`;
+    } else if (tLow.includes('present perfect')) {
+      exLines = [
+        `1. Я только что выполнил(а) задание (use: just + V3).`,
+        `2. Ты когда-нибудь видел(а) этот замок? (use: ever).`,
+        `3. Мы ещё не проверили словарь (use: yet).`
+      ];
+      step3Line = prevTopic ? `4. Повтори тему «${prevTopic}»${errorsText ? ` (${errorsText.slice(0, 60)})` : ''}: составь 1 предложение в Past Simple с маркером yesterday / last week.` : `4. Напиши 1 предложение в Past Simple (что делал(а) вчера).`;
+    } else if (tLow.includes('past continuous')) {
+      exLines = [
+        `1. Вчера в 5 часов я делал(а) домашку. (was/were + V-ing)`,
+        `2. Они играли во дворе, когда пошёл дождь. (Past Continuous + Past Simple)`,
+        `3. Она не спала в 9 вечера. (wasn't + V-ing)`
+      ];
+      step3Line = `4. Повтори 2-ю форму неправильных глаголов из урока и составь 1 предложение.`;
+    } else if (tLow.includes('past simple')) {
+      exLines = [
+        `1. Вчера я ходил(а) в школу и сделал(а) домашку. (V2 / went, did)`,
+        `2. На прошлых выходных мы не смотрели телевизор. (didn't + V1)`,
+        `3. Ты читал(а) эту книгу вчера? (Did + ... + V1?)`
+      ];
+      step3Line = `4. Напиши 1 предложение о том, что ты делал(а) прошлым летом (last summer).`;
+    } else if (tLow.includes('too') && tLow.includes('enough')) {
+      exLines = [
+        `1. Эта сумка слишком тяжёлая для меня. (too + прил.)`,
+        `2. Этот рюкзак достаточно лёгкий. (прил. + enough)`,
+        `3. Ботинки недостаточно дешёвые. (not + прил. + enough)`
+      ];
+      step3Line = `4. Запиши 1 предложение со словом из урока (quality, price, size или fit).`;
+    } else if (tLow.includes('must') || tLow.includes('have to')) {
+      exLines = [
+        `1. Мы должны поднимать руку на уроке. (must / have to)`,
+        `2. Ученики не должны опаздывать в школу. (mustn't)`,
+        `3. В субботу нам не нужно идти в школу. (don't have to)`
+      ];
+      step3Line = `4. Напиши 1 своё школьное правило на английском.`;
+    } else {
+      // По умолчанию (включая 4 класс, Present Simple, My Day, School и т.д.) — строго Present Simple и слова урока!
+      const isYoung = /[1-4]\s*кл/i.test(gLow) || tLow.includes('present simple') || tLow.includes('my day') || tLow.includes('morning');
+      exLines = isYoung ? [
+        `1. Я обычно делаю домашнее задание после школы. (usually, Present Simple)`,
+        `2. Мы убираем нашу комнату каждый день. (Present Simple)`,
+        `3. Он не моет посуду утром. (doesn't + глагол без -s)`
+      ] : [
+        `1. Составь утвердительное предложение по теме «${topic}» со словом из Шага 1.`,
+        `2. Составь отрицательное предложение по теме «${topic}».`,
+        `3. Задай вопрос по теме «${topic}».`
+      ];
+      step3Line = prevTopic
+        ? `4. Повтори тему «${prevTopic}»: напиши 1 короткое предложение (вопрос или отрицание) с любым словом из урока.`
+        : `4. Напиши 1 вопрос другу на английском по теме «${topic}».`;
+    }
 
     return [
       `Привет, ${stName}! 🇬🇧 Вот твоя небольшая миссия по уроку «${topic}» (всего на 15 минут!):`,
@@ -1129,12 +1192,10 @@ ${materialsBlock || 'Тема урока: "' + (currentLesson.topic || 'Общи
       ``,
       `✍️ Шаг 2. Небольшое письменное задание в тетрадке (8–10 минут):`,
       `Запиши в тетрадь перевод или раскрой скобки по правилу урока («${topic}»):`,
-      `1. Я только что выполнил(а) новую миссию (use: just + правило урока).`,
-      `2. Ты когда-нибудь видел(а) этого персонажа в игре? (use: ever).`,
-      `3. Мы ещё не проверили секретную комнату (use: yet).`,
+      ...exLines,
       ``,
       `🎯 Шаг 3. Мини-реванш по прошлым ловушкам (2 минуты):`,
-      prevTopic ? `4. Повтори тему «${prevTopic}»${errorsText ? ` (обрати внимание: ${errorsText.slice(0, 80)})` : ''}: переведи «Я учу эти слова уже 15 минут».` : `4. Проверь себя: переведи «Я уже выучил 5 новых слов сегодня».`,
+      step3Line,
       ``,
       `📸 Шаг 4. ОБЯЗАТЕЛЬНОЕ УСЛОВИЕ СДАЧИ ДЗ (Фото тетрадки):`,
       `⚠️ Запиши предложения 1–4 от руки в свою тетрадь (это займёт всего 10–15 минут!), сфоткай тетрадку и пришли ФОТО прямо сюда в чат! Без фото письменного задания в тетради кнопка «✅ Я сделал(а) ДЗ!» не откроется (даже если нажать все кнопки со словами и тестами). Бот проверит твоё фото, даст обратную связь и разблокирует сдачу ДЗ! 🔥🚀`

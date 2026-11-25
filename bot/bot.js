@@ -7367,7 +7367,11 @@ ${materialsText.slice(0, 3000)}
 👇 Зажми микрофон в Telegram, прочитай эти 3 фразы и отправь мне!`;
 
       const vcRes = await executeFunctionCall('generate_lesson_plan', { prompt: vcPrompt });
-      const vcText = vcRes.generated_plan || `🎤 ГОЛОСОВОЙ ЧЕЛЛЕНДЖ НА 15 СЕКУНД (+15 XP)\n\nПрочитай вслух и пришли голосовое сообщение:\n1. I have already done my homework. — Я уже сделал домашнее задание.\n2. She has just found a new clue. — Она только что нашла новую улику.\n3. Have you ever seen a dragon? — Ты когда-нибудь видел дракона?`;
+      const isPerfTopic = /present perfect/i.test(lastLs?.topic || '');
+      const vcFallback = isPerfTopic
+        ? `🎤 ГОЛОСОВОЙ ЧЕЛЛЕНДЖ НА 15 СЕКУНД (+15 XP)\n\nПрочитай вслух и пришли голосовое сообщение:\n1. I have already done my homework. — Я уже сделал домашнее задание.\n2. She has just found a new clue. — Она только что нашла новую улику.\n3. Have you ever seen a dragon? — Ты когда-нибудь видел дракона?`
+        : `🎤 ГОЛОСОВОЙ ЧЕЛЛЕНДЖ НА 15 СЕКУНД (+15 XP)\n\nПрочитай вслух и пришли голосовое сообщение:\n1. I usually do my homework after school. — Я обычно делаю домашку после школы.\n2. She tidies her room every day. — Она убирает свою комнату каждый день.\n3. Do you help your parents at home? — Ты помогаешь родителям дома?`;
+      const vcText = vcRes.generated_plan || vcFallback;
 
       const engLines = [];
       for (const line of vcText.split('\n')) {
@@ -7422,7 +7426,11 @@ ${materialsText.slice(0, 3000)}
 СТРОГО: без звёздочек **! Отдельной последней строкой напиши строго: EN_LINE: <только английская фраза персонажа для озвучки>`;
 
       const rpRes = await executeFunctionCall('generate_lesson_plan', { prompt: rpPrompt });
-      let rpRaw = rpRes?.generated_plan || `🎭 Привет, ${actor.name}! Я торговец артефактами!\nHello, traveler! Have you ever seen a magic dragon?\nEN_LINE: Hello, traveler! Have you ever seen a magic dragon?`;
+      const isPerfRp = /present perfect/i.test(lastLs?.topic || '');
+      const rpFallback = isPerfRp
+        ? `🎭 Привет, ${actor.name}! Я торговец артефактами!\nHello, traveler! Have you ever seen a magic dragon?\nEN_LINE: Hello, traveler! Have you ever seen a magic dragon?`
+        : `🎭 Привет, ${actor.name}! Я твой друг-путешественник!\nHi! What do you usually do in the morning before school?\nEN_LINE: Hi! What do you usually do in the morning before school?`;
+      let rpRaw = rpRes?.generated_plan || rpFallback;
       const enMatch = rpRaw.match(/EN_LINE:\s*(.+)$/m);
       const enPhrase = enMatch ? enMatch[1].trim() : '';
       const cleanRp = rpRaw.replace(/EN_LINE:.*$/m, '').trim();
@@ -9178,6 +9186,7 @@ ${routerAcademic ? `АКАДЕМИЧЕСКАЯ СПРАВКА ПО ГРАММА�
         try {
           const fallbackFreePrompt = `Ты — добрый, умный и вдохновляющий ИИ-наставник по английскому для ученика ${actor.name} (${st.grade || 'школьник'}).
 Последняя тема урока: "${lastLs?.topic || 'Английский язык'}". Следующий урок: ${nextLessonInfo}.
+СТРОГОЕ ОГРАНИЧЕНИЕ ПО КЛАССУ И ТЕМЕ: Ученик учится в "${st.grade || 'школе'}", текущая тема — "${lastLs?.topic || 'Английский язык'}". НИКОГДА не давай грамматику старше программы ученика (например, для 4 класса и темы Present Simple КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ Present Perfect, just/ever/yet, have/has + V3 и Present Perfect Continuous!).
 Ученик написал: "${studentText}".
 Ответь живо, понятно и проактивно на "ты" (до 900 символов, без звёздочек **): ответь на любой вопрос, предложи идею или мини-лайфхак, а если это орг. вопрос — скажи, что передал Игорю.`;
           const freeRes = await executeFunctionCall('generate_lesson_plan', { prompt: fallbackFreePrompt });
