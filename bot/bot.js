@@ -3098,16 +3098,28 @@ function getLessonFlashcards(scenarioText, hwText = '', topicText = '', dossVoca
   const text = (scenarioText || '') + '\n' + (hwText || '') + '\n' + (dossVocab || '');
 
   const addCard = (enRaw, ipaRaw, ruRaw, exRaw = '') => {
-    const en = (enRaw || '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+    const en = (enRaw || '')
+      .replace(/\*\*/g, '')
+      .replace(/^(?:example|e\.g\.|word|phrase|expression|task|item)\s*[:\-–—]?\s+/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     const ipa = ipaRaw ? ('[' + ipaRaw.replace(/^[\[\/]|[\]\/]$/g, '').trim() + ']') : '';
     let ru = (ruRaw || '').replace(/\*\*/g, '').replace(/\s*[—–-]\s*.*$/, '').replace(/[·•|].*$/, '').trim();
     const ex = (exRaw || '').trim();
     if (!/[а-яА-ЯёЁ]/.test(ru)) return;
     if (ru.length < 2 || ru.length > 55) return;
+    if (/^(?:по желанию|обязательно|необязательно|необязательный|часть дня|точное время|день недели|повторяем|устно|письменно|бонус)/i.test(ru)) return;
     if (!/^[A-Za-z][A-Za-z\s'\/-]{1,32}$/.test(en)) return;
     if (en.split(/\s+/).length > 4) return;
     const lowerEn = en.toLowerCase();
-    if (['mistakes', 'words', 'prepositions', 'checklist', 'places', 'trees', 'animals', 'birds', 'grammar', 'practice', 'step', 'shag', 'slide', 'unit', 'lesson', 'mission', 'rule', 'trap', 'skyrim', 'spore', 'example', 'word', 'expression', 'translation'].includes(lowerEn)) return;
+    if ([
+      'mistakes', 'words', 'prepositions', 'checklist', 'places', 'trees', 'animals', 'birds',
+      'grammar', 'practice', 'step', 'shag', 'slide', 'unit', 'lesson', 'mission', 'rule', 'trap',
+      'skyrim', 'spore', 'example', 'word', 'expression', 'translation',
+      'creative', 'vocabulary', 'repetition', 'reading', 'speaking', 'listening', 'writing',
+      'phonics', 'warmup', 'warm-up', 'bonus', 'optional',
+      'in', 'on', 'at', 'to', 'of', 'for', 'the', 'a', 'an', 'by', 'with', 'from', 'and', 'or', 'but'
+    ].includes(lowerEn)) return;
     if (!cards.find(c => c.en.toLowerCase() === lowerEn)) {
       cards.push({ en, ipa, ru, ex });
     }
@@ -6965,7 +6977,7 @@ ${materialsText || `Тема урока: "${lastLs?.topic || 'English'}"`}
       await sendCleanMessage(ADMIN_CHAT_ID,
         `👀 [Копия для преподавателя — ${actor.displayLabel} запустил(а) «📝 Тестик по уроку» (Раунд #${prog.quizRound})]:\n` +
         `📚 Тема: ${lastLs?.topic || 'Английский'}\n` +
-        `📊 Текущая готовность ДЗ: ${hwStatus.pct}% (ответит на вопросы — получит +25%)\n` +
+        `📊 Текущая готовность ДЗ: ${hwStatus.pct}% (ответит на вопросы — получит +20%)\n` +
         `${hwStatus.groupBreakdownText ? `👥 В группе:\n${hwStatus.groupBreakdownText}\n` : ''}\n` +
         `📩 Вопросы, отправленные ученику:\n\n` +
         pollSummaryForTeacher.join('\n\n')
@@ -7063,31 +7075,63 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
       }
       if (idx >= cards.length) idx = 0;
       if (idx < 0) idx = 0;
-      const c = cards[idx];
+      let c = cards[idx];
       const prog = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
+      if (!Array.isArray(prog.knownWords)) prog.knownWords = [];
+      let knownBanner = '';
+      let deckCompleted = false;
 
       if (action === 'card_known') {
-        prog.cardsKnown = (prog.cardsKnown || 0) + 1;
-        if (prog.cardsKnown >= 2) {
-          prog.completedSteps.words = true;
-        }
-        const hwStatus = getHwCompletionSummary(st, lastLs, chatId, query.from);
-        await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
-        await incrementStudentStreakBot(st);
+        const knownCard = c;
+        const wordKey = (knownCard?.en || '').toLowerCase().trim();
+        const isNewKnown = wordKey && !prog.knownWords.includes(wordKey);
         const userName = actor.name || query.from?.first_name || 'Ученик';
-        const totalXp = addStudentXp(st.id, lastLs?.id, query.from?.id, userName, 5);
-        await bot.answerCallbackQuery(query.id, { text: `🎉 Отлично, ${userName}! +5 XP (Готовность ДЗ: ${hwStatus.pct}%)!` });
-        if (c) {
-          await sendCleanMessage(ADMIN_CHAT_ID,
-            `🃏 [Копия для преподавателя — ${actor.displayLabel} (${userName}) нажал(а) «✅ Знал(а) карточку»]:\n` +
-            `🇬🇧 Слово: ${c.en} ${c.ipa || ''} — ${c.ru}\n` +
-            `${c.ex ? `💡 Пример: ${c.ex}\n` : ''}` +
-            `⭐ Опыт: +5 XP (Всего: ${totalXp} XP)\n` +
-            `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% 🔒'})\n` +
-            `${hwStatus.groupBreakdownText ? `👥 В группе:\n${hwStatus.groupBreakdownText}\n` : ''}` +
-            `✅ Сделано:\n• ${hwStatus.doneText}\n` +
-            `⏳ Осталось:\n• ${hwStatus.leftText}`
-          ).catch(() => {});
+
+        if (isNewKnown) {
+          prog.knownWords.push(wordKey);
+          prog.cardsKnown = (prog.cardsKnown || 0) + 1;
+          if (prog.cardsKnown >= 2) {
+            prog.completedSteps.words = true;
+          }
+          const hwStatus = getHwCompletionSummary(st, lastLs, chatId, query.from);
+          await persistHwProgressPercent(lastLs, hwStatus.pct, actor, st);
+          await incrementStudentStreakBot(st);
+          const totalXp = addStudentXp(st.id, lastLs?.id, query.from?.id, userName, 5);
+          knownBanner = `✅ <i>Зачтено: «${knownCard.en}» (+5 XP)</i>\n\n`;
+          await bot.answerCallbackQuery(query.id, { text: `🎉 Отлично, ${userName}! +5 XP (Готовность ДЗ: ${hwStatus.pct}%)!` });
+
+          const remainingCount = cards.filter(card => !prog.knownWords.includes((card.en || '').toLowerCase().trim())).length;
+          if (remainingCount === 0) deckCompleted = true;
+
+          // Throttle teacher copy: 1st word, every 5th word, or deck completion (prevents 50+ spam messages)
+          if (knownCard && (prog.cardsKnown === 1 || prog.cardsKnown % 5 === 0 || deckCompleted)) {
+            await sendCleanMessage(ADMIN_CHAT_ID,
+              `🃏 [Копия для преподавателя — ${actor.displayLabel} (${userName}) — флеш-карточки (${prog.cardsKnown} слов)]:\n` +
+              `🇬🇧 Последнее слово: ${knownCard.en} ${knownCard.ipa || ''} — ${knownCard.ru}\n` +
+              `⭐ Опыт: +5 XP (Всего: ${totalXp} XP)\n` +
+              `📊 Готовность ДЗ: ${hwStatus.pct}% (${hwStatus.canSubmit ? 'Готов к сдаче ✅' : 'Нужно минимум 75% 🔒'})\n` +
+              `${hwStatus.groupBreakdownText ? `👥 В группе:\n${hwStatus.groupBreakdownText}\n` : ''}` +
+              `✅ Сделано:\n• ${hwStatus.doneText}\n` +
+              `⏳ Осталось:\n• ${hwStatus.leftText}`
+            ).catch(() => {});
+          }
+        } else {
+          await bot.answerCallbackQuery(query.id, { text: `✅ Это слово уже в копилке! Переходим к следующему 👉` });
+        }
+
+        // Advance to next unseen/unknown card so the same word never repeats in a row
+        if (!deckCompleted) {
+          let nextIdx = (idx + 1) % cards.length;
+          for (let step = 0; step < cards.length; step++) {
+            const candidate = (idx + 1 + step) % cards.length;
+            const candKey = (cards[candidate]?.en || '').toLowerCase().trim();
+            if (!prog.knownWords.includes(candKey)) {
+              nextIdx = candidate;
+              break;
+            }
+          }
+          idx = nextIdx;
+          c = cards[idx];
         }
       } else if (action !== 'refresh_cards') {
         await bot.answerCallbackQuery(query.id);
@@ -7100,11 +7144,30 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
             ? `🔒 Сдать ДЗ (${hwStatusNow.pct}% — пришли 📸 фото тетради!)`
             : `🔒 Сдать ДЗ (готово ${hwStatusNow.pct}% из 75%)`);
 
-      if (action === 'flip_card') {
+      if (deckCompleted) {
+        const doneHtml = `${knownBanner}🎉 <b>Супер! Все ${cards.length} карточек этой колоды пройдены!</b>\n\nТы молодец! Можешь подобрать новую партию слов или перейти к тестику 👇`;
+        const doneKb = [
+          [
+            { text: '🔀 Новые слова по уроку', callback_data: `refresh_cards:${st.id}:0` },
+            { text: '📝 Тестик по уроку', callback_data: `student_poll_quiz:${st.id}` }
+          ],
+          [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
+        ];
+        if (query.message) {
+          await bot.editMessageText(doneHtml, {
+            chat_id: chatId,
+            message_id: query.message.message_id,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: doneKb }
+          }).catch(() => sendCleanMessage(chatId, doneHtml, { reply_markup: { inline_keyboard: doneKb } }));
+        } else {
+          await sendCleanMessage(chatId, doneHtml, { reply_markup: { inline_keyboard: doneKb } });
+        }
+      } else if (action === 'flip_card') {
         const cardHtml = `🃏 <b>Флеш-карточка ${idx + 1} из ${cards.length}:</b>\n\n🇬🇧 <b>${c.en}</b> ${c.ipa || ''}\n\n🇷🇺 <b>Перевод:</b> ${c.ru}\n${c.ex ? `💡 <i>Пример: ${c.ex}</i>` : ''}`;
         const kb = [
           [
-            { text: '✅ Знал(а)! (+5 XP)', callback_data: `card_known:${st.id}:${(idx + 1) % cards.length}` },
+            { text: '✅ Знал(а)! (+5 XP)', callback_data: `card_known:${st.id}:${idx}` },
             { text: '🔄 Повторить позже', callback_data: `student_flashcards:${st.id}:${(idx + 1) % cards.length}` }
           ],
           [
@@ -7129,8 +7192,8 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
           await sendCleanMessage(chatId, cardHtml, { reply_markup: { inline_keyboard: kb } });
         }
       } else {
-        // Show front of card
-        const cardHtml = `🃏 <b>Флеш-карточка ${idx + 1} из ${cards.length}:</b>\n\n🇬🇧 <b>${c.en}</b> ${c.ipa || ''}\n\n<i>Вспомни перевод про себя, а затем нажми кнопку ниже!</i> 👇`;
+        // Show front of card (edit in place even after card_known so old button cannot be spammed!)
+        const cardHtml = `${knownBanner}🃏 <b>Флеш-карточка ${idx + 1} из ${cards.length}:</b>\n\n🇬🇧 <b>${c.en}</b> ${c.ipa || ''}\n\n<i>Вспомни перевод про себя, а затем нажми кнопку ниже!</i> 👇`;
         const kb = [
           [{ text: '👀 Перевернуть карточку', callback_data: `flip_card:${st.id}:${idx}` }],
           [
@@ -7142,7 +7205,7 @@ ${materialsText || `Слова: "${doss.vocab || 'mystery, puzzle, hero, power'}
           ],
           [{ text: submitBtnLabel, callback_data: `student_hw_done:${lastLs?.id || ''}` }]
         ];
-        if (query.message && action !== 'card_known') {
+        if (query.message) {
           await bot.editMessageText(cardHtml, {
             chat_id: chatId,
             message_id: query.message.message_id,
@@ -8822,29 +8885,11 @@ ${reportsHistory || 'пока нет проведённых уроков'}
 
         const lastLs = await getLatestLessonWithMaterials(st.id);
         const cleanHw = cleanHomeworkTextBot(lastLs?.homework || '');
-
-        const newStreak = await incrementStudentStreakBot(st);
         const rawProg = getPracticeProgress(st.id, lastLs?.id, actor.tagKey);
-        rawProg.photoSubmitted = true;
-        rawProg.photoFileId = largestPhoto.file_id;
-        rawProg.completedSteps.written = true;
 
-        const updatedProg = getHwCompletionSummary(st, lastLs, chatId, msg.from);
-        if (lastLs) {
-          await persistPhotoHwData(lastLs, actor, largestPhoto.file_id, '');
-          await persistHwProgressPercent(lastLs, updatedProg.pct, actor, st);
-          await markHwTagForActor(lastLs, 'СДАНО', actor);
-        }
-
-        // Student initial feedback + unlocked keyboard
-        const photoAckMsg = `📸 *Фото тетрадки принято и зачтено, ${actor.name}!* 🌟\nЯ проверяю твоё письменное задание и отправил твоё фото с разбором Игорю!\n📊 *Готовность ДЗ: ${updatedProg.pct}%* — кнопка *«✅ Я сделал(а) ДЗ!»* разблокирована, можешь нажимать её!\n🔥 *Ударный режим (Streak): ${newStreak} ДЗ подряд! (+15 XP)* 🏆`;
-        await bot.sendMessage(chatId, photoAckMsg, {
-          parse_mode: 'Markdown',
-          reply_markup: buildStudentKeyboard(st, lastLs, chatId)
-        }).catch(() => {});
-
-        // Call Vision OCR to transcribe English handwriting, explain mistakes to student, and send full copy + photo to Igor
+        // First run Vision OCR to verify it's actually a notebook/written work (not a Telegram screenshot or random picture)
         let ocrAnalysis = '';
+        let visionFailed = false;
         try {
           const { cards: lessonCards } = extractAttachedCards(lastLs?.homework || '');
           let cardTasks = '';
@@ -8853,25 +8898,22 @@ ${reportsHistory || 'пока нет проведённых уроков'}
             cardTasks = cardTextMatch[1].trim();
           }
 
-          // Build vision images payload: first student's notebook photo, then up to 2 teacher's assignment card images for direct visual comparison
-          const visionImages = [base64ImageUrl];
-          if (lessonCards && lessonCards.length > 0) {
-            visionImages.push(...lessonCards.slice(0, 2));
-          }
+          const buildOcrPrompt = (hasAttachedCards, numCards) => `Ты — добрый, чуткий, внимательный и профессиональный детский преподаватель английского языка для ученика ${actor.name} (${st.grade || 'школьник'}).
+Ученик прислал изображение в чат.
 
-          const hasAttachedCards = visionImages.length > 1;
-          const ocrPrompt = `Ты — добрый, чуткий, внимательный и профессиональный детский преподаватель английского языка для ученика ${actor.name} (${st.grade || 'школьник'}).
-Ученик прислал фото тетрадки с выполненным письменным домашним заданием.
+СНАЧАЛА ПРОВЕРЬ ИЗОБРАЖЕНИЕ 1:
+- Это действительно фото рукописной тетрадки / листа бумаги / рабочей тетради с письменным заданием по английскому?
+- Если на Изображении 1 НЕТ тетради/письменной работы (например, это скриншот экрана телефона или Telegram-чата, мем, селфи, картинка из интернета или пустой лист) — ОБЯЗАТЕЛЬНО начни ответ строго с тега [NOT_NOTEBOOK] и по-доброму объясни, что на фото не тетрадка, и попроси прислать именно фото написанного от руки задания в тетради!
 
-${hasAttachedCards ? `ВАЖНО: К сообщению прикреплены изображения:
+${hasAttachedCards ? `Если это тетрадка — к сообщению прикреплены изображения:
 - Изображение 1: Фото тетрадки ученика с рукописными ответами.
-- Изображение 2${visionImages.length > 2 ? ' и 3' : ''}: Исходная PNG-карточка с письменным заданием, выданная преподавателем к этому уроку.
+- Изображение 2${numCards > 1 ? ' и 3' : ''}: Исходная PNG-карточка с письменным заданием, выданная преподавателем к этому уроку.
 Сопоставь написанные учеником в тетради предложения напрямую с заданием на выданной PNG-карточке!\n` : ''}
 ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${cardTasks}\n` : ''}
 Тема урока: "${lastLs?.topic || 'Практика английского языка'}".
 Заданное письменное ДЗ: "${cleanHw || 'Выполнить письменное упражнение с карточки в тетради'}".
 
-Твоя задача — тщательно и профессионально проверить рукописную работу ребёнка:
+Если на Изображении 1 действительно тетрадка с письменной работой, проверь её:
 1. 🔍 Что написано в тетрадке (расшифруй каждую строчку/номер, как написал ребёнок).
 2. 🎯 Сопоставь с выданным заданием (номера 1, 2, 3... или предложения с PNG-карточки).
 3. ✅ Похвали за правильные ответы (с добрыми детскими эмодзи).
@@ -8881,22 +8923,60 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
 5. ⭐ Оценка и вердикт: подтверди, что письменное ДЗ в тетради ЗАЧТЕНО, и напомни нажать кнопку «✅ Я сделал(а) ДЗ!» под сообщением.
 Пиши воодушевляюще и тепло, без символов **!`;
 
-          ocrAnalysis = (await askAI(ocrPrompt, '', visionImages, true, true, null, true)) || '';
+          const visionImages = [base64ImageUrl];
+          if (lessonCards && lessonCards.length > 0) {
+            visionImages.push(...lessonCards.slice(0, 2));
+          }
+          const isBadVisionReply = (txt) => !txt || !txt.trim() || /Не удалось получить ответ/i.test(txt);
+
+          ocrAnalysis = (await askAI(buildOcrPrompt(visionImages.length > 1, visionImages.length - 1), '', visionImages, true, true, null, true)) || '';
+          // Retry with ONLY the student's photo if multi-image Vision failed or timed out
+          if (isBadVisionReply(ocrAnalysis) && visionImages.length > 1) {
+            ocrAnalysis = (await askAI(buildOcrPrompt(false, 0), '', [base64ImageUrl], true, true, null, true)) || '';
+          }
+          if (isBadVisionReply(ocrAnalysis)) {
+            visionFailed = true;
+            ocrAnalysis = '';
+          }
         } catch (visionErr) {
+          visionFailed = true;
           console.error('Vision OCR error:', visionErr.message);
         }
 
-        if (!ocrAnalysis || !ocrAnalysis.trim()) {
-          ocrAnalysis = `✅ Рукописное домашнее задание в тетради (${lastLs?.topic || 'по теме урока'}) получено и зачтено! Молодец, что выполнил(а) письменное упражнение от руки в тетрадке! 🌟`;
+        // Reject non-notebook images (e.g. Telegram chat screenshots, random pictures) without marking HW as done!
+        if (!visionFailed && /^\[NOT_NOTEBOOK\]/i.test(ocrAnalysis.trim())) {
+          const rejectText = ocrAnalysis.replace(/^\[NOT_NOTEBOOK\]\s*/i, '').trim()
+            || `Похоже, это не фото тетрадки с письменным заданием 😊 Пришли, пожалуйста, именно фото написанного от руки ДЗ в тетради, и я сразу проверю и зачту его!`;
+          await bot.sendMessage(chatId, `📸 ${rejectText}`, {
+            reply_markup: buildStudentKeyboard(st, lastLs, chatId)
+          }).catch(() => {});
+          await bot.sendPhoto(ADMIN_CHAT_ID, largestPhoto.file_id, {
+            caption: `📸 [Фото от ученика — НЕ тетрадь, ДЗ НЕ зачтено]\n👤 Ученик: ${actor.displayLabel}${msg.caption ? '\n💬 Подпись: ' + msg.caption : ''}\n🤖 Ответ бота: ${rejectText.slice(0, 350)}`
+          }).catch(() => {});
+          return;
         }
 
-        rawProg.photoFeedback = ocrAnalysis;
+        const newStreak = await incrementStudentStreakBot(st);
+        rawProg.photoSubmitted = true;
+        rawProg.photoFileId = largestPhoto.file_id;
+        rawProg.completedSteps.written = true;
+
+        const updatedProg = getHwCompletionSummary(st, lastLs, chatId, msg.from);
         if (lastLs) {
           await persistPhotoHwData(lastLs, actor, largestPhoto.file_id, ocrAnalysis);
+          await persistHwProgressPercent(lastLs, updatedProg.pct, actor, st);
+          await markHwTagForActor(lastLs, 'СДАНО', actor);
         }
-        await saveHwWarmupErrorsToDossier(st, ocrAnalysis.slice(0, 450), actor.name, `Фото ДЗ: ${ocrAnalysis.slice(0, 120)}`).catch(() => {});
 
-        const studentOcrMsg = `🤖 *Обратная связь (ОС) по твоему письменному ДЗ в тетради, ${actor.name}:*\n\n${ocrAnalysis}\n\n👇 *Теперь кнопка «✅ Я сделал(а) ДЗ!» открыта — смело нажимай её!*`;
+        const fallbackOcrText = `✅ Фото тетрадки (${lastLs?.topic || 'по теме урока'}) получено и зачтено! Я уже передал его Игорю на проверку — молодец, что написал(а) задание от руки! 🌟`;
+        const finalOcrText = ocrAnalysis || fallbackOcrText;
+        rawProg.photoFeedback = finalOcrText;
+        if (lastLs && ocrAnalysis) {
+          await persistPhotoHwData(lastLs, actor, largestPhoto.file_id, finalOcrText);
+          await saveHwWarmupErrorsToDossier(st, ocrAnalysis.slice(0, 450), actor.name, `Фото ДЗ: ${ocrAnalysis.slice(0, 120)}`).catch(() => {});
+        }
+
+        const studentOcrMsg = `📸 *Фото тетрадки принято и зачтено, ${actor.name}!* 🌟\n📊 *Готовность ДЗ: ${updatedProg.pct}%* | 🔥 *Серия: ${newStreak} (+15 XP)*\n\n🤖 *Разбор твоего письменного ДЗ:*\n${finalOcrText}\n\n👇 *Кнопка «✅ Я сделал(а) ДЗ!» разблокирована — можешь нажимать её!*`;
         await bot.sendMessage(chatId, studentOcrMsg, {
           parse_mode: 'Markdown',
           reply_markup: buildStudentKeyboard(st, lastLs, chatId)
@@ -8915,7 +8995,7 @@ ${cardTasks ? `ЭТАЛОННЫЕ ЗАДАНИЯ/ОТВЕТЫ К УРОКУ:\n${
         const ocrKb = [];
         if (lastLs) ocrKb.push([{ text: '✅ Отметить ДЗ проверенным', callback_data: `lesson_hw_checked:${lastLs.id}` }]);
         ocrKb.push([{ text: '🎤 Ответить ученику (голосом/текстом)', callback_data: `teacher_reply_st:${st.id}` }]);
-        const teacherOcrCopy = `📨 *Обратная связь (ОС) бота по фото тетрадки (${actor.displayLabel}):*\n📊 *Готовность ДЗ:* ${updatedProg.pct}% (Фото проверено и зачтено ✅)\n${updatedProg.groupBreakdownText ? `👥 *В группе:*\n${updatedProg.groupBreakdownText}\n` : ''}✅ *Сделано:* ${updatedProg.doneList.join(', ')}\n⏳ *Осталось:* ${updatedProg.todoList.join(', ') || 'Ничего'}\n\n🤖 *Текст ОС, отправленный ученику:*\n${ocrAnalysis}\n\n🎯 _Ошибки из тетрадки автоматически сохранены в память для разминки на следующем уроке!_`;
+        const teacherOcrCopy = `📨 *Обратная связь (ОС) бота по фото тетрадки (${actor.displayLabel}):*\n📊 *Готовность ДЗ:* ${updatedProg.pct}% (Фото проверено и зачтено ✅)\n${updatedProg.groupBreakdownText ? `👥 *В группе:*\n${updatedProg.groupBreakdownText}\n` : ''}✅ *Сделано:* ${updatedProg.doneList.join(', ')}\n⏳ *Осталось:* ${updatedProg.todoList.join(', ') || 'Ничего'}\n\n🤖 *Текст ОС, отправленный ученику:*\n${finalOcrText}${visionFailed ? '\n\n⚠️ _ИИ-зрение временно не смогло распознать почерк — проверь фото вручную._' : '\n\n🎯 _Ошибки из тетрадки автоматически сохранены в память для разминки на следующем уроке!_'}`;
         await bot.sendMessage(ADMIN_CHAT_ID, teacherOcrCopy, {
           parse_mode: 'Markdown',
           reply_markup: { inline_keyboard: ocrKb }
