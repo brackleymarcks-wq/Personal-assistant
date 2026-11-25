@@ -3158,7 +3158,7 @@ async function getLessonFlashcardsDynamic(st, lastLs, materialsText, dossVocab =
 
   if (cards.length < 4 || forceAiRefresh) {
     const topicLabel = lastLs?._mergedTopic || lastLs?.topic || 'English practice';
-    const contextSnippet = (materialsText || lastLs?.homework || dossVocab || topicLabel).slice(0, 3500);
+    const contextSnippet = (materialsText || lastLs?.homework || dossVocab || topicLabel).slice(0, 12000);
     const aiPrompt = `Ты — методист английского языка для ученика ${st?.name || 'ученик'} (${st?.grade || '5-7 класс'}).
 Тема урока: "${topicLabel}"
 Материалы урока:
@@ -4222,8 +4222,8 @@ function buildStudentKeyboard(st, lesson, chatIdOrUserId = null) {
   const shields = typeof doss.shields === 'number' ? doss.shields : 1;
   const topic = (lesson?.topic || lesson?._mergedTopic || '').toLowerCase();
   const scenario = (lesson?._mergedScenario || extractLessonScenario(lesson?.homework || '') || '').toLowerCase();
-  const hwText = (lesson?.homework || '').toLowerCase();
-  const allContent = `${topic} ${scenario} ${hwText}`;
+  const presSnap = (lesson?._mergedPresText || extractPresentationText(lesson?.homework || '') || '').toLowerCase();
+  const grammarSource = `${topic} ${scenario.slice(0, 1500)} ${presSnap.slice(0, 1500)}`;
 
   const hwStatus = getHwCompletionSummary(st, lesson, chatIdOrUserId);
   const submitBtnText = hwStatus.canSubmit
@@ -4233,22 +4233,32 @@ function buildStudentKeyboard(st, lesson, chatIdOrUserId = null) {
         : `🔒 Сдать ДЗ (готово ${hwStatus.pct}% из 75%)`);
 
   let ruleBtnText = '📖 Правило урока';
-  if (allContent.includes('shopping') || allContent.includes('магазин') || allContent.includes('clothes') || allContent.includes('покупк')) {
-    ruleBtnText = '📖 Правило: В магазине';
-  } else if (allContent.includes('местоимен') || allContent.includes('pronoun') || allContent.includes('whose') || allContent.includes("'s")) {
-    ruleBtnText = '📖 Правило: Местоимения и \'s';
-  } else if (allContent.includes('сравнен') || allContent.includes('comparative') || allContent.includes('superlative')) {
-    ruleBtnText = '📖 Правило: Степени сравнения';
-  } else if (allContent.includes('артикл') || allContent.includes('article') || allContent.includes(' the ')) {
-    ruleBtnText = '📖 Правило: Артикли';
-  } else if (allContent.includes('present perfect')) {
+  if ((topic.includes('too') && topic.includes('enough')) || (grammarSource.includes('too +') && grammarSource.includes('enough'))) {
+    ruleBtnText = '📖 Правило: too / enough';
+  } else if (topic.includes('must') || topic.includes('have to') || grammarSource.includes("mustn't")) {
+    ruleBtnText = '📖 Правило: must / have to';
+  } else if (topic.includes('present perfect continuous') || grammarSource.includes('present perfect continuous')) {
+    ruleBtnText = '📖 Правило: Pres. Perf. Cont.';
+  } else if (topic.includes('present perfect') || grammarSource.includes('present perfect')) {
     ruleBtnText = '📖 Правило: Present Perfect';
-  } else if (allContent.includes('past simple')) {
+  } else if (topic.includes('past continuous') || grammarSource.includes('past continuous')) {
+    ruleBtnText = '📖 Правило: Past Continuous';
+  } else if (topic.includes('past simple') || grammarSource.includes('past simple')) {
     ruleBtnText = '📖 Правило: Past Simple';
+  } else if (topic.includes('present simple') || (grammarSource.includes('present simple') && !topic.includes('continuous'))) {
+    ruleBtnText = '📖 Правило: Present Simple';
+  } else if (topic.includes('местоимен') || topic.includes('pronoun') || topic.includes('whose') || topic.includes("'s")) {
+    ruleBtnText = '📖 Правило: Местоимения и \'s';
+  } else if (topic.includes('сравнен') || topic.includes('comparative') || topic.includes('superlative')) {
+    ruleBtnText = '📖 Правило: Степени сравнения';
+  } else if (topic.includes('артикл') || topic.includes('article') || topic.includes(' the ')) {
+    ruleBtnText = '📖 Правило: Артикли';
+  } else if (topic.includes('shopping') || topic.includes('магазин') || topic.includes('clothes') || topic.includes('покупк')) {
+    ruleBtnText = '📖 Правило: В магазине';
   }
 
   let extraPracticeBtn = { text: '🎮 Мини-игра', callback_data: `student_game:${st.id}` };
-  if (allContent.includes('verb') || allContent.includes('глагол') || allContent.includes('present perfect') || allContent.includes('past simple') || allContent.includes('irregular')) {
+  if (/verb|глагол|present simple|present perfect|past simple|past continuous|irregular/i.test(grammarSource)) {
     extraPracticeBtn = { text: '⚡ 5 глаголов урока', callback_data: `student_verbs:${st.id}` };
   }
 
@@ -6466,7 +6476,7 @@ bot.on('callback_query', async (query) => {
       // Собираем широкий пул из 15-25+ слов (текущий урок + словарь ученика) и делаем случайную выборку 5 НЕПОВТОРЯЮЩИХСЯ слов
       let wordPool = [];
       try {
-        const fcCards = getLessonFlashcards(lastLs, st) || [];
+        const fcCards = getLessonFlashcards(materialsText, lastLs?.homework || '', lastLs?._mergedTopic || lastLs?.topic || '', doss.vocab || '') || [];
         wordPool = fcCards.map(c => ({ en: (c.en || '').trim(), ru: (c.ru || '').trim() })).filter(c => c.en);
       } catch (_) {}
       if (doss.vocab) {
