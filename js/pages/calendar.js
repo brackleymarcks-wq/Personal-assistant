@@ -522,10 +522,23 @@ const CalendarPage = {
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Заметки</label>
-        <textarea id="ef-notes" class="form-input" placeholder="Дополнительная информация…" style="min-height:70px">${event ? this.esc(event.notes || '') : ''}</textarea>
+        <label class="form-label">Заметки (можно указать время напоминаний, напр. «в 14:30 и 15:00»)</label>
+        <textarea id="ef-notes" class="form-input" placeholder="Например: напомнить в 14:30 и 15:00 (бот сам пришлёт напоминания в это время!)" style="min-height:70px">${event ? this.esc(event.notes || '') : ''}</textarea>
       </div>
     `;
+
+    // При изменении «Начала» автоматически сдвигаем «Конец» на +1 час (чтобы не оставалось старое время)
+    const startEl = document.getElementById('ef-start');
+    const endEl = document.getElementById('ef-end');
+    if (startEl && endEl) {
+      startEl.onchange = () => {
+        if (!startEl.value) return;
+        const sDate = new Date(startEl.value);
+        if (!Number.isNaN(sDate.getTime())) {
+          endEl.value = toLocalInput(new Date(sDate.getTime() + 3600000));
+        }
+      };
+    }
 
     const close = () => modal.classList.add('hidden');
     document.getElementById('event-modal-save').onclick = () => this.saveEvent(event?.id);
@@ -549,10 +562,15 @@ const CalendarPage = {
       const d = new Date(v);
       return Number.isNaN(d.getTime()) ? v : d.toISOString();
     };
+    let startIso = toIsoUtc(rawStart);
+    let endIso = toIsoUtc(rawEnd);
+    if (startIso && endIso && new Date(endIso).getTime() <= new Date(startIso).getTime()) {
+      endIso = new Date(new Date(startIso).getTime() + 3600000).toISOString();
+    }
     const data = {
       title,
-      start_at: toIsoUtc(rawStart),
-      end_at: toIsoUtc(rawEnd),
+      start_at: startIso,
+      end_at: endIso,
       type: document.getElementById('ef-type').value,
       area: document.getElementById('ef-area').value,
       recurrence: document.getElementById('ef-recurrence').value || null,

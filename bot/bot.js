@@ -10121,21 +10121,54 @@ cron.schedule('* * * * *', async () => {
     const future = new Date(now.getTime() + 1 * 60000);
     const past = new Date(now.getTime() - 10 * 60000);
 
-    // 1. Проверка Событий (AI Календарь)
+    // 1. Проверка Событий (AI Календарь): напоминания за 2ч, за 30м, за 5м + кастомные часы из «Заметок» (например: «напомнить в 14:30 и 15:00»)
+    const todayMinskStr = now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+    const dayStartUtc = new Date(`${todayMinskStr}T00:00:00+03:00`);
+    const dayEndUtc = new Date(`${todayMinskStr}T23:59:59+03:00`);
     const { data: eventsData } = await db.from('events')
       .select('*')
       .eq('user_id', user.id)
-      .gte('start_at', past.toISOString())
-      .lte('start_at', future.toISOString());
+      .gte('start_at', dayStartUtc.toISOString())
+      .lte('start_at', new Date(dayEndUtc.getTime() + 3 * 3600000).toISOString());
 
     if (eventsData && eventsData.length > 0) {
       for (const e of eventsData) {
-        if (!notifiedEvents.has(e.id)) {
-          const eventTime = new Date(e.start_at);
-          if (eventTime <= future) {
-            notifiedEvents.add(e.id);
-            sendProactiveMessage(`🔔 **Напоминание:** ${e.title}\n${e.description ? '_' + e.description + '_' : ''}`);
+        const eventTime = new Date(e.start_at);
+        if (Number.isNaN(eventTime.getTime())) continue;
+        const evTimeStr = eventTime.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' });
+        const evDateMinsk = eventTime.toLocaleDateString('sv-SE', { timeZone: 'Europe/Minsk' });
+        const noteText = (e.notes || e.description || '').trim();
+        const noteLine = noteText ? `\n📝 _${noteText}_` : '';
+        const minsLeft = Math.round((eventTime.getTime() - now.getTime()) / 60000);
+
+        // A) Кастомные напоминания из поля «Заметки» (например: «напомнить в 14:30 и 15:00»)
+        if (noteText && evDateMinsk === todayMinskStr) {
+          const timeMatches = noteText.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g) || [];
+          for (const rawT of [...new Set(timeMatches)]) {
+            const [hh, mm] = rawT.split(':').map(n => n.padStart(2, '0'));
+            const hhmm = `${hh}:${mm}`;
+            const customKey = `${e.id}:custom:${hhmm}`;
+            if (notifiedEvents.has(customKey)) continue;
+            const targetTime = new Date(`${todayMinskStr}T${hhmm}:00+03:00`);
+            const diffMin = (now.getTime() - targetTime.getTime()) / 60000;
+            if (diffMin >= -1 && diffMin <= 5) {
+              notifiedEvents.add(customKey);
+              sendProactiveMessage(`🔔 **Напоминание (${hhmm}):** ${e.title} — сегодня в **${evTimeStr}**!${noteLine}`);
+            }
           }
+        }
+
+        // B) Авто-напоминания по умолчанию: за 2 часа, за 30 минут и за 5 минут
+        if (minsLeft >= 116 && minsLeft <= 122 && !notifiedEvents.has(`${e.id}:2h`)) {
+          notifiedEvents.add(`${e.id}:2h`);
+          sendProactiveMessage(`⏰ **Через 2 часа (в ${evTimeStr}):** ${e.title}${noteLine}`);
+        } else if (minsLeft >= 27 && minsLeft <= 32 && !notifiedEvents.has(`${e.id}:30m`)) {
+          notifiedEvents.add(`${e.id}:30m`);
+          sendProactiveMessage(`⏰ **Через 30 минут (в ${evTimeStr}):** ${e.title}${noteLine}`);
+        } else if (minsLeft >= -2 && minsLeft <= 6 && !notifiedEvents.has(`${e.id}:start`) && !notifiedEvents.has(e.id)) {
+          notifiedEvents.add(`${e.id}:start`);
+          notifiedEvents.add(e.id);
+          sendProactiveMessage(`🔔 **Скоро начало (в ${evTimeStr}):** ${e.title}${noteLine}`);
         }
       }
     }
