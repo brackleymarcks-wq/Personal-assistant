@@ -5251,11 +5251,11 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
     let liveScheduleSnapshot = '';
     if (!disableTools) {
       try {
-        const [evs14, activeTasks] = await Promise.all([
-          getUpcomingEvents(14).catch(() => []),
+        const [evs60, activeTasks] = await Promise.all([
+          getUpcomingEvents(60).catch(() => []),
           getTasks({}).catch(() => [])
         ]);
-        const evLines = (evs14 || []).slice(0, 25).map(e => {
+        const evLines = (evs60 || []).slice(0, 45).map(e => {
           const w = new Date(e.start_at).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
           return `- ${w}: ${e.title}`;
         });
@@ -5263,11 +5263,11 @@ async function askAI(userMessage, context = '', imageUrl = null, disableTools = 
           return `- [${t.priority || 'Средний'}] ${t.title}${t.deadline ? ' (до ' + t.deadline + ')' : ''}${t.direction ? ' [' + t.direction + ']' : ''}`;
         });
         liveScheduleSnapshot =
-          `\n\n📅 РЕАЛЬНЫЕ ВСТРЕЧИ И УРОКИ ИЗ БАЗЫ (ближайшие 14 дней, время Минск):\n` +
-          (evLines.length > 0 ? evLines.join('\n') : '_Встреч и уроков на ближайшие 14 дней в базе нет._') +
+          `\n\n📅 РЕАЛЬНЫЕ ВСТРЕЧИ И УРОКИ ИЗ БАЗЫ (ближайшие 60 дней, время Минск):\n` +
+          (evLines.length > 0 ? evLines.join('\n') : '_Встреч и уроков на ближайшие 60 дней в базе нет._') +
           `\n\n✅ РЕАЛЬНЫЕ АКТИВНЫЕ ЗАДАЧИ ИЗ БАЗЫ:\n` +
           (tkLines.length > 0 ? tkLines.join('\n') : '_Активных задач в базе сейчас нет._') +
-          `\n⚠️ СТРОГОЕ ПРАВИЛО: НИКОГДА не выдумывай встречи или задачи, которых НЕТ в списках выше! Называй только реальные даты, время по Минску и точные названия из базы!`;
+          `\n⚠️ СТРОГОЕ ПРАВИЛО: НИКОГДА не выдумывай встречи или задачи, которых НЕТ в списках выше! Называй только реальные даты, время по Минску и точные названия из базы! Если спрашивают про события дальше 60 дней — вызови get_events.`;
       } catch (_) {}
     }
     const advisorHint = '\n\nПРАВИЛО ПРОАКТИВНОГО АССИСТЕНТА: Если Игорь спрашивает о делах, встречах, планах на день/неделю или с чего начать — опирайся на реальные списки выше (и при необходимости вызывай get_tasks / get_events), раздели задачи на важные (Высокий приоритет / горящий дедлайн / до встречи) и второстепенные (Низкий / можно перенести), и дай чёткий совет, от чего отталкиваться в первую очередь.';
